@@ -28,14 +28,27 @@ export async function handleSaveArticle(params: {
   folder?: string;
 }) {
   // Fetch article content via Jina Reader with timeout and size limit
+  // Auto-detect Medium URLs and inject session cookie
+  const isMedium =
+    params.url.includes("medium.com") ||
+    params.url.includes("towardsdatascience.com") ||
+    params.url.includes("betterprogramming.pub") ||
+    params.url.includes("levelup.gitconnected.com");
+
   const jinaUrl = `https://r.jina.ai/${params.url}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), JINA_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), isMedium ? 20_000 : JINA_TIMEOUT);
+
+  const jinaHeaders: Record<string, string> = { Accept: "text/markdown" };
+  const mediumSid = process.env.MEDIUM_SID?.trim();
+  if (isMedium && mediumSid) {
+    jinaHeaders["x-set-cookie"] = `sid=${mediumSid}`;
+  }
 
   let res: Response;
   try {
     res = await fetch(jinaUrl, {
-      headers: { Accept: "text/markdown" },
+      headers: jinaHeaders,
       signal: controller.signal,
     });
   } finally {

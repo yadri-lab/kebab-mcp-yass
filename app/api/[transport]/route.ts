@@ -8,6 +8,7 @@ import { vaultListSchema, handleVaultList } from "@/tools/vault-list";
 import { vaultDeleteSchema, handleVaultDelete } from "@/tools/vault-delete";
 import { vaultMoveSchema, handleVaultMove } from "@/tools/vault-move";
 import { saveArticleSchema, handleSaveArticle } from "@/tools/save-article";
+import { readPaywalledSchema, handleReadPaywalled } from "@/tools/read-paywalled";
 import { handleMyContext } from "@/tools/my-context";
 
 const mcpHandler = createMcpHandler(
@@ -56,9 +57,16 @@ const mcpHandler = createMcpHandler(
 
     server.tool(
       "save_article",
-      "Save a web article to the vault. Fetches URL via Jina Reader (markdown extraction), adds YAML frontmatter (title, source, date, tags), writes to Veille/ folder. Max 5MB.",
+      "Save a web article to the vault. Fetches URL via Jina Reader (markdown extraction), adds YAML frontmatter (title, source, date, tags), writes to Veille/ folder. Auto-detects Medium URLs and uses stored session cookie to bypass paywall. Max 5MB.",
       saveArticleSchema,
       withLogging("save_article", async (params) => handleSaveArticle(params))
+    );
+
+    server.tool(
+      "read_paywalled",
+      "Read a paywalled article (Medium, etc.) and return its full markdown content. Uses stored session cookies to access premium content. Does NOT save to vault — use save_article for that, or vault_write manually after analysis.",
+      readPaywalledSchema,
+      withLogging("read_paywalled", async (params) => handleReadPaywalled(params))
     );
 
     server.tool(
