@@ -251,19 +251,48 @@ export async function vaultList(folder?: string): Promise<VaultListEntry[]> {
 
 // --- Search ---
 
+interface GitTreeEntry {
+  path: string;
+  mode: string;
+  type: "blob" | "tree";
+  sha: string;
+  size?: number;
+}
+
+interface GitTreeResponse {
+  sha: string;
+  tree: GitTreeEntry[];
+  truncated: boolean;
+}
+
 export async function vaultSearch(
   query: string,
   folder?: string,
   limit = 10,
   page = 1
-): Promise<{ results: SearchResult[]; totalCount: number }> {
+): Promise<{ results: SearchResult[]; totalCount: number; method: "github_search" | "tree_grep" }> {
   if (folder) validateVaultPath(folder);
+
+  // Try GitHub Code Search first
+  const codeSearchResult = await tryCodeSearch(query, folder, limit, page);
+  if (codeSearchResult.totalCount > 0) {
+    return { ...codeSearchResult, method: "github_search" };
+  }
+
+  // Fallback: Git Trees + content grep (for small/unindexed repos)
+  return { ...(await treeGrep(query, folder, limit, page)), method: "tree_grep" };
+}
+
+async function tryCodeSearch(
+  query: string,
+  folder: string | undefined,
+  limit: number,
+  page: number
+): Promise<{ results: SearchResult[]; totalCount: number }> {
   const { pat, repo } = getConfig();
 
   let q = `${query} repo:${repo}`;
-  if (folder) {
-    q += ` path:${folder}`;
-  }
+  if (folder) q += ` path:${folder}`;
 
   const res = await fetchWithTimeout(
     `${GITHUB_API}/search/code?q=${encodeURIComponent(q)}&per_page=${limit}&page=${page}`,
@@ -275,12 +304,9 @@ export async function vaultSearch(
     }
   );
 
-  if (!res.ok) {
-    throw new Error(`GitHub Search error: ${res.status}`);
-  }
+  if (!res.ok) return { results: [], totalCount: 0 };
 
   const data = (await res.json()) as GitHubSearchResponse;
-
   return {
     totalCount: data.total_count,
     results: (data.items || []).map((item) => ({
@@ -288,6 +314,105 @@ export async function vaultSearch(
       path: item.path,
       textMatches: (item.text_matches || []).map((m) => m.fragment),
     })),
+  };
+}
+
+async function treeGrep(
+  query: string,
+  folder: string | undefined,
+  limit: number,
+  page: number
+): Promise<{ results: SearchResult[]; totalCount: number }> {
+  const { pat, repo } = getConfig();
+
+  // Get full file tree
+  const treeRes = await fetchWithTimeout(
+    `${GITHUB_API}/repos/${repo}/git/trees/main?recursive=1`,
+    { headers: headers(pat) }
+  );
+
+  if (!treeRes.ok) throw new Error(`GitHub Trees error: ${treeRes.status}`);
+
+  const tree = (await treeRes.json()) as GitTreeResponse;
+
+  // Filter to markdown files in target folder
+  let mdFiles = tree.tree.filter(
+    (t) => t.type === "blob" && t.path.endsWith(".md")
+  );
+  if (folder) {
+    const prefix = folder.replace(/\/$/, "");
+    mdFiles = mdFiles.filter((t) => t.path.startsWith(prefix + "/") || t.path === prefix);
+  }
+
+  // Search query terms (case-insensitive)
+  const queryLower = query.toLowerCase();
+  const queryTerms = queryLower.split(/\s+/).filter(Boolean);
+
+  // First pass: filter by filename match
+  const nameMatches: SearchResult[] = [];
+  const contentCandidates: GitTreeEntry[] = [];
+
+  for (const file of mdFiles) {
+    const nameLower = file.path.toLowerCase();
+    if (queryTerms.some((term) => nameLower.includes(term))) {
+      nameMatches.push({
+        name: file.path.split("/").pop() || file.path,
+        path: file.path,
+        textMatches: [`Filename match`],
+      });
+    } else {
+      contentCandidates.push(file);
+    }
+  }
+
+  // Second pass: read content of remaining files to search inside
+  // Limit concurrent reads to avoid rate limiting
+  const MAX_CONTENT_READS = 20;
+  const filesToRead = contentCandidates.slice(0, MAX_CONTENT_READS);
+  const contentMatches: SearchResult[] = [];
+
+  const readPromises = filesToRead.map(async (file) => {
+    try {
+      const res = await fetchWithTimeout(
+        `${GITHUB_API}/repos/${repo}/contents/${encodeURIPath(file.path)}`,
+        { headers: headers(pat) }
+      );
+      if (!res.ok) return null;
+
+      const data = (await res.json()) as GitHubContentResponse;
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+      const contentLower = content.toLowerCase();
+
+      if (queryTerms.every((term) => contentLower.includes(term))) {
+        // Extract matching context (first match, 100 chars around it)
+        const idx = contentLower.indexOf(queryTerms[0]);
+        const start = Math.max(0, idx - 50);
+        const end = Math.min(content.length, idx + queryTerms[0].length + 50);
+        const fragment = (start > 0 ? "..." : "") + content.slice(start, end).trim() + (end < content.length ? "..." : "");
+
+        return {
+          name: file.path.split("/").pop() || file.path,
+          path: file.path,
+          textMatches: [fragment],
+        } as SearchResult;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const readResults = await Promise.all(readPromises);
+  for (const r of readResults) {
+    if (r) contentMatches.push(r);
+  }
+
+  const allResults = [...nameMatches, ...contentMatches];
+  const offset = (page - 1) * limit;
+
+  return {
+    totalCount: allResults.length,
+    results: allResults.slice(offset, offset + limit),
   };
 }
 

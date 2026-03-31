@@ -57,11 +57,17 @@ export async function handleSaveArticle(params: {
     throw new Error(`Article content too large (${Math.round(markdown.length / 1024 / 1024)}MB). Max: 5MB`);
   }
 
-  // Extract title from markdown (first # heading) if not provided
+  // Extract title: Jina metadata "Title:" > first # heading > URL hostname
   let title = params.title;
   if (!title) {
-    const titleMatch = markdown.match(/^#\s+(.+)$/m);
-    title = titleMatch ? titleMatch[1].trim() : new URL(params.url).hostname;
+    // Jina Reader prepends "Title: ..." at the top of its output
+    const jinaTitleMatch = markdown.match(/^Title:\s*(.+)$/m);
+    if (jinaTitleMatch) {
+      title = jinaTitleMatch[1].trim();
+    } else {
+      const headingMatch = markdown.match(/^#\s+(.+)$/m);
+      title = headingMatch ? headingMatch[1].trim() : new URL(params.url).hostname;
+    }
   }
 
   // Build filename from title

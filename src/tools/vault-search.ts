@@ -28,7 +28,7 @@ export async function handleVaultSearch(params: {
   limit?: number;
   page?: number;
 }) {
-  const { results, totalCount } = await vaultSearch(
+  const { results, totalCount, method } = await vaultSearch(
     params.query,
     params.folder,
     params.limit || 10,
@@ -44,6 +44,7 @@ export async function handleVaultSearch(params: {
             totalCount,
             page: params.page || 1,
             count: results.length,
+            method,
             results: results.map((r) => ({
               name: r.name,
               path: r.path,
