@@ -2,11 +2,24 @@
 
 ## What This Is
 
-An open-source framework that lets technical users deploy a personal MCP server on Vercel in minutes. Users pick which tool packs to enable (Google Workspace, Obsidian vault, Browser automation), configure via a setup wizard, and get a single MCP endpoint that connects to Claude Desktop, Claude.ai, or any MCP client. Built with Next.js/TypeScript, deployed on Vercel free tier.
+An open-source framework that lets technical users deploy a personal MCP server on Vercel in minutes. Users configure tool packs (Google Workspace, Obsidian vault, Browser automation) via env vars, and get a single MCP endpoint that connects to Claude Desktop, Claude.ai, or any MCP client. Built with Next.js/TypeScript, deployed on Vercel free tier.
 
 ## Core Value
 
 One deploy gives you a personal AI backend with all your tools — email, calendar, notes, browser — behind a single MCP endpoint.
+
+## Current Milestone: v1.0 Open Source Framework
+
+**Goal:** Transform YassMCP into MyMCP — a clean, open-source personal MCP framework deployable by anyone technical.
+
+**Target features:**
+- Pack-based tool registry with static manifests and env var auto-activation
+- Core types, config, auth separation (MCP + admin)
+- Physical reorganization into packs (google, vault, browser, admin)
+- Depersonalization + contract snapshot tests
+- .env.example, README, Deploy to Vercel, LICENSE, CONTRIBUTING
+- Private status dashboard with pack diagnostics
+- Guided setup + Google OAuth flow
 
 ## Requirements
 
@@ -26,62 +39,75 @@ One deploy gives you a personal AI backend with all your tools — email, calend
 
 ### Active
 
-- [ ] Dynamic tool registry — tools auto-discovered from filesystem, enabled/disabled via config
-- [ ] Configuration file (`mcp.config.ts` or similar) — declare which tool packs are active
-- [ ] Remove all hardcoded personal references (Yassine, Europe/Paris, etc.) — make configurable
-- [ ] `.env.example` with clear documentation for every variable
-- [ ] README with architecture overview, quickstart, and tool pack docs
-- [ ] Setup dashboard UI at `/` — wizard that guides OAuth, vault config, browser config
-- [ ] Google OAuth flow built into the app — user clicks "Connect Google" instead of manual token copy
-- [ ] Status page showing which tools are active, health checks, recent usage
-- [ ] Clean package.json with proper name, description, keywords for discoverability
+- [ ] Pack-based tool registry with static manifests, auto-activation by env var presence
+- [ ] Core types (PackManifest, ToolDefinition, InstanceConfig) + config from env vars
+- [ ] Auth separation: MCP_AUTH_TOKEN + ADMIN_AUTH_TOKEN (optional fallback)
+- [ ] Physical reorganization: tools into src/packs/*/tools, libs into src/packs/*/lib
+- [ ] Depersonalization: remove all hardcoded personal references
+- [ ] Contract snapshot tests + smoke tests for registry
+- [ ] .env.example with descriptions and source URLs
+- [ ] README: what/why/quickstart/architecture/tool list
+- [ ] Deploy to Vercel button
+- [ ] package.json: name mymcp, LICENSE MIT, CONTRIBUTING.md
+- [ ] Health: public liveness (ok, version), private diagnostics via dashboard
+- [ ] Private status dashboard at / (auth-gated, pack status, MCP URL copy)
+- [ ] Guided setup + Google OAuth flow (token displayed, user copies to Vercel)
 
 ### Out of Scope
 
-- Multi-backend vault (Notion, S3, local filesystem) — Obsidian/GitHub only for v1, avoids scope explosion
+- Multi-backend vault (Notion, S3, local filesystem) — Obsidian/GitHub only, avoids scope explosion
 - Multi-provider auth (Microsoft, Apple) — Google Workspace covers 80% use case
 - Tool marketplace or plugin system — premature abstraction
-- Mobile app — web-first
-- Paid hosting/SaaS — this is a self-hosted framework
+- Mobile app — MCP clients are desktop-based
+- Paid hosting/SaaS — self-hosted framework only
 - Enterprise features (multi-user, teams, RBAC) — personal tool
+- mcp.config.ts user config file — env vars only, avoids fork divergence
+- Auto-discovery runtime via filesystem — static manifests only
+- Provider abstraction interfaces — clean module boundaries suffice
+- Monorepo npm packages — logical separation in same project
+- MYMCP_ENABLED_PACKS explicit list — auto-activation by env vars is simpler
 
 ## Context
 
-**Origin:** YassMCP started as Yassine's personal MCP server. It grew organically to 38 tools covering Google Workspace, Obsidian vault, and browser automation via Stagehand/Browserbase. The code works well but is hardcoded for one user.
+**Origin:** YassMCP started as a personal MCP server. Grew to 38 tools covering Google Workspace, Obsidian vault, and browser automation via Stagehand/Browserbase. Code works but is hardcoded for one user.
 
-**Current state (April 2026):**
-- 38 tools registered in a single `route.ts` file (all hardcoded imports)
-- Auth: Bearer token + query string fallback
-- Google auth: OAuth refresh token stored as env var (manual setup)
-- Vault: GitHub Contents API pointing to a specific repo
-- Browser: Stagehand + Browserbase with OpenRouter for LLM, context persistence for LinkedIn
-- Deployed on Vercel (free tier, 60s function timeout)
-- Security: SSRF protection, rate limiting on LinkedIn, error sanitization
+**Architecture decisions (v1.0):**
+- Env vars only for config (no user-facing config file)
+- Pack auto-activation: all requiredEnvVars present → pack active
+- Static manifests: each pack exports a PackManifest array
+- Registry: single module imports all manifests, filters by env vars
+- Health: public `/api/health` → `{ok, version}`. Private diagnostics in dashboard.
+- Auth: MCP_AUTH_TOKEN for MCP endpoint, ADMIN_AUTH_TOKEN (optional) for dashboard
+- Framework vs instance: framework has zero personal references, instance is pure env vars
+- Contract-level compatibility: same tool names, schemas, behavior (descriptions may evolve)
 
-**Target audience:** Technical hobbyists/makers ("bricoleurs") who use Claude and want to give it access to their personal tools. Comfortable with GitHub, Vercel, and env vars. OAuth setup complexity is acceptable.
-
-**Motivation:** Personal branding (share on LinkedIn, with friends), continue using personally, progressive improvement. If adoption grows, invest more.
+**Target audience:** Technical hobbyists/makers ("bricoleurs"). Comfortable with GitHub, Vercel, env vars. OAuth setup complexity acceptable.
 
 ## Constraints
 
 - **Stack**: Next.js on Vercel, TypeScript, MCP SDK via `mcp-handler` — no stack changes
-- **Deployment**: Must work on Vercel free tier (60s timeout, serverless)
-- **Backward compatibility**: Must not break existing tool functionality during refactor
-- **Browser tools**: Browserbase dependency for now, but architecture should allow alternatives later
-- **Naming**: Keep "Personal MCP" or "MyMCP" branding — open to rename later
-- **Simplicity**: Clean, minimal code over feature-rich. Well-designed > feature-complete.
+- **Deployment**: Must work on Vercel free tier (60s timeout, serverless) AND local dev
+- **Backward compatibility**: Contract-level — same tool names, schemas, behavior
+- **Browser tools**: Browserbase for now, clean module boundaries allow swap later
+- **Simplicity**: Clean, minimal code over feature-rich. Boring architecture > smart architecture.
+- **Upgradability**: `git pull upstream main` must never conflict (no user-modified tracked files)
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Obsidian/GitHub vault only | Avoid multi-backend abstraction complexity. GitHub is universal. | — Pending |
-| Google Workspace only | 80% use case. Microsoft/Apple adds complexity without proportional value. | — Pending |
-| Browserbase for browser tools | Only cloud browser provider with Stagehand integration. Architecture allows swap later. | — Pending |
-| OpenRouter for LLM (Stagehand) | User already has OpenRouter account. Avoids vendor lock-in to OpenAI. | ✓ Good |
-| disableAPI mode for Stagehand | Required to use custom LLM provider (OpenRouter). Browserbase API mode only supports OpenAI keys. | ✓ Good |
-| Setup wizard UI | Dramatically lowers setup friction vs. manual env var configuration. Worth the effort. | — Pending |
-| Config-driven tool registry | Tools should auto-register based on available env vars + config file. | — Pending |
+| Env vars only (no mcp.config.ts) | User never modifies tracked files → git pull never conflicts. Vercel-native config primitive. | — Pending |
+| Auto-activation by env var presence | Single config gesture: set credentials = pack active. No double-configuration. | — Pending |
+| Static manifests (no auto-discovery) | Deterministic, debuggable, works on Vercel serverless. 10s to add a pack vs fragile infra. | — Pending |
+| Phase 1 split into 1A/1B | Registry foundation first (low risk), file moves second (high risk but validated). | — Pending |
+| Health: public liveness only | Don't leak pack details, env var names, or surface area publicly. | — Pending |
+| ADMIN_AUTH_TOKEN with fallback | Security hygiene: MCP token (in Claude config files) ≠ admin token. Fallback for simplicity. | — Pending |
+| Guided setup (not "wizard") | Honest framing. OAuth works, but token storage in Vercel remains manual. | — Pending |
+| Pack diagnose() hook | Optional async per-pack health check. Env vars present ≠ credentials valid. | — Pending |
+| Obsidian/GitHub vault only | Avoid multi-backend abstraction. GitHub is universal. | — Pending |
+| Google Workspace only | 80% use case. Microsoft adds disproportionate complexity. | — Pending |
+| Browserbase for browser tools | Only cloud browser with Stagehand. Module boundary allows swap. | ✓ Good |
+| OpenRouter for LLM (Stagehand) | Avoids vendor lock-in to OpenAI. disableAPI mode required. | ✓ Good |
 
 ## Evolution
 
@@ -101,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after initialization*
+*Last updated: 2026-04-10 after milestone v1.0 initialization*
