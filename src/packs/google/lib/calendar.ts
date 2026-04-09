@@ -59,7 +59,7 @@ export async function listEventsAllCalendars(opts: {
           hangoutLink?: string;
         }) => ({
           id: e.id,
-          summary: e.summary || "(sans titre)",
+          summary: e.summary || "(untitled)",
           start: e.start?.dateTime || e.start?.date || "",
           end: e.end?.dateTime || e.end?.date || "",
           calendar: cal.summary,

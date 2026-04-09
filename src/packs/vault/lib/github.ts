@@ -327,7 +327,7 @@ async function treeGrep(
 
   // Get full file tree
   const treeRes = await fetchWithTimeout(
-    `${GITHUB_API}/repos/${repo}/git/trees/main?recursive=1`,
+    `${GITHUB_API}/repos/${repo}/git/trees/${process.env.GITHUB_BRANCH || "main"}?recursive=1`,
     { headers: headers(pat) }
   );
 
@@ -505,7 +505,7 @@ export async function vaultTree(folder?: string): Promise<TreeFile[]> {
   const { pat, repo } = getConfig();
 
   const res = await fetchWithTimeout(
-    `${GITHUB_API}/repos/${repo}/git/trees/main?recursive=1`,
+    `${GITHUB_API}/repos/${repo}/git/trees/${process.env.GITHUB_BRANCH || "main"}?recursive=1`,
     { headers: headers(pat) }
   );
 

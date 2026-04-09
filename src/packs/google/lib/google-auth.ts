@@ -53,19 +53,19 @@ export async function getGoogleAccessToken(): Promise<string> {
 
     const hints: Record<string, string> = {
       invalid_client:
-        "Le client OAuth n'existe pas ou a été supprimé. Vérifie GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans Vercel, puis vérifie que l'app existe dans Google Cloud Console → Credentials.",
+        "OAuth client does not exist or was deleted. Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel, then verify the app exists in Google Cloud Console → Credentials.",
       invalid_grant:
-        "Le refresh token a été révoqué ou est expiré. Relance get-token.js pour en obtenir un nouveau, puis mets à jour GOOGLE_REFRESH_TOKEN dans Vercel.",
+        "Refresh token was revoked or expired. Use the /setup page to re-authenticate, then update GOOGLE_REFRESH_TOKEN in Vercel.",
       unauthorized_client:
-        "Le client OAuth n'est pas autorisé pour ce grant type. Vérifie que l'app est de type 'Desktop' dans Google Cloud Console.",
+        "OAuth client is not authorized for this grant type. Verify the app type in Google Cloud Console.",
       invalid_scope:
-        "Un ou plusieurs scopes demandés ne sont pas autorisés. Vérifie les scopes dans Google Cloud Console → OAuth consent screen → Scopes.",
+        "One or more requested scopes are not authorized. Check scopes in Google Cloud Console → OAuth consent screen → Scopes.",
     };
 
     throw new GoogleAuthError(
       `Google OAuth failed: ${errorCode} — ${errorDesc}`,
       errorCode,
-      hints[errorCode] || `Erreur inconnue (${errorCode}). Vérifie les 3 variables GOOGLE_* dans Vercel.`
+      hints[errorCode] || `Unknown error (${errorCode}). Check the 3 GOOGLE_* env vars in Vercel.`
     );
   }
 
