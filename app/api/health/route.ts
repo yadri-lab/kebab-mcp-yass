@@ -1,37 +1,8 @@
-import { timingSafeEqual } from "crypto";
-import { checkVaultHealth } from "@/lib/github";
-
-export async function GET(request: Request) {
-  const token = process.env.MCP_AUTH_TOKEN?.trim();
-  if (token) {
-    const authHeader = request.headers.get("authorization");
-    const bearer = authHeader?.replace(/^Bearer\s+/i, "").trim();
-    const url = new URL(request.url);
-    const queryToken = url.searchParams.get("token")?.trim();
-
-    const candidate = bearer || queryToken || "";
-    let valid = false;
-    if (candidate.length === token.length) {
-      try {
-        valid = timingSafeEqual(Buffer.from(candidate), Buffer.from(token));
-      } catch { /* noop */ }
-    }
-
-    if (!valid) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
-  try {
-    const health = await checkVaultHealth();
-    return Response.json(
-      { ...health, version: "4.0.0", tools: 18 },
-      { status: health.ok ? 200 : 503 }
-    );
-  } catch (error) {
-    return Response.json(
-      { ok: false, error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
-  }
+/**
+ * Public health endpoint — liveness check only.
+ * Returns {ok, version}. No pack details, no env var info.
+ * Detailed diagnostics are in the private admin dashboard.
+ */
+export async function GET() {
+  return Response.json({ ok: true, version: "1.0.0" });
 }
