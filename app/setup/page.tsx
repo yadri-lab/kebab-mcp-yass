@@ -18,6 +18,12 @@ export default async function SetupPage() {
   const vaultPack = packs.find((p) => p.id === "vault");
   const browserPack = packs.find((p) => p.id === "browser");
 
+  const configurable = packs.filter((p) => p.requiredEnvVars.length > 0);
+  const configured = configurable.filter((p) => p.enabled);
+  const progress = configurable.length > 0
+    ? Math.round((configured.length / configurable.length) * 100)
+    : 100;
+
   return (
     <div className="container">
       <header className="header">
@@ -25,7 +31,30 @@ export default async function SetupPage() {
           <h1 className="header-title">MyMCP Setup</h1>
           <p className="header-subtitle">Configure your personal MCP server</p>
         </div>
+        <div className="header-badges">
+          <span className={`badge ${progress === 100 ? "badge-green" : "badge-yellow"}`}>
+            {configured.length}/{configurable.length} packs configured
+          </span>
+        </div>
       </header>
+
+      {/* Progress bar */}
+      <div style={{ marginBottom: "2rem" }}>
+        <div style={{
+          background: "var(--bg-input)",
+          borderRadius: "6px",
+          height: "8px",
+          overflow: "hidden",
+        }}>
+          <div style={{
+            background: progress === 100 ? "var(--green)" : "var(--accent)",
+            height: "100%",
+            width: `${progress}%`,
+            transition: "width 0.3s",
+            borderRadius: "6px",
+          }} />
+        </div>
+      </div>
 
       {/* Google Workspace */}
       <section className="section">

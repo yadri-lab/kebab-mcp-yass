@@ -10,9 +10,12 @@ const mcpHandler = createMcpHandler(
 
     for (const pack of enabledPacks) {
       for (const tool of pack.manifest.tools) {
+        const desc = tool.deprecated
+          ? `[DEPRECATED: ${tool.deprecated}] ${tool.description}`
+          : tool.description;
         server.tool(
           tool.name,
-          tool.description,
+          desc,
           tool.schema,
           withLogging(tool.name, async (params) => tool.handler(params))
         );

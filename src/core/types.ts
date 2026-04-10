@@ -26,6 +26,8 @@ export interface ToolDefinition {
   summary?: string;
   /** Usage example (optional, for docs/dashboard) */
   example?: string;
+  /** Deprecation notice — if set, tool is marked deprecated in dashboard + MCP description */
+  deprecated?: string;
 }
 
 /** Pack manifest — groups related tools */

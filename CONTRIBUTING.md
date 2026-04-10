@@ -71,6 +71,54 @@ const ALL_PACKS = [...existing, myPack];
 
 5. Document required env vars in `.env.example`
 
+## Custom Pack (for your own tools)
+
+If you want to add personal tools without modifying the framework:
+
+1. Create `src/packs/custom/manifest.ts`:
+
+```typescript
+import type { PackManifest } from "@/core/types";
+import { myToolSchema, handleMyTool } from "./tools/my-tool";
+
+export const customPack: PackManifest = {
+  id: "custom",
+  label: "Custom Tools",
+  description: "Your personal tools",
+  requiredEnvVars: [], // or your own env vars
+  tools: [
+    {
+      name: "my_tool",
+      description: "What it does",
+      schema: myToolSchema,
+      handler: async (params) => handleMyTool(params as { input: string }),
+    },
+  ],
+};
+```
+
+2. Register in `src/core/registry.ts`:
+```typescript
+import { customPack } from "@/packs/custom/manifest";
+const ALL_PACKS = [...existing, customPack];
+```
+
+3. Add `src/packs/custom/` to `.gitignore` if you don't want it tracked upstream.
+
+## Deprecating a Tool
+
+Add a `deprecated` field to the tool definition:
+
+```typescript
+{
+  name: "old_tool",
+  description: "This tool does X",
+  deprecated: "Use new_tool instead", // Shows warning in dashboard + MCP description
+  schema: oldToolSchema,
+  handler: async (params) => handleOldTool(params),
+}
+```
+
 ## Code Conventions
 
 - All tool handlers export `{ schema, handler }` pattern

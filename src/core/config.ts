@@ -16,6 +16,21 @@ export function getInstanceConfig(): InstanceConfig {
   };
 }
 
+/** Default tool timeout in ms. Override via MYMCP_TOOL_TIMEOUT env var. */
+export function getToolTimeout(): number {
+  const raw = process.env.MYMCP_TOOL_TIMEOUT;
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n > 0) return n;
+  }
+  return 30_000; // 30s default
+}
+
+/** Webhook URL for error notifications. If set, POST is sent on tool failure. */
+export function getErrorWebhookUrl(): string | undefined {
+  return process.env.MYMCP_ERROR_WEBHOOK_URL || undefined;
+}
+
 /**
  * Parse MYMCP_ENABLED_PACKS if set.
  * Returns undefined if not set (all packs auto-activate by env vars).
