@@ -292,7 +292,7 @@ npm run dev             # Start dev server
 npm run build           # Production build
 npm run lint            # ESLint
 npm run format          # Prettier
-npm run test:contract   # Verify tool contracts (38 tools)
+npm run test:contract   # Verify tool contracts (45 tools)
 npm run test:e2e        # E2E smoke test (starts server, checks tools/list)
 ```
 

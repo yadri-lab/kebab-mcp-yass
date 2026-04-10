@@ -35,8 +35,7 @@ export const slackPack: PackManifest = {
       description:
         "Read recent messages from a Slack channel. Returns sender, text, timestamp, and thread info. Use slack_channels to find the channel ID.",
       schema: slackReadSchema,
-      handler: async (params) =>
-        handleSlackRead(params as { channel: string; limit?: number }),
+      handler: async (params) => handleSlackRead(params as { channel: string; limit?: number }),
     },
     {
       name: "slack_send",
@@ -51,8 +50,7 @@ export const slackPack: PackManifest = {
       description:
         "Search Slack messages. Supports Slack search operators: from:user, in:channel, has:link, before:date, after:date.",
       schema: slackSearchSchema,
-      handler: async (params) =>
-        handleSlackSearch(params as { query: string; count?: number }),
+      handler: async (params) => handleSlackSearch(params as { query: string; count?: number }),
     },
   ],
 };

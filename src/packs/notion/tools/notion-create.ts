@@ -2,9 +2,7 @@ import { z } from "zod";
 import { createPage } from "../lib/notion-api";
 
 export const notionCreateSchema = {
-  database_id: z
-    .string()
-    .describe("Parent database ID where the page will be created"),
+  database_id: z.string().describe("Parent database ID where the page will be created"),
   title: z.string().describe("Page title"),
   content: z
     .string()

@@ -82,10 +82,7 @@ export async function listChannels(limit?: number): Promise<SlackChannel[]> {
 
 // --- Read messages ---
 
-export async function readMessages(
-  channel: string,
-  limit?: number
-): Promise<SlackMessage[]> {
+export async function readMessages(channel: string, limit?: number): Promise<SlackMessage[]> {
   const data = await slackFetch<
     SlackResponse & {
       messages?: {

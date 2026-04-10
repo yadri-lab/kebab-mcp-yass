@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Open-source personal MCP server framework. Ships 38 pre-built tools across 4 packs (Google Workspace, Obsidian Vault, Browser Automation, Admin). Deployed on Vercel as a Next.js app. Config-driven: packs auto-activate based on env vars.
+Open-source personal MCP server framework. Ships 45 pre-built tools across 6 packs (Google Workspace, Obsidian Vault, Browser Automation, Slack, Notion, Admin). Deployed on Vercel or Docker as a Next.js app. Config-driven: packs auto-activate based on env vars.
 
 ## Architecture
 
@@ -19,6 +19,8 @@ src/core/                        — Framework: types, registry, config, auth, l
 src/packs/google/manifest.ts     — Google Workspace pack (18 tools)
 src/packs/vault/manifest.ts      — Obsidian Vault pack (15 tools)
 src/packs/browser/manifest.ts    — Browser Automation pack (4 tools)
+src/packs/slack/manifest.ts      — Slack pack (4 tools)
+src/packs/notion/manifest.ts     — Notion pack (3 tools)
 src/packs/admin/manifest.ts      — Admin pack (1 tool)
 src/packs/*/tools/               — Individual tool handlers
 src/packs/*/lib/                 — API wrappers and helpers
@@ -31,7 +33,7 @@ app/setup/page.tsx               — Guided setup page
 
 ## How the Registry Works
 
-1. `src/core/registry.ts` imports all 4 pack manifests
+1. `src/core/registry.ts` imports all 6 pack manifests
 2. For each pack, checks if all `requiredEnvVars` are present
 3. Returns `PackState[]` with enabled/disabled + reason
 4. `route.ts` iterates enabled packs, registers tools via `server.tool()`
@@ -84,6 +86,8 @@ app/setup/page.tsx               — Guided setup page
 | `BROWSERBASE_API_KEY` | Browser pack | Browserbase API key |
 | `BROWSERBASE_PROJECT_ID` | Browser pack | Browserbase project ID |
 | `OPENROUTER_API_KEY` | Browser pack | OpenRouter API key for Stagehand |
+| `SLACK_BOT_TOKEN` | Slack pack | Slack Bot User OAuth Token |
+| `NOTION_API_KEY` | Notion pack | Notion Internal Integration Token |
 | `MYMCP_TIMEZONE` | No | Default: `UTC` |
 | `MYMCP_LOCALE` | No | Default: `en-US` |
 | `MYMCP_DISPLAY_NAME` | No | Default: `User` |

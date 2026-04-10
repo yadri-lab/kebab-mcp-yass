@@ -28,8 +28,7 @@ export const notionPack: PackManifest = {
       description:
         "Search Notion pages by title or content. Returns page title, URL, last edited date, and properties.",
       schema: notionSearchSchema,
-      handler: async (params) =>
-        handleNotionSearch(params as { query: string; limit?: number }),
+      handler: async (params) => handleNotionSearch(params as { query: string; limit?: number }),
     },
     {
       name: "notion_read",
@@ -44,9 +43,7 @@ export const notionPack: PackManifest = {
         "Create a new page in a Notion database. Provide the database ID, title, and optional content.",
       schema: notionCreateSchema,
       handler: async (params) =>
-        handleNotionCreate(
-          params as { database_id: string; title: string; content?: string }
-        ),
+        handleNotionCreate(params as { database_id: string; title: string; content?: string }),
     },
   ],
 };
