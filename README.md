@@ -74,20 +74,26 @@ MyMCP gives you **one server, one endpoint, 45 tools** — deployed on Vercel's 
 
 ### Option 1: From Claude Code (recommended)
 
-If you're reading this from Claude Code (Desktop, CLI, or Web), you can set up MyMCP without leaving the conversation. Just ask Claude:
+If you're using Claude Code (Desktop, CLI, or Web), just run the installer from the conversation:
 
-> "Clone MyMCP, help me configure my .env with the packs I want, and deploy to Vercel."
+```bash
+npx @yassinello/create-mymcp@latest
+```
 
-Claude will:
+Or ask Claude to run it for you:
+
+> "Run `npx @yassinello/create-mymcp@latest` and help me set up MyMCP."
+
+The installer will:
 1. Clone the repo to your machine
-2. Walk you through which packs to enable
+2. Walk you through which packs to enable (Google, Obsidian, Slack...)
 3. Generate your `MCP_AUTH_TOKEN` securely
-4. Help you get API credentials for each pack
+4. Collect your API credentials (with links to get them)
 5. Create your `.env` file
-6. Deploy to Vercel (or run locally)
-7. Add the MCP server to your Claude config
+6. Install dependencies
+7. Optionally deploy to Vercel
 
-That's it — zero manual setup.
+Claude can then help you add the MCP server to your config and verify everything works.
 
 ---
 
