@@ -188,6 +188,128 @@ export async function readPage(pageId: string): Promise<{ title: string; content
   return { title, content: lines.join("\n\n") };
 }
 
+// --- Query database ---
+
+export async function queryDatabase(
+  databaseId: string,
+  filter?: Record<string, string | number | boolean>,
+  sort?: string,
+  limit?: number
+): Promise<NotionPage[]> {
+  const body: Record<string, unknown> = {
+    page_size: limit || 20,
+  };
+
+  // Build filter from simple key-value pairs
+  if (filter && Object.keys(filter).length > 0) {
+    const conditions = Object.entries(filter).map(([key, value]) => {
+      if (typeof value === "boolean") {
+        return { property: key, checkbox: { equals: value } };
+      }
+      if (typeof value === "number") {
+        return { property: key, number: { equals: value } };
+      }
+      // Try select first, fall back to rich_text
+      return {
+        or: [
+          { property: key, select: { equals: String(value) } },
+          { property: key, rich_text: { equals: String(value) } },
+          { property: key, status: { equals: String(value) } },
+        ],
+      };
+    });
+
+    body.filter = conditions.length === 1 ? conditions[0] : { and: conditions };
+  }
+
+  // Sort
+  if (sort) {
+    body.sorts = [{ property: sort, direction: "descending" }];
+  } else {
+    body.sorts = [{ timestamp: "last_edited_time", direction: "descending" }];
+  }
+
+  const data = await notionFetch<{
+    results: {
+      id: string;
+      url: string;
+      last_edited_time: string;
+      properties?: Record<string, NotionProperty>;
+    }[];
+  }>(`/databases/${databaseId}/query`, {
+    method: "POST",
+    body,
+  });
+
+  return data.results.map((r) => ({
+    id: r.id,
+    title: r.properties ? extractTitle(r.properties) : "(untitled)",
+    url: r.url,
+    lastEdited: r.last_edited_time,
+    properties: r.properties
+      ? Object.fromEntries(
+          Object.entries(r.properties)
+            .map(([k, v]) => [k, extractProperty(v)])
+            .filter(([, v]) => v)
+        )
+      : {},
+  }));
+}
+
+// --- Update page ---
+
+export async function updatePage(
+  pageId: string,
+  properties?: Record<string, string | number | boolean>,
+  appendContent?: string
+): Promise<{ id: string; url: string }> {
+  // Update properties if provided
+  if (properties && Object.keys(properties).length > 0) {
+    const notionProps: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(properties)) {
+      if (typeof value === "boolean") {
+        notionProps[key] = { checkbox: value };
+      } else if (typeof value === "number") {
+        notionProps[key] = { number: value };
+      } else {
+        // Try rich_text for string values — select/status are auto-detected by Notion
+        notionProps[key] = {
+          rich_text: [{ type: "text", text: { content: String(value) } }],
+        };
+      }
+    }
+
+    await notionFetch(`/pages/${pageId}`, {
+      method: "PATCH",
+      body: { properties: notionProps },
+    });
+  }
+
+  // Append content if provided
+  if (appendContent) {
+    const children = appendContent
+      .split("\n\n")
+      .filter(Boolean)
+      .map((paragraph) => ({
+        object: "block",
+        type: "paragraph",
+        paragraph: {
+          rich_text: [{ type: "text", text: { content: paragraph } }],
+        },
+      }));
+
+    await notionFetch(`/blocks/${pageId}/children`, {
+      method: "PATCH",
+      body: { children },
+    });
+  }
+
+  // Return page info
+  const page = await notionFetch<{ id: string; url: string }>(`/pages/${pageId}`);
+  return { id: page.id, url: page.url };
+}
+
 // --- Create page ---
 
 export async function createPage(opts: {

@@ -188,6 +188,16 @@
     ]
   },
   {
+    "name": "notion_query",
+    "pack": "notion",
+    "schemaKeys": [
+      "database_id",
+      "filter",
+      "limit",
+      "sort"
+    ]
+  },
+  {
     "name": "notion_read",
     "pack": "notion",
     "schemaKeys": [
@@ -200,6 +210,15 @@
     "schemaKeys": [
       "limit",
       "query"
+    ]
+  },
+  {
+    "name": "notion_update",
+    "pack": "notion",
+    "schemaKeys": [
+      "append_content",
+      "page_id",
+      "properties"
     ]
   },
   {
@@ -227,6 +246,13 @@
     ]
   },
   {
+    "name": "slack_profile",
+    "pack": "slack",
+    "schemaKeys": [
+      "user"
+    ]
+  },
+  {
     "name": "slack_read",
     "pack": "slack",
     "schemaKeys": [
@@ -248,6 +274,15 @@
     "schemaKeys": [
       "channel",
       "text",
+      "thread_ts"
+    ]
+  },
+  {
+    "name": "slack_thread",
+    "pack": "slack",
+    "schemaKeys": [
+      "channel",
+      "limit",
       "thread_ts"
     ]
   },

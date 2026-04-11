@@ -122,6 +122,86 @@ export async function sendMessage(
   return { ts: data.ts, channel: data.channel };
 }
 
+// --- Read thread ---
+
+export async function readThread(
+  channel: string,
+  threadTs: string,
+  limit?: number
+): Promise<SlackMessage[]> {
+  const data = await slackFetch<
+    SlackResponse & {
+      messages?: {
+        user?: string;
+        text?: string;
+        ts: string;
+        thread_ts?: string;
+      }[];
+    }
+  >("conversations.replies", {
+    channel,
+    ts: threadTs,
+    limit: limit || 50,
+  });
+
+  // First message is the parent — skip it to return only replies
+  const replies = (data.messages || []).slice(1);
+  return replies.map((m) => ({
+    user: m.user || "unknown",
+    text: m.text || "",
+    ts: m.ts,
+    date: new Date(parseFloat(m.ts) * 1000).toISOString(),
+    threadTs: m.thread_ts,
+  }));
+}
+
+// --- User profile ---
+
+export interface SlackProfile {
+  userId: string;
+  realName: string;
+  displayName: string;
+  title: string;
+  email: string;
+  phone: string;
+  tz: string;
+  statusText: string;
+  statusEmoji: string;
+}
+
+export async function getUserProfile(userId: string): Promise<SlackProfile> {
+  const data = await slackFetch<
+    SlackResponse & {
+      user?: {
+        id: string;
+        real_name?: string;
+        tz?: string;
+        profile?: {
+          display_name?: string;
+          title?: string;
+          email?: string;
+          phone?: string;
+          status_text?: string;
+          status_emoji?: string;
+        };
+      };
+    }
+  >("users.info", { user: userId });
+
+  const u = data.user;
+  return {
+    userId: u?.id || userId,
+    realName: u?.real_name || "",
+    displayName: u?.profile?.display_name || "",
+    title: u?.profile?.title || "",
+    email: u?.profile?.email || "",
+    phone: u?.profile?.phone || "",
+    tz: u?.tz || "",
+    statusText: u?.profile?.status_text || "",
+    statusEmoji: u?.profile?.status_emoji || "",
+  };
+}
+
 // --- Search messages ---
 
 export async function searchMessages(

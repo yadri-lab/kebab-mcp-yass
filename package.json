@@ -1,6 +1,6 @@
 {
   "name": "mymcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Personal MCP server framework — deploy your AI backend to Vercel in 5 minutes",
   "keywords": [
     "mcp",
@@ -40,6 +40,7 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@tailwindcss/postcss": "^4.2.2",
     "arctic": "^3.7.0",
+    "composio-core": "^0.5.39",
     "js-yaml": "^4.1.1",
     "mcp-handler": "^1.1.0",
     "next": "^16.2.1",

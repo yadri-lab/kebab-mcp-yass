@@ -3,11 +3,13 @@ import { slackChannelsSchema, handleSlackChannels } from "./tools/slack-channels
 import { slackReadSchema, handleSlackRead } from "./tools/slack-read";
 import { slackSendSchema, handleSlackSend } from "./tools/slack-send";
 import { slackSearchSchema, handleSlackSearch } from "./tools/slack-search";
+import { slackThreadSchema, handleSlackThread } from "./tools/slack-thread";
+import { slackProfileSchema, handleSlackProfile } from "./tools/slack-profile";
 
 export const slackPack: PackManifest = {
   id: "slack",
   label: "Slack",
-  description: "Channels, messages, search, send",
+  description: "Channels, messages, threads, profiles, search, send",
   requiredEnvVars: ["SLACK_BOT_TOKEN"],
   diagnose: async () => {
     try {
@@ -51,6 +53,21 @@ export const slackPack: PackManifest = {
         "Search Slack messages. Supports Slack search operators: from:user, in:channel, has:link, before:date, after:date.",
       schema: slackSearchSchema,
       handler: async (params) => handleSlackSearch(params as { query: string; count?: number }),
+    },
+    {
+      name: "slack_thread",
+      description:
+        "Read replies in a Slack thread. Provide the channel ID and parent message timestamp (thread_ts from slack_read).",
+      schema: slackThreadSchema,
+      handler: async (params) =>
+        handleSlackThread(params as { channel: string; thread_ts: string; limit?: number }),
+    },
+    {
+      name: "slack_profile",
+      description:
+        "Get a Slack user's profile: name, title, email, timezone, status. Use the user ID from slack_read results.",
+      schema: slackProfileSchema,
+      handler: async (params) => handleSlackProfile(params as { user: string }),
     },
   ],
 };

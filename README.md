@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">MyMCP</h1>
-  <p align="center"><strong>Your personal AI backend. One endpoint. 45 tools. Deploy in 5 minutes.</strong></p>
+  <p align="center"><strong>Your personal AI backend. One endpoint. 51 tools. Deploy in 5 minutes.</strong></p>
 </p>
 
 <p align="center">
@@ -24,20 +24,20 @@
 └──────────────────────────────┬──────────────────────────────────────┘
                                │ MCP (Streamable HTTP)
                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        MyMCP on Vercel / Docker                     │
-│                                                                     │
-│  ┌──────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌────────┐ ┌─────┐  │
-│  │  Google   │ │ Vault  │ │Browser │ │ Slack │ │ Notion │ │Admin│  │
-│  │ Workspace │ │Obsidian│ │  Auto  │ │       │ │        │ │     │  │
-│  │ 18 tools  │ │15 tools│ │4 tools │ │4 tools│ │3 tools │ │1 tool│ │
-│  └─────┬─────┘ └───┬────┘ └───┬────┘ └───┬───┘ └───┬────┘ └─────┘  │
-│        │           │          │          │         │                │
-│      Registry ← Pack Manifests ← Env vars (auto-activation)       │
-└────────┼───────────┼──────────┼──────────┼─────────┼───────────────┘
-         │           │          │          │         │
-         ▼           ▼          ▼          ▼         ▼
-    Google APIs  GitHub API  Browserbase  Slack API  Notion API
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                            MyMCP on Vercel / Docker                              │
+│                                                                                  │
+│  ┌──────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌────────┐ ┌─────────┐ ┌─────┐   │
+│  │  Google   │ │ Vault  │ │Browser │ │ Slack │ │ Notion │ │Composio │ │Admin│   │
+│  │ Workspace │ │Obsidian│ │  Auto  │ │       │ │        │ │ 1000+   │ │     │   │
+│  │ 18 tools  │ │15 tools│ │4 tools │ │6 tools│ │5 tools │ │  apps   │ │1 tool│  │
+│  └─────┬─────┘ └───┬────┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬────┘ └─────┘   │
+│        │           │          │          │         │           │                 │
+│      Registry ← Pack Manifests ← Env vars (auto-activation)                    │
+└────────┼───────────┼──────────┼──────────┼─────────┼───────────┼────────────────┘
+         │           │          │          │         │           │
+         ▼           ▼          ▼          ▼         ▼           ▼
+    Google APIs  GitHub API  Browserbase  Slack API  Notion API  Composio
 ```
 
 ## The Story
@@ -48,7 +48,7 @@ I built MyMCP because I wanted a single MCP server that works everywhere (Claude
 
 Most MCP setups require running 5 separate servers, each with their own config. Or paying for a hosted platform that controls your data.
 
-MyMCP gives you **one server, one endpoint, 45 tools** — deployed on Vercel's free tier (or Docker). You own everything.
+MyMCP gives you **one server, one endpoint, 51 tools** — deployed on Vercel's free tier (or Docker). You own everything.
 
 | | MyMCP | Separate MCP servers | Hosted platforms |
 |---|---|---|---|
@@ -227,7 +227,7 @@ Your `.env` is never touched — all customization lives in env vars, not in cod
 
 ## Tool Packs
 
-MyMCP ships **45 production-ready tools** organized in 6 packs. Each pack activates automatically when its credentials are present in env vars.
+MyMCP ships **51 production-ready tools** organized in 7 packs. Each pack activates automatically when its credentials are present in env vars.
 
 ### Google Workspace — 18 tools
 
@@ -263,7 +263,7 @@ MyMCP ships **45 production-ready tools** organized in 6 packs. Each pack activa
 
 **Requires:** `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` + `OPENROUTER_API_KEY`
 
-### Slack — 4 tools
+### Slack — 6 tools
 
 | Tool | What it does |
 |------|-------------|
@@ -271,18 +271,33 @@ MyMCP ships **45 production-ready tools** organized in 6 packs. Each pack activa
 | `slack_read` | Read recent messages from a channel |
 | `slack_send` | Send a message or threaded reply |
 | `slack_search` | Search messages (supports Slack operators: from:, in:, has:) |
+| `slack_thread` | Read all replies in a thread |
+| `slack_profile` | Get user profile: name, title, email, timezone, status |
 
 **Requires:** `SLACK_BOT_TOKEN`
 
-### Notion — 3 tools
+### Notion — 5 tools
 
 | Tool | What it does |
 |------|-------------|
 | `notion_search` | Search pages by title or content |
 | `notion_read` | Read full page content as markdown |
 | `notion_create` | Create a page in a database |
+| `notion_update` | Update page properties and/or append content |
+| `notion_query` | Query a database with filters and sorting |
 
 **Requires:** `NOTION_API_KEY`
+
+### Composio — 2 tools + 1000s of integrations
+
+| Tool | What it does |
+|------|-------------|
+| `composio_action` | Execute any action on a connected app (GitHub, Jira, HubSpot, Salesforce, Airtable, Linear, Figma...) |
+| `composio_list` | Discover available actions for a specific app |
+
+Connect your apps in the [Composio dashboard](https://composio.dev), then use `composio_list` to discover actions and `composio_action` to execute them.
+
+**Requires:** `COMPOSIO_API_KEY`
 
 ### Admin — 1 tool
 
@@ -300,8 +315,9 @@ src/
       tools/            ← Individual tool handlers
     vault/              ← Obsidian Vault (15 tools)
     browser/            ← Browser Automation (4 tools)
-    slack/              ← Slack (4 tools)
-    notion/             ← Notion (3 tools)
+    slack/              ← Slack (6 tools)
+    notion/             ← Notion (5 tools)
+    composio/           ← Composio bridge (2 tools → 1000+ integrations)
     admin/              ← Admin & Observability (1 tool)
 
 app/
@@ -403,7 +419,7 @@ npm run dev             # Start dev server
 npm run build           # Production build
 npm run lint            # ESLint
 npm run format          # Prettier
-npm run test:contract   # Verify tool contracts (45 tools)
+npm run test:contract   # Verify tool contracts (51 tools)
 npm run test:e2e        # E2E smoke test (starts server, checks tools/list)
 ```
 

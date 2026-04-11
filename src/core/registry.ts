@@ -8,6 +8,7 @@ import { browserPack } from "@/packs/browser/manifest";
 import { adminPack } from "@/packs/admin/manifest";
 import { slackPack } from "@/packs/slack/manifest";
 import { notionPack } from "@/packs/notion/manifest";
+import { composioPack } from "@/packs/composio/manifest";
 
 const ALL_PACKS: PackManifest[] = [
   googlePack,
@@ -15,6 +16,7 @@ const ALL_PACKS: PackManifest[] = [
   browserPack,
   slackPack,
   notionPack,
+  composioPack,
   adminPack,
 ];
 
