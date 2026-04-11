@@ -42,7 +42,7 @@
 
 ## The Story
 
-I built MyMCP because I wanted a single MCP server that works everywhere — Claude, ChatGPT, Hermes, OpenClaw, and any other MCP-compatible client. It started as a simple bridge to my Obsidian vault with a few tools, and kept growing as I added Google Workspace, browser automation, Slack, and Notion. At some point I realized: if it's useful to me, it might be useful to others — so I open-sourced it.
+I built MyMCP because I wanted a single MCP server that works everywhere (Claude, ChatGPT, Hermes, OpenClaw, ..). It started as a simple bridge to my Obsidian vault with a few tools, and kept growing as I added Google Workspace, browser automation, Slack, and Notion. At some point I realized: if it's useful to me, it might be useful to others, so I open-sourced it.
 
 ## Why MyMCP?
 
