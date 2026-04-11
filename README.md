@@ -74,7 +74,7 @@ MyMCP gives you **one server, one endpoint, 45 tools** — deployed on Vercel's 
 
 ### Option 1: From Claude Code (recommended)
 
-If you're using Claude Code (Desktop, CLI, or Web), just run the installer from the conversation:
+If you're using Claude Code (Desktop, CLI, or Web), just run the installer from the conversation. No need to create a folder first — the installer will ask you where to set up.
 
 ```bash
 npx @yassinello/create-mymcp@latest
