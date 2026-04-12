@@ -16,6 +16,12 @@ export function middleware(request: NextRequest) {
 
   const adminToken = (process.env.ADMIN_AUTH_TOKEN || process.env.MCP_AUTH_TOKEN)?.trim();
 
+  // Allow /setup without auth during first-time setup (no MCP_AUTH_TOKEN yet)
+  const isFirstTimeSetup = !process.env.MCP_AUTH_TOKEN;
+  if (isFirstTimeSetup && pathname === "/setup") {
+    return NextResponse.next();
+  }
+
   const protectedPaths = ["/", "/setup", "/playground"];
   if (protectedPaths.includes(pathname) && adminToken) {
     const queryToken = request.nextUrl.searchParams.get("token")?.trim() || "";
