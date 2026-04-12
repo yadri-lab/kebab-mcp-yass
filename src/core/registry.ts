@@ -10,6 +10,7 @@ import { slackPack } from "@/packs/slack/manifest";
 import { notionPack } from "@/packs/notion/manifest";
 import { composioPack } from "@/packs/composio/manifest";
 import { skillsPack } from "@/packs/skills/manifest";
+import { paywallPack } from "@/packs/paywall/manifest";
 
 const ALL_PACKS: PackManifest[] = [
   googlePack,
@@ -19,6 +20,7 @@ const ALL_PACKS: PackManifest[] = [
   notionPack,
   composioPack,
   skillsPack,
+  paywallPack,
   adminPack,
 ];
 
@@ -54,7 +56,20 @@ export function resolveRegistry(): PackState[] {
       };
     }
 
-    // Check required env vars
+    // Custom activation predicate (takes precedence over requiredEnvVars)
+    if (pack.isActive) {
+      const result = pack.isActive(process.env);
+      if (!result.active) {
+        return {
+          manifest: pack,
+          enabled: false,
+          reason: result.reason || "inactive",
+        };
+      }
+      return { manifest: pack, enabled: true, reason: "active" };
+    }
+
+    // Check required env vars (default AND semantics)
     const missing = pack.requiredEnvVars.filter((v) => !process.env[v]);
     if (missing.length > 0) {
       return {

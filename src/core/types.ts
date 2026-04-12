@@ -38,12 +38,28 @@ export interface PackManifest {
   label: string;
   /** Short description of what this pack provides */
   description: string;
-  /** Env vars that MUST be present to activate this pack */
+  /**
+   * Env vars that MUST be present to activate this pack (AND semantics).
+   * For custom logic (OR semantics, at-least-one, etc.), use `isActive` instead.
+   */
   requiredEnvVars: string[];
+  /**
+   * Optional custom activation predicate. If defined, it overrides the default
+   * `requiredEnvVars` check. Receives the current process env and returns
+   * `{ active: boolean, reason?: string }` — `reason` is shown on the dashboard
+   * when the pack is inactive.
+   */
+  isActive?: (env: NodeJS.ProcessEnv) => { active: boolean; reason?: string };
   /** All tools in this pack */
   tools: ToolDefinition[];
   /** Optional async health check — verifies credentials actually work */
   diagnose?: () => Promise<{ ok: boolean; message: string }>;
+  /**
+   * Optional markdown guide shown in `/config → Packs` for per-pack credential
+   * instructions that go beyond a simple key/value form (e.g., per-source
+   * cookies for the paywall pack).
+   */
+  guide?: string;
 }
 
 /** Resolved state of a pack at runtime */
