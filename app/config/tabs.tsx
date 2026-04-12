@@ -19,7 +19,7 @@ export interface PackSummary {
   toolCount: number;
   requiredEnvVars: string[];
   guide?: string;
-  tools: { name: string; description: string; deprecated?: string }[];
+  tools: { name: string; description: string; deprecated?: string; destructive?: boolean }[];
 }
 
 const TABS = [

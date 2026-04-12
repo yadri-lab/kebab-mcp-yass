@@ -46,6 +46,7 @@ export const slackPack: PackManifest = {
       schema: slackSendSchema,
       handler: async (params) =>
         handleSlackSend(params as { channel: string; text: string; thread_ts?: string }),
+      destructive: true,
     },
     {
       name: "slack_search",

@@ -28,6 +28,12 @@ export interface ToolDefinition {
   example?: string;
   /** Deprecation notice — if set, tool is marked deprecated in dashboard + MCP description */
   deprecated?: string;
+  /**
+   * Write-side-effect flag. When true, the sandbox and dashboard require
+   * explicit confirmation before invoking. Tool authors opt-in explicitly;
+   * no name-based regex is used. Read-only tools should leave this unset.
+   */
+  destructive?: boolean;
 }
 
 /** Pack manifest — groups related tools */

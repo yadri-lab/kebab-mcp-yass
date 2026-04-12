@@ -46,6 +46,7 @@ export const notionPack: PackManifest = {
       schema: notionCreateSchema,
       handler: async (params) =>
         handleNotionCreate(params as { database_id: string; title: string; content?: string }),
+      destructive: true,
     },
     {
       name: "notion_update",
@@ -60,6 +61,7 @@ export const notionPack: PackManifest = {
             append_content?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "notion_query",

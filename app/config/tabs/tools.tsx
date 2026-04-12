@@ -9,9 +9,8 @@ interface ToolRow {
   packId: string;
   packLabel: string;
   deprecated?: string;
+  destructive?: boolean;
 }
-
-const DESTRUCTIVE = /^(send_|create_|delete_|write_|update_|move_)/;
 
 export function ToolsTab({ packs }: { packs: PackSummary[] }) {
   const [search, setSearch] = useState("");
@@ -34,6 +33,7 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
           packId: pack.id,
           packLabel: pack.label,
           deprecated: t.deprecated,
+          destructive: t.destructive,
         });
       }
     }
@@ -49,7 +49,7 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
     });
   }, [allTools, search, packFilter]);
 
-  const runTool = async (name: string) => {
+  const runTool = async (name: string, destructive: boolean) => {
     const raw = argsByTool[name] || "{}";
     let args: Record<string, unknown>;
     try {
@@ -58,10 +58,13 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
       setResults((p) => ({ ...p, [name]: { ok: false, error: "Invalid JSON in arguments" } }));
       return;
     }
-    const isDestructive = DESTRUCTIVE.test(name);
-    if (isDestructive && !confirm(`"${name}" has write side effects. Execute against real APIs?`)) {
+    if (
+      destructive &&
+      !confirm(`"${name}" is marked DESTRUCTIVE and will write to upstream APIs. Execute for real?`)
+    ) {
       return;
     }
+    const isDestructive = destructive;
     setRunning(name);
     try {
       const res = await fetch("/api/config/sandbox", {
@@ -116,7 +119,7 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
         {filtered.map((tool) => {
           const isOpen = expanded === tool.name;
           const result = results[tool.name];
-          const destructive = DESTRUCTIVE.test(tool.name);
+          const destructive = !!tool.destructive;
           return (
             <div key={tool.name}>
               <button
@@ -131,8 +134,11 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
                 </span>
                 <span className="text-xs text-text-dim flex-1 truncate">{tool.description}</span>
                 {destructive && (
-                  <span className="text-[10px] font-medium text-orange bg-orange-bg px-1.5 py-0.5 rounded shrink-0">
-                    WRITE
+                  <span
+                    className="text-[10px] font-medium text-orange bg-orange-bg px-1.5 py-0.5 rounded shrink-0"
+                    title="Destructive — requires confirmation"
+                  >
+                    DESTRUCTIVE
                   </span>
                 )}
               </button>
@@ -150,7 +156,7 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
                     />
                   </div>
                   <button
-                    onClick={() => runTool(tool.name)}
+                    onClick={() => runTool(tool.name, destructive)}
                     disabled={running === tool.name}
                     className="bg-accent text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-accent/90 disabled:opacity-60"
                   >

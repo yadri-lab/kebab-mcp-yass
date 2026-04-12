@@ -40,6 +40,7 @@ export const browserPack: PackManifest = {
       schema: webActSchema,
       handler: async (params) =>
         handleWebAct(params as { url: string; actions: string[]; context_name?: string }),
+      destructive: true,
     },
     {
       name: "linkedin_feed",

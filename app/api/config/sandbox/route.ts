@@ -4,8 +4,6 @@ import { checkAdminAuth } from "@/core/auth";
 import { getEnabledPacks } from "@/core/registry";
 import { withLogging } from "@/core/logging";
 
-const DESTRUCTIVE = /^(send_|create_|delete_|write_|update_|move_)/;
-
 // In-memory rate limit: max 20 invocations per minute, global (simple enough for P1)
 const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 20;
@@ -47,18 +45,17 @@ export async function POST(request: Request) {
 
   const { toolName, args = {}, confirm = false } = body;
 
-  if (DESTRUCTIVE.test(toolName) && !confirm) {
-    return NextResponse.json(
-      { ok: false, error: "Destructive tool requires confirm: true" },
-      { status: 400 }
-    );
-  }
-
   // Look up tool in current registry
   const enabled = getEnabledPacks();
   for (const pack of enabled) {
     for (const tool of pack.manifest.tools) {
       if (tool.name === toolName) {
+        if (tool.destructive && !confirm) {
+          return NextResponse.json(
+            { ok: false, error: "Destructive tool requires confirm: true" },
+            { status: 400 }
+          );
+        }
         // Validate args against the tool's Zod schema before invoking.
         // ToolDefinition.schema is Record<string, ZodTypeAny>, so wrap it.
         let parsedArgs: Record<string, unknown>;

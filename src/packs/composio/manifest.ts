@@ -35,6 +35,7 @@ export const composioPack: PackManifest = {
             connected_account_id?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "composio_list",

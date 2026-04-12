@@ -38,6 +38,7 @@ export default async function ConfigPage({
       name: t.name,
       description: t.description,
       deprecated: t.deprecated,
+      destructive: t.destructive,
     })),
   }));
 

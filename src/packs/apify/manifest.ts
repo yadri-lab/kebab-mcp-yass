@@ -117,6 +117,7 @@ const ALWAYS_ON_TOOLS: ToolDefinition[] = [
     schema: apifyRunActorSchema,
     handler: async (params) =>
       handleApifyRunActor(params as { actorId: string; input: Record<string, unknown> }),
+    destructive: true,
   },
 ];
 

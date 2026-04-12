@@ -66,6 +66,7 @@ export const googlePack: PackManifest = {
             bcc?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "gmail_reply",
@@ -74,12 +75,14 @@ export const googlePack: PackManifest = {
       schema: gmailReplySchema,
       handler: async (params) =>
         handleGmailReply(params as { message_id: string; body: string; cc?: string }),
+      destructive: true,
     },
     {
       name: "gmail_trash",
       description: "Move an email to trash. Requires the message ID from gmail_inbox.",
       schema: gmailTrashSchema,
       handler: async (params) => handleGmailTrash(params as { message_id: string }),
+      destructive: true,
     },
     {
       name: "gmail_label",
@@ -88,6 +91,7 @@ export const googlePack: PackManifest = {
       schema: gmailLabelSchema,
       handler: async (params) =>
         handleGmailLabel(params as { message_id: string; add?: string; remove?: string }),
+      destructive: true,
     },
     {
       name: "gmail_search",
@@ -112,6 +116,7 @@ export const googlePack: PackManifest = {
             bcc?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "gmail_attachment",
@@ -144,6 +149,7 @@ export const googlePack: PackManifest = {
             calendar_id?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "calendar_delete",
@@ -152,6 +158,7 @@ export const googlePack: PackManifest = {
       schema: calendarDeleteSchema,
       handler: async (params) =>
         handleCalendarDelete(params as { event_id: string; calendar_id?: string }),
+      destructive: true,
     },
     {
       name: "calendar_update",
@@ -170,6 +177,7 @@ export const googlePack: PackManifest = {
             location?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "calendar_find_free",
@@ -198,6 +206,7 @@ export const googlePack: PackManifest = {
             calendar_id?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "contacts_search",

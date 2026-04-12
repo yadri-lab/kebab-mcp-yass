@@ -48,6 +48,7 @@ export const vaultPack: PackManifest = {
             sha?: string;
           }
         ),
+      destructive: true,
     },
     {
       name: "vault_read",
@@ -78,6 +79,7 @@ export const vaultPack: PackManifest = {
       description: "Delete a note from the Obsidian vault.",
       schema: vaultDeleteSchema,
       handler: async (params) => handleVaultDelete(params as { path: string; message?: string }),
+      destructive: true,
     },
     {
       name: "vault_move",
@@ -86,6 +88,7 @@ export const vaultPack: PackManifest = {
       schema: vaultMoveSchema,
       handler: async (params) =>
         handleVaultMove(params as { from: string; to: string; message?: string }),
+      destructive: true,
     },
     {
       name: "save_article",
@@ -96,6 +99,7 @@ export const vaultPack: PackManifest = {
         handleSaveArticle(
           params as { url: string; title?: string; tags?: string[]; folder?: string }
         ),
+      destructive: true,
     },
     {
       name: "vault_append",
@@ -104,6 +108,7 @@ export const vaultPack: PackManifest = {
       schema: vaultAppendSchema,
       handler: async (params) =>
         handleVaultAppend(params as { path: string; content: string; separator?: string }),
+      destructive: true,
     },
     {
       name: "vault_batch_read",
