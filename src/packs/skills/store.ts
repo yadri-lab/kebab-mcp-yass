@@ -1,14 +1,20 @@
-import { promises as fs, readFileSync } from "fs";
+import { promises as fs, readFileSync, existsSync } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { z } from "zod";
+import { getKVStore } from "@/core/kv-store";
 
 /**
- * Skills store — JSON file, single source of truth for user-authored skills.
+ * Skills store — persists user-authored skills.
  *
- * Path is configurable via MYMCP_SKILLS_PATH (default: ./data/skills.json).
- * Atomic writes via tmp + rename. Parent dir is auto-created.
+ * Storage backends:
+ * - Legacy: if MYMCP_SKILLS_PATH is set, reads/writes a JSON file at that path
+ *   (atomic tmp+rename). Preserves existing installs on upgrade.
+ * - Default: uses the shared KVStore under key "skills:all" (JSON-serialized array).
+ *   KVStore resolves to filesystem locally and Upstash on Vercel when configured.
  */
+
+const KV_KEY = "skills:all";
 
 export const skillArgumentSchema = z.object({
   name: z
@@ -63,16 +69,31 @@ export const skillUpdateInputSchema = skillCreateInputSchema.partial();
 export type SkillCreateInput = z.infer<typeof skillCreateInputSchema>;
 export type SkillUpdateInput = z.infer<typeof skillUpdateInputSchema>;
 
-// ── Paths ───────────────────────────────────────────────────────────────
+// ── Storage backend selection ───────────────────────────────────────────
 
-function getSkillsPath(): string {
+/** Legacy filesystem path override. When set, bypasses KVStore. */
+function getLegacySkillsPath(): string | null {
   const override = process.env.MYMCP_SKILLS_PATH?.trim();
-  if (override) return path.resolve(override);
-  return path.resolve(process.cwd(), "data", "skills.json");
+  return override ? path.resolve(override) : null;
 }
 
 async function ensureDir(filePath: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+}
+
+function parseSkillsJson(buf: string): Skill[] {
+  try {
+    const parsed = JSON.parse(buf);
+    if (!Array.isArray(parsed)) return [];
+    const out: Skill[] = [];
+    for (const row of parsed) {
+      const res = skillSchema.safeParse(row);
+      if (res.success) out.push(res.data);
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 // ── Slug generation ─────────────────────────────────────────────────────
@@ -97,32 +118,36 @@ async function uniqueId(base: string, existing: Set<string>): Promise<string> {
   return `${base}_${randomBytes(3).toString("hex")}`;
 }
 
-// ── Raw file I/O (atomic) ───────────────────────────────────────────────
+// ── Raw I/O — routes to KV or legacy file path ──────────────────────────
 
 async function readRaw(): Promise<Skill[]> {
-  const p = getSkillsPath();
-  try {
-    const buf = await fs.readFile(p, "utf-8");
-    const parsed = JSON.parse(buf);
-    if (!Array.isArray(parsed)) return [];
-    const out: Skill[] = [];
-    for (const row of parsed) {
-      const res = skillSchema.safeParse(row);
-      if (res.success) out.push(res.data);
+  const legacy = getLegacySkillsPath();
+  if (legacy) {
+    try {
+      const buf = await fs.readFile(legacy, "utf-8");
+      return parseSkillsJson(buf);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw err;
     }
-    return out;
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw err;
   }
+  const kv = getKVStore();
+  const raw = await kv.get(KV_KEY);
+  if (!raw) return [];
+  return parseSkillsJson(raw);
 }
 
 async function writeRaw(skills: Skill[]): Promise<void> {
-  const p = getSkillsPath();
-  await ensureDir(p);
-  const tmp = `${p}.${randomBytes(4).toString("hex")}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(skills, null, 2), "utf-8");
-  await fs.rename(tmp, p);
+  const legacy = getLegacySkillsPath();
+  if (legacy) {
+    await ensureDir(legacy);
+    const tmp = `${legacy}.${randomBytes(4).toString("hex")}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(skills, null, 2), "utf-8");
+    await fs.rename(tmp, legacy);
+    return;
+  }
+  const kv = getKVStore();
+  await kv.set(KV_KEY, JSON.stringify(skills));
 }
 
 // ── Write mutex ─────────────────────────────────────────────────────────
@@ -144,21 +169,30 @@ export async function listSkills(): Promise<Skill[]> {
   return readRaw();
 }
 
-/** Synchronous snapshot — used by the pack manifest at registry scan time. */
+/** Synchronous snapshot — used by the pack manifest at registry scan time.
+ *
+ * For the KV filesystem backend we read the underlying JSON file synchronously.
+ * For Upstash (or any non-filesystem backend) sync reads are impossible —
+ * callers should fall back to the async `listSkills()` API. */
 export function listSkillsSync(): Skill[] {
-  const p = getSkillsPath();
+  const legacy = getLegacySkillsPath();
+  const filePath =
+    legacy ??
+    (process.env.UPSTASH_REDIS_REST_URL ? null : path.resolve(process.cwd(), "data", "kv.json"));
+  if (!filePath) return [];
   try {
-    const buf = readFileSync(p, "utf-8");
-    const parsed = JSON.parse(buf);
-    if (!Array.isArray(parsed)) return [];
-    const out: Skill[] = [];
-    for (const row of parsed) {
-      const res = skillSchema.safeParse(row);
-      if (res.success) out.push(res.data);
+    if (!existsSync(filePath)) return [];
+    const buf = readFileSync(filePath, "utf-8");
+    if (legacy) {
+      return parseSkillsJson(buf);
     }
-    return out;
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    // KV filesystem format: { "skills:all": "<json string>" }
+    const map = JSON.parse(buf);
+    if (!map || typeof map !== "object" || !(KV_KEY in map)) return [];
+    const raw = (map as Record<string, string>)[KV_KEY];
+    if (typeof raw !== "string") return [];
+    return parseSkillsJson(raw);
+  } catch {
     return [];
   }
 }
