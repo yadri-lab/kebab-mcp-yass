@@ -192,9 +192,8 @@ const PACKS: PackDef[] = [
 ];
 
 const STEPS = [
-  { label: "Packs", description: "Choose your tools" },
-  { label: "Credentials", description: "Connect your accounts" },
-  { label: "Settings", description: "Personalize" },
+  { label: "Tools", description: "Choose packs & enter credentials" },
+  { label: "Settings", description: "Personalize your instance" },
   { label: "Save", description: "Finish setup" },
 ];
 
@@ -216,13 +215,13 @@ function cleanCredential(value: string): string {
   return value.trim().replace(/^[A-Z_]+=/, "");
 }
 
-// ── Tooltip ─────────────────────────────────────────────────────────
+// ── Small components ────────────────────────────────────────────────
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   return (
     <span className="relative group/tip inline-flex items-center">
       {children}
-      <span className="invisible group-hover/tip:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 rounded-md bg-text text-bg text-xs whitespace-nowrap z-50 shadow-lg">
+      <span className="invisible group-hover/tip:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 rounded-md bg-text text-bg text-xs whitespace-nowrap z-50 shadow-lg max-w-64 text-center">
         {text}
         <span className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 bg-text -mt-1" />
       </span>
@@ -249,7 +248,7 @@ function InfoIcon() {
   );
 }
 
-function ExternalLinkIcon() {
+function ExtIcon() {
   return (
     <svg
       width="12"
@@ -267,6 +266,24 @@ function ExternalLinkIcon() {
   );
 }
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-transform ${open ? "rotate-90" : ""}`}
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 
 export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVercel: boolean }) {
@@ -278,10 +295,11 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
     locale: "fr-FR",
     displayName: "",
   });
-  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>(
-    {}
-  );
+  const [testResults, setTestResults] = useState<
+    Record<string, { ok: boolean; message: string; detail?: string }>
+  >({});
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
+  const [expandedError, setExpandedError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -304,10 +322,8 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
   const testPack = useCallback(
     async (packId: string) => {
-      setTestResults((prev) => ({
-        ...prev,
-        [packId]: { ok: false, message: "Testing..." },
-      }));
+      setTestResults((prev) => ({ ...prev, [packId]: { ok: false, message: "Testing..." } }));
+      setExpandedError(null);
       try {
         const res = await fetch("/api/setup/test", {
           method: "POST",
@@ -319,7 +335,11 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
       } catch {
         setTestResults((prev) => ({
           ...prev,
-          [packId]: { ok: false, message: "Connection failed" },
+          [packId]: {
+            ok: false,
+            message: "Connection failed",
+            detail: "Network error — is the dev server running?",
+          },
         }));
       }
     },
@@ -373,11 +393,8 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
   const activePacks = PACKS.filter((p) => selectedPacks.has(p.id));
   const totalTools = activePacks.reduce((sum, p) => sum + p.toolCount, 0);
-
   const isPackReady = (pack: PackDef) =>
     pack.vars.filter((v) => !v.optional).every((v) => credentials[v.key]);
-
-  const canProceedFromCredentials = activePacks.length === 0 || activePacks.some(isPackReady);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -390,29 +407,21 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
           <h1 className="text-2xl font-bold tracking-tight">MyMCP Setup</h1>
           <p className="text-text-dim mt-1.5 text-sm">
             {firstTime
-              ? "Welcome! Let\u2019s configure your personal MCP server step by step."
+              ? "Welcome! Configure your personal MCP server step by step."
               : "Update your server configuration."}
           </p>
         </div>
 
-        {/* Step indicator */}
-        <div className="flex items-center justify-between mb-10 px-4">
+        {/* Step indicator — 3 steps now */}
+        <div className="flex items-center justify-between mb-10 px-8">
           {STEPS.map((s, i) => (
             <div key={s.label} className="flex items-center gap-0 flex-1">
               <button
                 onClick={() => i <= step + 1 && setStep(i)}
-                className={`flex flex-col items-center gap-1 transition-all ${
-                  i <= step + 1 ? "cursor-pointer" : "cursor-default"
-                }`}
+                className={`flex flex-col items-center gap-1 transition-all ${i <= step + 1 ? "cursor-pointer" : "cursor-default"}`}
               >
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
-                    i === step
-                      ? "bg-accent text-white"
-                      : i < step
-                        ? "bg-green text-white"
-                        : "bg-bg-muted text-text-muted"
-                  }`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${i === step ? "bg-accent text-white" : i < step ? "bg-green text-white" : "bg-bg-muted text-text-muted"}`}
                 >
                   {i < step ? "\u2713" : i + 1}
                 </div>
@@ -424,56 +433,55 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
               </button>
               {i < STEPS.length - 1 && (
                 <div
-                  className={`flex-1 h-px mx-2 mt-[-12px] ${i < step ? "bg-green" : "bg-border"}`}
+                  className={`flex-1 h-px mx-3 mt-[-12px] ${i < step ? "bg-green" : "bg-border"}`}
                 />
               )}
             </div>
           ))}
         </div>
 
-        {/* Step 0: Pack Selection */}
+        {/* ─── Step 0: Packs + Credentials (merged) ─────────────── */}
         {step === 0 && (
           <div>
             <div className="mb-6">
-              <h2 className="font-semibold text-lg">Choose your tool packs</h2>
+              <h2 className="font-semibold text-lg">Choose your tools</h2>
               <p className="text-sm text-text-dim mt-1">
-                Each pack connects to an external service and provides a set of MCP tools. Toggle on
-                the ones you want &mdash; you can always change this later in your{" "}
-                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code> file.
+                Toggle packs on, then enter the credentials for each. If you paste a{" "}
+                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">KEY=value</code> line, the
+                prefix is stripped automatically.
               </p>
             </div>
 
-            <div className="flex items-center gap-3 mb-4 p-3 bg-bg-muted rounded-lg">
-              <div className="text-sm">
-                <span className="font-semibold text-accent">{activePacks.length}</span>
-                <span className="text-text-dim"> packs selected</span>
-                <span className="text-text-muted mx-2">&middot;</span>
-                <span className="font-semibold text-accent">{totalTools}</span>
-                <span className="text-text-dim"> tools</span>
-              </div>
+            {/* Summary bar */}
+            <div className="flex items-center gap-3 mb-5 p-3 bg-bg-muted rounded-lg text-sm">
+              <span className="font-semibold text-accent">{activePacks.length}</span>
+              <span className="text-text-dim">packs</span>
+              <span className="text-text-muted">&middot;</span>
+              <span className="font-semibold text-accent">{totalTools}</span>
+              <span className="text-text-dim">tools</span>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               {PACKS.map((pack) => {
                 const selected = selectedPacks.has(pack.id);
+                const ready = isPackReady(pack);
+                const test = testResults[pack.id];
+                const guideOpen = expandedGuide === pack.id;
+                const errorOpen = expandedError === pack.id;
+
                 return (
-                  <button
+                  <div
                     key={pack.id}
-                    onClick={() => togglePack(pack.id)}
-                    className={`w-full text-left border rounded-lg p-4 transition-all ${
-                      selected
-                        ? "border-accent bg-accent/5"
-                        : "border-border hover:border-text-muted"
-                    }`}
+                    className={`border rounded-lg overflow-hidden transition-all ${selected ? "border-accent" : "border-border"}`}
                   >
-                    <div className="flex items-center justify-between">
+                    {/* Pack header — always visible, toggles the pack */}
+                    <button
+                      onClick={() => togglePack(pack.id)}
+                      className={`w-full text-left flex items-center justify-between px-5 py-4 transition-colors ${selected ? "bg-accent/5" : "hover:bg-bg-muted"}`}
+                    >
                       <div className="flex items-center gap-3">
                         <div
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                            selected
-                              ? "bg-accent text-white"
-                              : "bg-bg-muted text-text-muted border border-border-light"
-                          }`}
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${selected ? "bg-accent text-white" : "bg-bg-muted text-text-muted border border-border-light"}`}
                         >
                           {pack.icon}
                         </div>
@@ -481,131 +489,39 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-sm">{pack.name}</p>
                             <span
-                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                                selected
-                                  ? "text-accent bg-accent/10"
-                                  : "text-text-muted bg-bg-muted"
-                              }`}
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${selected ? "text-accent bg-accent/10" : "text-text-muted bg-bg-muted"}`}
                             >
                               {pack.toolCount} tools
                             </span>
+                            {selected && test && (
+                              <span
+                                className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${test.message === "Testing..." ? "text-accent bg-accent/10" : test.ok ? "text-green bg-green-bg" : "text-red bg-red-bg"}`}
+                              >
+                                {test.message}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-text-dim mt-0.5">{pack.description}</p>
                         </div>
                       </div>
                       <div
-                        className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
-                          selected ? "bg-accent" : "bg-bg-muted border border-border"
-                        }`}
+                        className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${selected ? "bg-accent" : "bg-bg-muted border border-border"}`}
                       >
                         <div
-                          className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${
-                            selected ? "left-6" : "left-1"
-                          }`}
+                          className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${selected ? "left-6" : "left-1"}`}
                         />
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
 
-            <div className="mt-8 flex justify-between items-center">
-              <p className="text-xs text-text-muted">
-                Admin pack (logs) is always active &mdash; no config needed.
-              </p>
-              <button
-                onClick={() => setStep(1)}
-                className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
-              >
-                Next &rarr;
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 1: Credentials */}
-        {step === 1 && (
-          <div>
-            <div className="mb-6">
-              <h2 className="font-semibold text-lg">Connect your accounts</h2>
-              <p className="text-sm text-text-dim mt-1">
-                For each pack, you&rsquo;ll need API keys from the corresponding service. Click the
-                links to get them. If you paste a{" "}
-                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">KEY=value</code> line, the
-                prefix is stripped automatically.
-              </p>
-            </div>
-
-            {activePacks.length === 0 ? (
-              <div className="text-center py-12 border border-border rounded-lg">
-                <p className="text-text-dim">No packs selected.</p>
-                <button
-                  onClick={() => setStep(0)}
-                  className="text-accent text-sm hover:underline mt-2"
-                >
-                  &larr; Go back to select packs
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {activePacks.map((pack) => {
-                  const ready = isPackReady(pack);
-                  const test = testResults[pack.id];
-                  const guideOpen = expandedGuide === pack.id;
-
-                  return (
-                    <div key={pack.id} className="border border-border rounded-lg overflow-hidden">
-                      <div className="flex items-center justify-between px-5 py-4 bg-bg-muted/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center text-xs font-bold">
-                            {pack.icon}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-sm">{pack.name}</p>
-                            <p className="text-xs text-text-muted">{pack.toolCount} tools</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {test && (
-                            <span
-                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                                test.message === "Testing..."
-                                  ? "text-accent bg-accent/10"
-                                  : test.ok
-                                    ? "text-green bg-green-bg"
-                                    : "text-red bg-red-bg"
-                              }`}
-                            >
-                              {test.message}
-                            </span>
-                          )}
-                          {!test && ready && (
-                            <span className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full">
-                              Ready
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="px-5 py-4">
+                    {/* Credentials — shown when pack is selected */}
+                    {selected && (
+                      <div className="px-5 py-4 border-t border-border bg-bg">
+                        {/* Setup guide */}
                         <button
                           onClick={() => setExpandedGuide(guideOpen ? null : pack.id)}
                           className="flex items-center gap-1.5 text-xs text-accent hover:underline mb-4"
                         >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className={`transition-transform ${guideOpen ? "rotate-90" : ""}`}
-                          >
-                            <path d="m9 18 6-6-6-6" />
-                          </svg>
+                          <ChevronIcon open={guideOpen} />
                           How to get these credentials
                         </button>
 
@@ -620,6 +536,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                           </div>
                         )}
 
+                        {/* Credential fields */}
                         <div className="space-y-4">
                           {pack.vars.map((v) => (
                             <div key={v.key}>
@@ -643,7 +560,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                                   rel="noopener"
                                   className="text-xs text-accent hover:underline mb-1.5 inline-block"
                                 >
-                                  Get it here <ExternalLinkIcon />
+                                  Get it here <ExtIcon />
                                 </a>
                               )}
                               <input
@@ -657,39 +574,42 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                           ))}
                         </div>
 
-                        <button
-                          onClick={() => testPack(pack.id)}
-                          disabled={!ready}
-                          className={`mt-4 text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${
-                            ready
-                              ? "bg-bg-muted text-text-dim hover:bg-border-light hover:text-text"
-                              : "bg-bg-muted text-text-muted cursor-not-allowed"
-                          }`}
-                        >
-                          Test connection
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                        {/* Test button + error detail */}
+                        <div className="mt-4 flex items-center gap-3">
+                          <button
+                            onClick={() => testPack(pack.id)}
+                            disabled={!ready}
+                            className={`text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${ready ? "bg-bg-muted text-text-dim hover:bg-border-light hover:text-text" : "bg-bg-muted text-text-muted cursor-not-allowed"}`}
+                          >
+                            Test connection
+                          </button>
+                          {test && !test.ok && test.detail && (
+                            <button
+                              onClick={() => setExpandedError(errorOpen ? null : pack.id)}
+                              className="text-xs text-text-muted hover:text-text"
+                            >
+                              {errorOpen ? "Hide details" : "Show error details"}
+                            </button>
+                          )}
+                        </div>
 
-            <div className="mt-8 flex justify-between">
+                        {errorOpen && test && !test.ok && test.detail && (
+                          <div className="mt-3 bg-red-bg border border-red/10 rounded-md p-3 text-xs font-mono text-red">
+                            {test.detail}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 flex justify-between items-center">
+              <p className="text-xs text-text-muted">Admin pack (logs) is always active.</p>
               <button
-                onClick={() => setStep(0)}
-                className="text-text-dim hover:text-text text-sm px-4 py-2.5"
-              >
-                &larr; Packs
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                disabled={!canProceedFromCredentials}
-                className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
-                  canProceedFromCredentials
-                    ? "bg-accent text-white hover:bg-accent/90"
-                    : "bg-bg-muted text-text-muted cursor-not-allowed"
-                }`}
+                onClick={() => setStep(1)}
+                className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
               >
                 Next &rarr;
               </button>
@@ -697,15 +617,15 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
           </div>
         )}
 
-        {/* Step 2: Settings */}
-        {step === 2 && (
+        {/* ─── Step 1: Settings ────────────────────────────────────── */}
+        {step === 1 && (
           <div>
             <div className="mb-6">
               <h2 className="font-semibold text-lg">Personalize your instance</h2>
               <p className="text-sm text-text-dim mt-1">
-                These settings customize how your MCP server formats dates, numbers, and identifies
-                itself. All can be changed later in your{" "}
-                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code> file.
+                These settings customize how your MCP server formats dates and identifies itself.
+                All can be changed later in{" "}
+                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code>.
               </p>
             </div>
 
@@ -724,7 +644,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <label className="text-sm font-medium">Timezone</label>
-                    <Tooltip text="Used for formatting dates in tool responses. Use IANA timezone format.">
+                    <Tooltip text="Used for formatting dates in tool responses. IANA format.">
                       <InfoIcon />
                     </Tooltip>
                   </div>
@@ -742,7 +662,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <label className="text-sm font-medium">Locale</label>
-                    <Tooltip text="Used for formatting numbers and currencies in tool responses.">
+                    <Tooltip text="Used for formatting numbers and currencies.">
                       <InfoIcon />
                     </Tooltip>
                   </div>
@@ -758,11 +678,12 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
               </div>
             </div>
 
+            {/* Auth Token */}
             <div className="border border-border rounded-lg p-5 mt-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-medium">Auth Token</p>
-                  <Tooltip text="This token secures your MCP endpoint. You'll use it to connect Claude, ChatGPT, or any MCP client.">
+                  <Tooltip text="Secures your MCP endpoint. Use it to connect Claude, ChatGPT, or any MCP client.">
                     <InfoIcon />
                   </Tooltip>
                 </div>
@@ -785,13 +706,13 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
             <div className="mt-8 flex justify-between">
               <button
-                onClick={() => setStep(1)}
+                onClick={() => setStep(0)}
                 className="text-text-dim hover:text-text text-sm px-4 py-2.5"
               >
-                &larr; Credentials
+                &larr; Tools
               </button>
               <button
-                onClick={() => setStep(3)}
+                onClick={() => setStep(2)}
                 className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
               >
                 Next &rarr;
@@ -800,8 +721,8 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
           </div>
         )}
 
-        {/* Step 3: Save */}
-        {step === 3 && (
+        {/* ─── Step 2: Save ────────────────────────────────────────── */}
+        {step === 2 && (
           <div>
             <div className="mb-6">
               <h2 className="font-semibold text-lg">Save & Deploy</h2>
@@ -812,6 +733,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
               </p>
             </div>
 
+            {/* Summary */}
             <div className="border border-border rounded-lg p-5 mb-6">
               <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
                 Configuration Summary
@@ -852,14 +774,22 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   <div className="space-y-1">
                     {activePacks.map((p) => {
                       const ready = isPackReady(p);
+                      const test = testResults[p.id];
+                      const tested = test && test.ok;
                       return (
                         <div key={p.id} className="flex items-center gap-2 text-sm">
                           <div
-                            className={`w-1.5 h-1.5 rounded-full ${ready ? "bg-green" : "bg-orange"}`}
+                            className={`w-1.5 h-1.5 rounded-full ${tested ? "bg-green" : ready ? "bg-accent" : "bg-orange"}`}
                           />
                           <span className="text-text-dim">{p.name}</span>
-                          <span className={`text-xs ${ready ? "text-green" : "text-orange"}`}>
-                            {ready ? "ready" : "missing credentials"}
+                          <span
+                            className={`text-xs ${tested ? "text-green" : ready ? "text-accent" : "text-orange"}`}
+                          >
+                            {tested
+                              ? "verified"
+                              : ready
+                                ? "credentials set"
+                                : "missing credentials"}
                           </span>
                         </div>
                       );
@@ -869,16 +799,13 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
               </div>
             </div>
 
+            {/* Actions */}
             <div className="space-y-3">
               {!isVercel && (
                 <button
                   onClick={saveEnv}
                   disabled={saving || saved}
-                  className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${
-                    saved
-                      ? "bg-green-bg text-green border border-green/20"
-                      : "bg-accent text-white hover:bg-accent/90"
-                  } disabled:opacity-60`}
+                  className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${saved ? "bg-green-bg text-green border border-green/20" : "bg-accent text-white hover:bg-accent/90"} disabled:opacity-60`}
                 >
                   {saved
                     ? "\u2713 .env saved successfully"
@@ -887,19 +814,15 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                       : "Save .env file"}
                 </button>
               )}
-
               <button
                 onClick={copyEnv}
-                className={`w-full py-3 rounded-lg text-sm font-medium border transition-colors ${
-                  copied
-                    ? "border-green/20 bg-green-bg text-green"
-                    : "border-border hover:bg-bg-muted text-text-dim"
-                }`}
+                className={`w-full py-3 rounded-lg text-sm font-medium border transition-colors ${copied ? "border-green/20 bg-green-bg text-green" : "border-border hover:bg-bg-muted text-text-dim"}`}
               >
                 {copied ? "\u2713 Copied to clipboard!" : "Copy env vars to clipboard"}
               </button>
             </div>
 
+            {/* Next steps */}
             {saved && (
               <div className="mt-6 border border-border rounded-lg p-5">
                 <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
@@ -951,7 +874,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
             <div className="mt-8 flex justify-start">
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(1)}
                 className="text-text-dim hover:text-text text-sm px-4 py-2.5"
               >
                 &larr; Settings

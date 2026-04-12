@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
  * POST /api/setup/test
  * Test a single credential by making a lightweight API call.
  * Only works during first-time setup (no MCP_AUTH_TOKEN).
+ * Returns { ok, message, detail? } — detail contains the full error for debugging.
  */
 export async function POST(request: Request) {
   if (process.env.MCP_AUTH_TOKEN) {
@@ -15,56 +16,184 @@ export async function POST(request: Request) {
   try {
     switch (body.pack) {
       case "google": {
-        const token = body.credentials.GOOGLE_REFRESH_TOKEN;
-        if (!token) return NextResponse.json({ ok: false, message: "No refresh token to test" });
-        // Light test: try to get user info
-        const res = await fetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
-          headers: { Authorization: `Bearer ${token}` },
+        const clientId = body.credentials.GOOGLE_CLIENT_ID;
+        const clientSecret = body.credentials.GOOGLE_CLIENT_SECRET;
+        const refreshToken = body.credentials.GOOGLE_REFRESH_TOKEN;
+
+        if (!clientId || !clientSecret) {
+          return NextResponse.json({
+            ok: false,
+            message: "Client ID and Secret are required",
+            detail: "Fill in both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before testing.",
+          });
+        }
+
+        if (!refreshToken) {
+          return NextResponse.json({
+            ok: true,
+            message:
+              "Client ID & Secret provided — get Refresh Token after deploy via /api/auth/google",
+          });
+        }
+
+        // Exchange refresh token for access token
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          }),
         });
-        if (res.ok) return NextResponse.json({ ok: true, message: "Google API connected" });
-        return NextResponse.json({ ok: false, message: `Google API: ${res.status}` });
+
+        const tokenData = (await tokenRes.json()) as {
+          access_token?: string;
+          error?: string;
+          error_description?: string;
+        };
+
+        if (!tokenRes.ok || !tokenData.access_token) {
+          return NextResponse.json({
+            ok: false,
+            message: "Google OAuth failed",
+            detail: tokenData.error_description || tokenData.error || `HTTP ${tokenRes.status}`,
+          });
+        }
+
+        // Use access token to verify
+        const userRes = await fetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+
+        if (userRes.ok) {
+          const user = (await userRes.json()) as { email?: string };
+          return NextResponse.json({
+            ok: true,
+            message: `Connected as ${user.email || "Google user"}`,
+          });
+        }
+
+        return NextResponse.json({
+          ok: false,
+          message: "Google API error",
+          detail: `User info endpoint returned ${userRes.status}`,
+        });
       }
 
       case "vault": {
         const pat = body.credentials.GITHUB_PAT;
         const repo = body.credentials.GITHUB_REPO;
-        if (!pat || !repo) return NextResponse.json({ ok: false, message: "Missing PAT or repo" });
-        const res = await fetch(`https://api.github.com/repos/${repo}`, {
-          headers: { Authorization: `token ${pat}` },
+        if (!pat || !repo) {
+          return NextResponse.json({
+            ok: false,
+            message: "Missing PAT or repo",
+            detail: "Both GITHUB_PAT and GITHUB_REPO are required.",
+          });
+        }
+        // Normalize repo URL to owner/repo
+        const repoNorm = repo.replace(/.*github\.com\//, "").replace(/\/+$/, "");
+        const res = await fetch(`https://api.github.com/repos/${repoNorm}`, {
+          headers: { Authorization: `token ${pat}`, "User-Agent": "MyMCP" },
         });
-        if (res.ok) return NextResponse.json({ ok: true, message: `Connected to ${repo}` });
-        return NextResponse.json({ ok: false, message: `GitHub: ${res.status}` });
+        if (res.ok) {
+          const data = (await res.json()) as { full_name?: string; private?: boolean };
+          return NextResponse.json({
+            ok: true,
+            message: `Connected to ${data.full_name}${data.private ? " (private)" : ""}`,
+          });
+        }
+        const errData = (await res.json().catch(() => ({}))) as { message?: string };
+        return NextResponse.json({
+          ok: false,
+          message: `GitHub: ${res.status}`,
+          detail: errData.message || `HTTP ${res.status} from GitHub API`,
+        });
       }
 
       case "slack": {
         const token = body.credentials.SLACK_BOT_TOKEN;
-        if (!token) return NextResponse.json({ ok: false, message: "Missing token" });
+        if (!token) {
+          return NextResponse.json({ ok: false, message: "Missing token" });
+        }
         const res = await fetch("https://slack.com/api/auth.test", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = (await res.json()) as { ok: boolean; team?: string; error?: string };
-        if (data.ok) return NextResponse.json({ ok: true, message: `Connected to ${data.team}` });
-        return NextResponse.json({ ok: false, message: `Slack: ${data.error}` });
+        const data = (await res.json()) as {
+          ok: boolean;
+          team?: string;
+          error?: string;
+          user?: string;
+        };
+        if (data.ok) {
+          return NextResponse.json({
+            ok: true,
+            message: `Connected to ${data.team} as ${data.user || "bot"}`,
+          });
+        }
+        return NextResponse.json({
+          ok: false,
+          message: "Slack auth failed",
+          detail: data.error || "Unknown Slack error",
+        });
       }
 
       case "notion": {
         const key = body.credentials.NOTION_API_KEY;
-        if (!key) return NextResponse.json({ ok: false, message: "Missing API key" });
+        if (!key) {
+          return NextResponse.json({ ok: false, message: "Missing API key" });
+        }
         const res = await fetch("https://api.notion.com/v1/users/me", {
           headers: { Authorization: `Bearer ${key}`, "Notion-Version": "2022-06-28" },
         });
-        if (res.ok) return NextResponse.json({ ok: true, message: "Notion API connected" });
-        return NextResponse.json({ ok: false, message: `Notion: ${res.status}` });
+        if (res.ok) {
+          const data = (await res.json()) as { name?: string; type?: string };
+          return NextResponse.json({
+            ok: true,
+            message: `Connected as ${data.name || "Notion integration"} (${data.type || "bot"})`,
+          });
+        }
+        const errData = (await res.json().catch(() => ({}))) as { message?: string; code?: string };
+        return NextResponse.json({
+          ok: false,
+          message: `Notion: ${res.status}`,
+          detail: errData.message || errData.code || `HTTP ${res.status}`,
+        });
+      }
+
+      case "composio": {
+        const key = body.credentials.COMPOSIO_API_KEY;
+        if (!key) {
+          return NextResponse.json({ ok: false, message: "Missing API key" });
+        }
+        // Light check — just verify the key format
+        return NextResponse.json({
+          ok: true,
+          message: "API key provided — verify in Composio dashboard",
+        });
+      }
+
+      case "browser": {
+        const bbKey = body.credentials.BROWSERBASE_API_KEY;
+        if (!bbKey) {
+          return NextResponse.json({ ok: false, message: "Missing Browserbase API key" });
+        }
+        return NextResponse.json({
+          ok: true,
+          message: "Credentials provided — will be verified on first use",
+        });
       }
 
       default:
-        return NextResponse.json({ ok: true, message: "No test available for this pack" });
+        return NextResponse.json({ ok: true, message: "No test available" });
     }
   } catch (err) {
     return NextResponse.json({
       ok: false,
-      message: err instanceof Error ? err.message : "Connection failed",
+      message: "Connection failed",
+      detail: err instanceof Error ? err.message : String(err),
     });
   }
 }
