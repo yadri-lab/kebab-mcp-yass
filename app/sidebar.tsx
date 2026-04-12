@@ -45,37 +45,75 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export function Sidebar() {
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function Sidebar({
+  displayName = "User",
+  serverName = "MyMCP",
+  setupMode = false,
+}: {
+  displayName?: string;
+  serverName?: string;
+  setupMode?: boolean;
+}) {
   const pathname = usePathname();
+  const orgInitials = getInitials(serverName);
+  const userInitials = getInitials(displayName);
 
   return (
-    <aside className="w-56 border-r border-border bg-bg-sidebar min-h-screen flex flex-col py-6 px-4 shrink-0">
-      <div className="mb-8 px-2">
-        <h1 className="text-lg font-bold tracking-tight">MyMCP</h1>
-        <p className="text-xs text-text-muted mt-0.5">Personal MCP Server</p>
+    <aside className="w-60 border-r border-border bg-bg-sidebar min-h-screen flex flex-col shrink-0">
+      {/* Brand / Org header */}
+      <div className="px-4 pt-6 pb-5">
+        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.12em] px-1 mb-2">
+          MYMCP
+        </p>
+        <div className="flex items-center gap-2.5 bg-bg border border-border rounded-lg px-2.5 py-2">
+          <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shrink-0">
+            {orgInitials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate">{serverName}</p>
+            <p className="text-[10px] text-text-muted truncate">
+              {setupMode ? "Setup mode" : "Personal MCP Server"}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <nav className="flex-1 space-y-6">
+      {/* Navigation */}
+      <nav className="flex-1 px-4 space-y-5 overflow-y-auto">
         {NAV.map((section) => (
           <div key={section.section}>
-            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] px-2 mb-2">
+            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.12em] px-2 mb-1.5">
               {section.section}
             </p>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
                 const active = pathname === item.href;
+                const disabled = setupMode && item.href !== "/setup";
                 return (
                   <li key={item.href}>
                     <a
-                      href={item.href}
+                      href={disabled ? undefined : item.href}
                       className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors ${
                         active
                           ? "bg-accent/10 text-accent font-medium"
-                          : "text-text-dim hover:bg-bg-muted hover:text-text"
+                          : disabled
+                            ? "text-text-muted cursor-not-allowed opacity-50"
+                            : "text-text-dim hover:bg-bg-muted hover:text-text"
                       }`}
                     >
                       <Icon name={item.icon} />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {disabled && (
+                        <span className="text-[9px] bg-bg-muted text-text-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
+                          Locked
+                        </span>
+                      )}
                     </a>
                   </li>
                 );
@@ -85,16 +123,24 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto pt-4 border-t border-border px-2">
-        <p className="text-[11px] text-text-muted">v0.1.1</p>
-        <a
-          href="https://github.com/Yassinello/mymcp"
-          target="_blank"
-          rel="noopener"
-          className="text-[11px] text-accent hover:underline"
-        >
-          GitHub
-        </a>
+      {/* Footer: user profile */}
+      <div className="mt-auto border-t border-border px-4 py-3">
+        <div className="flex items-center gap-2.5 px-1">
+          <div className="w-8 h-8 rounded-full bg-green/20 text-green flex items-center justify-center text-xs font-bold shrink-0">
+            {userInitials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold truncate">{displayName}</p>
+            <a
+              href="https://github.com/Yassinello/mymcp"
+              target="_blank"
+              rel="noopener"
+              className="text-[10px] text-text-muted hover:text-accent transition-colors"
+            >
+              GitHub &middot; Docs
+            </a>
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -104,16 +150,24 @@ export function AppShell({
   children,
   title,
   subtitle,
+  displayName,
+  serverName,
+  setupMode,
+  narrow,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  displayName?: string;
+  serverName?: string;
+  setupMode?: boolean;
+  narrow?: boolean;
 }) {
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar displayName={displayName} serverName={serverName} setupMode={setupMode} />
       <main className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto px-8 py-10">
+        <div className={`${narrow ? "max-w-3xl" : "max-w-4xl"} mx-auto px-8 py-10`}>
           <div className="mb-8">
             <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
             {subtitle && <p className="text-text-dim mt-1">{subtitle}</p>}
