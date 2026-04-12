@@ -1,10 +1,16 @@
 <p align="center">
   <h1 align="center">MyMCP</h1>
-  <p align="center"><strong>Your personal AI backend. One endpoint. 51 tools. Deploy in 5 minutes.</strong></p>
+  <p align="center"><strong>Your personal AI backend. One endpoint. 60 tools. Deploy in 5 minutes.</strong></p>
 </p>
 
 <p align="center">
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fmymcp&env=MCP_AUTH_TOKEN&envDescription=Required%20env%20vars%20for%20MyMCP&envLink=https%3A%2F%2Fgithub.com%2FYassinello%2Fmymcp%23configuration"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/license/Yassinello/mymcp" alt="License: MIT" />
+  <img src="https://img.shields.io/github/v/release/Yassinello/mymcp?label=version" alt="Version" />
+  <img src="https://img.shields.io/github/stars/Yassinello/mymcp?style=social" alt="GitHub stars" />
 </p>
 
 <p align="center">
@@ -27,33 +33,33 @@
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │                            MyMCP on Vercel / Docker                              │
 │                                                                                  │
-│  ┌──────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌────────┐ ┌─────────┐ ┌─────┐   │
-│  │  Google   │ │ Vault  │ │Browser │ │ Slack │ │ Notion │ │Composio │ │Admin│   │
-│  │ Workspace │ │Obsidian│ │  Auto  │ │       │ │        │ │ 1000+   │ │     │   │
-│  │ 18 tools  │ │15 tools│ │4 tools │ │6 tools│ │5 tools │ │  apps   │ │1 tool│  │
-│  └─────┬─────┘ └───┬────┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬────┘ └─────┘   │
-│        │           │          │          │         │           │                 │
+│  ┌──────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌────────┐ ┌─────────┐ ┌──────┐  │
+│  │  Google   │ │ Vault  │ │Browser │ │ Slack │ │ Notion │ │Composio │ │Apify │  │
+│  │ Workspace │ │Obsidian│ │  Auto  │ │       │ │        │ │ 1000+   │ │ LI + │  │
+│  │ 18 tools  │ │14 tools│ │4 tools │ │6 tools│ │5 tools │ │  apps   │ │actors│  │
+│  └─────┬─────┘ └───┬────┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬────┘ └──┬───┘  │
+│        │           │          │          │         │           │         │       │
 │      Registry ← Pack Manifests ← Env vars (auto-activation)                    │
-└────────┼───────────┼──────────┼──────────┼─────────┼───────────┼────────────────┘
-         │           │          │          │         │           │
-         ▼           ▼          ▼          ▼         ▼           ▼
-    Google APIs  GitHub API  Browserbase  Slack API  Notion API  Composio
+└────────┼───────────┼──────────┼──────────┼─────────┼───────────┼─────────┼───────┘
+         │           │          │          │         │           │         │
+         ▼           ▼          ▼          ▼         ▼           ▼         ▼
+    Google APIs  GitHub API  Browserbase  Slack API  Notion API  Composio  Apify
 ```
 
 ## The Story
 
-I built MyMCP because I wanted a single MCP server that works everywhere (Claude, ChatGPT, Hermes, OpenClaw, ..). It started as a simple bridge to my Obsidian vault with a few tools, and kept growing as I added Google Workspace, browser automation, Slack, and Notion. At some point I realized: if it's useful to me, it might be useful to others, so I open-sourced it.
+I built MyMCP because I wanted a single MCP server that works everywhere (Claude, ChatGPT, Cursor, Windsurf, OpenClaw, ..). It started as a simple bridge to my Obsidian vault with a few tools, and kept growing as I added Google Workspace, browser automation, Slack, Notion, and LinkedIn via Apify. At some point I realized: if it's useful to me, it might be useful to others, so I open-sourced it.
 
 ## Why MyMCP?
 
 Most MCP setups require running 5 separate servers, each with their own config. Or paying for a hosted platform that controls your data.
 
-MyMCP gives you **one server, one endpoint, 51 tools** — deployed on Vercel's free tier (or Docker). You own everything.
+MyMCP gives you **one server, one endpoint, 60 tools** — deployed on Vercel's free tier (or Docker). You own everything.
 
 | | MyMCP | Separate MCP servers | Hosted platforms |
 |---|---|---|---|
 | **Setup** | Fork + env vars + deploy | 5 repos, 5 configs | Sign up + monthly fee |
-| **Tools** | 45 pre-built | Build your own | 1000s (but vendor lock-in) |
+| **Tools** | 60 pre-built | Build your own | 1000s (but vendor lock-in) |
 | **Endpoint** | 1 | 5+ | 1 (their server) |
 | **Cost** | Free (Vercel free tier) | Free but complex | $0-80/month |
 | **Data** | Your Vercel, your keys | Your machines | Their servers |
@@ -194,6 +200,44 @@ File: `~/.claude.json` (global) or `.mcp.json` (per-project)
 </details>
 
 <details>
+<summary><strong>Cursor</strong></summary>
+
+File: `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per-project)
+
+```json
+{
+  "mcpServers": {
+    "mymcp": {
+      "url": "https://your-app.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MCP_AUTH_TOKEN"
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Windsurf</strong></summary>
+
+File: `~/.codeium/windsurf/mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "mymcp": {
+      "serverUrl": "https://your-app.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MCP_AUTH_TOKEN"
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
 <summary><strong>ChatGPT / Other MCP clients</strong></summary>
 
 Use the Streamable HTTP endpoint:
@@ -227,7 +271,7 @@ Your `.env` is never touched — all customization lives in env vars, not in cod
 
 ## Tool Packs
 
-MyMCP ships **51 production-ready tools** organized in 7 packs. Each pack activates automatically when its credentials are present in env vars.
+MyMCP ships **60 production-ready tools** organized in 9 packs. Each pack activates automatically when its credentials are present in env vars.
 
 ### Google Workspace — 18 tools
 
@@ -240,14 +284,14 @@ MyMCP ships **51 production-ready tools** organized in 7 packs. Each pack activa
 
 **Requires:** `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` + `GOOGLE_REFRESH_TOKEN`
 
-### Obsidian Vault — 15 tools
+### Obsidian Vault — 14 tools
 
 | Category | Tools |
 |----------|-------|
 | **CRUD** | `vault_read` `vault_write` `vault_delete` `vault_move` `vault_append` `vault_list` |
 | **Batch & Search** | `vault_batch_read` `vault_search` `vault_recent` `vault_stats` |
 | **Knowledge Graph** | `vault_backlinks` `vault_due` |
-| **Web → Vault** | `save_article` `read_paywalled` |
+| **Web → Vault** | `save_article` |
 | **Context** | `my_context` |
 
 **Requires:** `GITHUB_PAT` + `GITHUB_REPO`
@@ -288,6 +332,32 @@ MyMCP ships **51 production-ready tools** organized in 7 packs. Each pack activa
 
 **Requires:** `NOTION_API_KEY`
 
+### Apify — 8 tools
+
+LinkedIn scraping and general actor execution via the Apify platform.
+
+| Tool | What it does |
+|------|-------------|
+| `apify_linkedin_profile` | Fetch a LinkedIn person profile |
+| `apify_linkedin_company` | Fetch a LinkedIn company profile |
+| `apify_linkedin_profile_posts` | Get recent posts from a LinkedIn profile |
+| `apify_linkedin_company_posts` | Get recent posts from a LinkedIn company page |
+| `apify_linkedin_post` | Fetch a specific LinkedIn post |
+| `apify_linkedin_company_insights` | Get company follower/employee insights |
+| `apify_search_actors` | Search Apify's actor marketplace |
+| `apify_run_actor` | Run any Apify actor with custom input |
+
+**Requires:** `APIFY_TOKEN`
+
+### Paywall — 2 tools
+
+| Tool | What it does |
+|------|-------------|
+| `read_paywalled` | Read paywalled articles via a reader service |
+| `read_paywalled_hard` | Hard bypass for stubborn paywalls |
+
+No credentials required — always active.
+
 ### Composio — 2 tools + 1000s of integrations
 
 | Tool | What it does |
@@ -313,10 +383,12 @@ src/
       manifest.ts       ← Pack definition (single source of truth)
       lib/              ← Gmail, Calendar, Contacts, Drive wrappers
       tools/            ← Individual tool handlers
-    vault/              ← Obsidian Vault (15 tools)
+    vault/              ← Obsidian Vault (14 tools)
     browser/            ← Browser Automation (4 tools)
     slack/              ← Slack (6 tools)
     notion/             ← Notion (5 tools)
+    apify/              ← Apify — LinkedIn + actors (8 tools)
+    paywall/            ← Paywall readers (2 tools)
     composio/           ← Composio bridge (2 tools → 1000+ integrations)
     admin/              ← Admin & Observability (1 tool)
 
@@ -419,7 +491,7 @@ npm run dev             # Start dev server
 npm run build           # Production build
 npm run lint            # ESLint
 npm run format          # Prettier
-npm run test:contract   # Verify tool contracts (51 tools)
+npm run test:contract   # Verify tool contracts
 npm run test:e2e        # E2E smoke test (starts server, checks tools/list)
 ```
 
@@ -433,7 +505,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add tools, packs, and custom e
 
 ## Tech Stack
 
-Next.js 16 · TypeScript 6 · Zod 4 · MCP SDK · Vercel Serverless · Arctic (OAuth) · Stagehand + Browserbase
+Next.js 16 · TypeScript 6 · Zod 4 · MCP SDK · Vercel Serverless · Arctic (OAuth) · Stagehand + Browserbase · Apify SDK
 
 ## License
 
