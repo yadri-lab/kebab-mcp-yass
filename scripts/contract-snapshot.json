@@ -1,5 +1,64 @@
 [
   {
+    "name": "apify_linkedin_company",
+    "pack": "apify",
+    "schemaKeys": [
+      "url"
+    ]
+  },
+  {
+    "name": "apify_linkedin_company_insights",
+    "pack": "apify",
+    "schemaKeys": [
+      "url"
+    ]
+  },
+  {
+    "name": "apify_linkedin_company_posts",
+    "pack": "apify",
+    "schemaKeys": [
+      "maxPosts",
+      "url"
+    ]
+  },
+  {
+    "name": "apify_linkedin_post",
+    "pack": "apify",
+    "schemaKeys": [
+      "url"
+    ]
+  },
+  {
+    "name": "apify_linkedin_profile",
+    "pack": "apify",
+    "schemaKeys": [
+      "url"
+    ]
+  },
+  {
+    "name": "apify_linkedin_profile_posts",
+    "pack": "apify",
+    "schemaKeys": [
+      "maxPosts",
+      "url"
+    ]
+  },
+  {
+    "name": "apify_run_actor",
+    "pack": "apify",
+    "schemaKeys": [
+      "actorId",
+      "input"
+    ]
+  },
+  {
+    "name": "apify_search_actors",
+    "pack": "apify",
+    "schemaKeys": [
+      "query"
+    ]
+  },
+  {
     "name": "calendar_create",
     "pack": "google",
     "schemaKeys": [

@@ -20,6 +20,7 @@ import { slackPack } from "../src/packs/slack/manifest";
 import { notionPack } from "../src/packs/notion/manifest";
 import { adminPack } from "../src/packs/admin/manifest";
 import { paywallPack } from "../src/packs/paywall/manifest";
+import { apifyPack } from "../src/packs/apify/manifest";
 
 const ALL_PACKS = [
   googlePack,
@@ -28,6 +29,7 @@ const ALL_PACKS = [
   slackPack,
   notionPack,
   paywallPack,
+  apifyPack,
   adminPack,
 ];
 const SNAPSHOT_PATH = resolve(__dirname, "contract-snapshot.json");
