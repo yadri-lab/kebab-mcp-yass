@@ -26,7 +26,18 @@ function extractToken(request: Request): string | null {
 
   // Fallback: query string token (needed for Claude Desktop)
   const url = new URL(request.url);
-  return url.searchParams.get("token")?.trim() || null;
+  const queryToken = url.searchParams.get("token")?.trim();
+  if (queryToken) return queryToken;
+
+  // Fallback: admin cookie (set by middleware after ?token= auth).
+  // Dashboard fetches from the browser rely on this.
+  const cookieHeader = request.headers.get("cookie");
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)mymcp_admin_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]).trim();
+  }
+
+  return null;
 }
 
 /** Check MCP endpoint auth. Returns error Response or null if OK. */
