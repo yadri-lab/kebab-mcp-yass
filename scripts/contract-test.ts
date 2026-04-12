@@ -19,8 +19,17 @@ import { browserPack } from "../src/packs/browser/manifest";
 import { slackPack } from "../src/packs/slack/manifest";
 import { notionPack } from "../src/packs/notion/manifest";
 import { adminPack } from "../src/packs/admin/manifest";
+import { paywallPack } from "../src/packs/paywall/manifest";
 
-const ALL_PACKS = [googlePack, vaultPack, browserPack, slackPack, notionPack, adminPack];
+const ALL_PACKS = [
+  googlePack,
+  vaultPack,
+  browserPack,
+  slackPack,
+  notionPack,
+  paywallPack,
+  adminPack,
+];
 const SNAPSHOT_PATH = resolve(__dirname, "contract-snapshot.json");
 
 interface ToolContract {
@@ -96,16 +105,16 @@ function main() {
     }
 
     if (cur.pack !== snap.pack) {
-      console.error(
-        `  MOVED: ${cur.name} — was in ${snap.pack} → now in ${cur.pack}`
-      );
+      console.error(`  MOVED: ${cur.name} — was in ${snap.pack} → now in ${cur.pack}`);
       failures++;
     }
   }
 
   if (failures > 0) {
     console.error(`\n[Contract Test] FAIL — ${failures} contract violation(s)`);
-    console.error("If these changes are intentional, delete scripts/contract-snapshot.json and re-run.");
+    console.error(
+      "If these changes are intentional, delete scripts/contract-snapshot.json and re-run."
+    );
     process.exit(1);
   }
 

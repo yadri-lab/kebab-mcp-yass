@@ -6,7 +6,6 @@ import { vaultListSchema, handleVaultList } from "./tools/vault-list";
 import { vaultDeleteSchema, handleVaultDelete } from "./tools/vault-delete";
 import { vaultMoveSchema, handleVaultMove } from "./tools/vault-move";
 import { saveArticleSchema, handleSaveArticle } from "./tools/save-article";
-import { readPaywalledSchema, handleReadPaywalled } from "./tools/read-paywalled";
 import { vaultAppendSchema, handleVaultAppend } from "./tools/vault-append";
 import { vaultBatchReadSchema, handleVaultBatchRead } from "./tools/vault-batch-read";
 import { vaultRecentSchema, handleVaultRecent } from "./tools/vault-recent";
@@ -97,13 +96,6 @@ export const vaultPack: PackManifest = {
         handleSaveArticle(
           params as { url: string; title?: string; tags?: string[]; folder?: string }
         ),
-    },
-    {
-      name: "read_paywalled",
-      description:
-        "Read a paywalled article (Medium, etc.) and return its full markdown content. Uses stored session cookies to access premium content. Does NOT save to vault — use save_article for that, or vault_write manually after analysis.",
-      schema: readPaywalledSchema,
-      handler: async (params) => handleReadPaywalled(params as { url: string }),
     },
     {
       name: "vault_append",

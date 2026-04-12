@@ -223,7 +223,7 @@
   },
   {
     "name": "read_paywalled",
-    "pack": "vault",
+    "pack": "paywall",
     "schemaKeys": [
       "url"
     ]
