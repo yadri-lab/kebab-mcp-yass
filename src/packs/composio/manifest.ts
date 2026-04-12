@@ -9,10 +9,10 @@ export const composioPack: PackManifest = {
   requiredEnvVars: ["COMPOSIO_API_KEY"],
   diagnose: async () => {
     try {
-      const { Composio } = await import("composio-core");
+      const { Composio } = await import("@composio/core");
       const client = new Composio({ apiKey: process.env.COMPOSIO_API_KEY! });
-      const apps = await client.connectedAccounts.list({});
-      const count = apps.items?.length || 0;
+      const accounts = await client.connectedAccounts.list();
+      const count = Array.isArray(accounts) ? accounts.length : 0;
       return { ok: true, message: `${count} connected account(s)` };
     } catch (err) {
       return {
@@ -32,7 +32,7 @@ export const composioPack: PackManifest = {
           params as {
             action: string;
             params?: Record<string, unknown>;
-            entity_id?: string;
+            connected_account_id?: string;
           }
         ),
     },

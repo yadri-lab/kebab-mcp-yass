@@ -11,18 +11,24 @@ export const composioActionSchema = {
     .record(z.string(), z.unknown())
     .optional()
     .describe("Action parameters as key-value pairs. Depends on the action."),
-  entity_id: z
+  connected_account_id: z
     .string()
     .optional()
-    .describe("Entity ID for the connected account (default: from COMPOSIO_ENTITY_ID env var)"),
+    .describe(
+      "Connected account ID (from Composio dashboard). Optional if only one account per app."
+    ),
 };
 
 export async function handleComposioAction(params: {
   action: string;
   params?: Record<string, unknown>;
-  entity_id?: string;
+  connected_account_id?: string;
 }) {
-  const result = await executeAction(params.action, params.params || {}, params.entity_id);
+  const result = await executeAction(
+    params.action,
+    params.params || {},
+    params.connected_account_id
+  );
 
   return {
     content: [{ type: "text" as const, text: result }],
