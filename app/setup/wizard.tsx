@@ -205,6 +205,35 @@ const PACKS: PackDef[] = [
     ],
   },
   {
+    id: "apify",
+    name: "Apify",
+    description: "LinkedIn scrapers + any Apify actor on demand",
+    toolCount: 8,
+    icon: "A",
+    setupGuide: [
+      "Create an Apify account at apify.com",
+      "Go to Settings → Integrations to copy your personal API token",
+      "Optionally set APIFY_ACTORS to limit which LinkedIn wrappers load",
+    ],
+    vars: [
+      {
+        key: "APIFY_TOKEN",
+        label: "Apify API Token",
+        helpUrl: "https://console.apify.com/account/integrations",
+        help: "Personal API token from your Apify account.",
+        placeholder: "apify_api_...",
+        sensitive: true,
+      },
+      {
+        key: "APIFY_ACTORS",
+        label: "Actor allowlist (comma-separated IDs)",
+        help: "Optional. If set, only these actor IDs load as wrappers. Leave empty to enable all 6.",
+        placeholder: "harvestapi/linkedin-company,harvestapi/linkedin-profile-scraper",
+        optional: true,
+      },
+    ],
+  },
+  {
     id: "composio",
     name: "Composio",
     description: "1000+ app integrations (Jira, HubSpot, Salesforce...)",

@@ -164,6 +164,29 @@ export async function POST(request: Request) {
         });
       }
 
+      case "apify": {
+        const token = body.credentials.APIFY_TOKEN;
+        if (!token) {
+          return NextResponse.json({ ok: false, message: "Missing Apify token" });
+        }
+        const res = await fetch("https://api.apify.com/v2/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            data?: { username?: string; email?: string };
+          };
+          const user = data?.data?.username || data?.data?.email || "Apify user";
+          return NextResponse.json({ ok: true, message: `Connected as ${user}` });
+        }
+        const errText = await res.text().catch(() => "");
+        return NextResponse.json({
+          ok: false,
+          message: `Apify: ${res.status}`,
+          detail: errText || `HTTP ${res.status}`,
+        });
+      }
+
       case "composio": {
         const key = body.credentials.COMPOSIO_API_KEY;
         if (!key) {
