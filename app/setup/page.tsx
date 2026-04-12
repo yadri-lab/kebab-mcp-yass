@@ -1,27 +1,44 @@
+import { redirect } from "next/navigation";
 import { SetupWizard } from "./wizard";
 import { AppShell } from "../sidebar";
 import { getInstanceConfig } from "@/core/config";
 
 export const dynamic = "force-dynamic";
 
-export default function SetupPage() {
-  const isFirstTime = !process.env.MCP_AUTH_TOKEN;
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ add?: string }>;
+}) {
+  const params = await searchParams;
+  const hasToken = !!process.env.MCP_AUTH_TOKEN;
+  const isFirstTime = !hasToken;
   const isVercel = !!process.env.VERCEL;
   const config = getInstanceConfig();
 
+  // Post-first-run: /setup without ?add= redirects to /config
+  if (hasToken && !params.add) {
+    redirect("/config");
+  }
+
   return (
     <AppShell
-      title={isFirstTime ? "Welcome to MyMCP" : "Setup"}
+      title={isFirstTime ? "Welcome to MyMCP" : "Add a pack"}
       subtitle={
         isFirstTime
           ? "Let's get your personal MCP server configured in a few minutes."
-          : "Update your server configuration."
+          : "Connect a new pack to your running server."
       }
       displayName={config.displayName}
       setupMode={isFirstTime}
       narrow
     >
-      <SetupWizard firstTime={isFirstTime} isVercel={isVercel} />
+      <SetupWizard
+        firstTime={isFirstTime}
+        isVercel={isVercel}
+        hasToken={hasToken}
+        initialPack={params.add}
+      />
     </AppShell>
   );
 }
