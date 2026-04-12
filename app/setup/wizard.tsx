@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -192,10 +192,13 @@ const PACKS: PackDef[] = [
 ];
 
 const STEPS = [
-  { label: "Tools", description: "Choose packs & enter credentials" },
-  { label: "Settings", description: "Personalize your instance" },
-  { label: "Save", description: "Finish setup" },
+  { label: "Tools", description: "Pick packs & credentials" },
+  { label: "Settings", description: "Personalize" },
+  { label: "Save", description: "Finalize" },
 ];
+
+const STORAGE_KEY = "mymcp-setup-draft";
+const INTRO_KEY = "mymcp-setup-intro-dismissed";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -215,13 +218,13 @@ function cleanCredential(value: string): string {
   return value.trim().replace(/^[A-Z_]+=/, "");
 }
 
-// ── Small components ────────────────────────────────────────────────
+// ── Icons ───────────────────────────────────────────────────────────
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   return (
     <span className="relative group/tip inline-flex items-center">
       {children}
-      <span className="invisible group-hover/tip:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 rounded-md bg-text text-bg text-xs whitespace-nowrap z-50 shadow-lg max-w-64 text-center">
+      <span className="invisible group-hover/tip:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 rounded-md bg-text text-bg text-xs whitespace-nowrap z-50 shadow-lg max-w-xs">
         {text}
         <span className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 bg-text -mt-1" />
       </span>
@@ -240,7 +243,7 @@ function InfoIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-text-muted"
+      className="text-text-muted cursor-help"
     >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 16v-4m0-4h.01" />
@@ -248,18 +251,36 @@ function InfoIcon() {
   );
 }
 
-function ExtIcon() {
+function LightbulbIcon() {
   return (
     <svg
-      width="12"
-      height="12"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="inline ml-1 opacity-50"
+      className="text-accent"
+    >
+      <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4" />
+    </svg>
+  );
+}
+
+function ExtIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline ml-1 opacity-60"
     >
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6m4-3h6v6m-11 5L21 3" />
     </svg>
@@ -284,6 +305,103 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function CheckIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  if (open) {
+    return (
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="m15 18-.722-3.25M2 8a10.645 10.645 0 0 0 20 0M20 15l-1.726-2.05M4 15l1.726-2.05M9 18l.722-3.25" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+// ── Credential Input with Show/Hide ──────────────────────────────────
+
+function CredentialInput({
+  v,
+  value,
+  onChange,
+}: {
+  v: PackVar;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const filled = value.length > 0;
+
+  return (
+    <div className="relative">
+      <input
+        type={v.sensitive && !revealed ? "password" : "text"}
+        placeholder={v.placeholder || v.key}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full bg-bg-muted border rounded-md pl-3 pr-20 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30 transition-colors ${
+          filled ? "border-green/40 bg-green-bg/30" : "border-border focus:border-accent"
+        }`}
+      />
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        {filled && (
+          <span className="text-green flex items-center pr-1">
+            <CheckIcon size={14} />
+          </span>
+        )}
+        {v.sensitive && filled && (
+          <button
+            type="button"
+            onClick={() => setRevealed(!revealed)}
+            className="text-text-muted hover:text-text p-1 rounded"
+            title={revealed ? "Hide value" : "Show value"}
+          >
+            <EyeIcon open={revealed} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 
 export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVercel: boolean }) {
@@ -304,8 +422,54 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(true); // default true to avoid flash
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const mcpToken = useState(() => generateToken())[0];
+
+  // ── LocalStorage autosave & restore ────────────────────────────
+
+  useEffect(() => {
+    // Load intro dismissed state
+    setIntroDismissed(localStorage.getItem(INTRO_KEY) === "true");
+
+    // Load draft
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.selectedPacks) setSelectedPacks(new Set(draft.selectedPacks));
+        if (draft.credentials) setCredentials(draft.credentials);
+        if (draft.settings) setSettings(draft.settings);
+      }
+    } catch {
+      // Ignore corrupted draft
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const draft = {
+      selectedPacks: Array.from(selectedPacks),
+      credentials,
+      settings,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+  }, [selectedPacks, credentials, settings, draftLoaded]);
+
+  const dismissIntro = () => {
+    setIntroDismissed(true);
+    localStorage.setItem(INTRO_KEY, "true");
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setSelectedPacks(new Set(["google", "vault"]));
+    setCredentials({});
+    setSettings({ timezone: "Europe/Paris", locale: "fr-FR", displayName: "" });
+    setTestResults({});
+  };
 
   const togglePack = useCallback((id: string) => {
     setSelectedPacks((prev) => {
@@ -335,11 +499,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
       } catch {
         setTestResults((prev) => ({
           ...prev,
-          [packId]: {
-            ok: false,
-            message: "Connection failed",
-            detail: "Network error — is the dev server running?",
-          },
+          [packId]: { ok: false, message: "Network error", detail: "Is the dev server running?" },
         }));
       }
     },
@@ -372,8 +532,11 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         body: JSON.stringify({ envVars: buildEnvVars() }),
       });
       const data = await res.json();
-      if (data.ok) setSaved(true);
-      else alert(data.error || "Save failed");
+      if (data.ok) {
+        setSaved(true);
+        // Clear draft after successful save
+        localStorage.removeItem(STORAGE_KEY);
+      } else alert(data.error || "Save failed");
     } catch {
       alert("Failed to save .env file");
     }
@@ -393,35 +556,52 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
   const activePacks = PACKS.filter((p) => selectedPacks.has(p.id));
   const totalTools = activePacks.reduce((sum, p) => sum + p.toolCount, 0);
-  const isPackReady = (pack: PackDef) =>
-    pack.vars.filter((v) => !v.optional).every((v) => credentials[v.key]);
+
+  const packFillStatus = (pack: PackDef) => {
+    const required = pack.vars.filter((v) => !v.optional);
+    const filled = required.filter((v) => credentials[v.key]);
+    return {
+      total: required.length,
+      filled: filled.length,
+      ready: filled.length === required.length,
+    };
+  };
+
+  const hasAnyDraft = draftLoaded && Object.keys(credentials).length > 0;
 
   return (
     <div>
-      {/* Welcome intro card — only on first step */}
-      {firstTime && step === 0 && (
-        <div className="mb-8 border border-accent/20 bg-accent/5 rounded-lg p-5">
+      {/* ── Welcome intro card — dismissible ─────────────────────── */}
+      {firstTime && !introDismissed && step === 0 && (
+        <div className="mb-8 border border-accent/20 bg-accent/5 rounded-lg p-5 relative">
+          <button
+            onClick={dismissIntro}
+            className="absolute top-3 right-3 text-text-muted hover:text-text p-1"
+            title="Dismiss"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-accent"
-              >
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
+            <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+              <LightbulbIcon />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 pr-6">
               <h3 className="font-semibold text-sm mb-1">What is MyMCP?</h3>
               <p className="text-sm text-text-dim leading-relaxed mb-3">
                 MyMCP is a single server that gives Claude, ChatGPT, and other AI clients access to
-                your personal tools — Gmail, Calendar, Obsidian vault, and more. You own everything.
+                your personal tools &mdash; Gmail, Calendar, Obsidian vault, and more. You own
+                everything.
               </p>
               <div className="grid grid-cols-3 gap-3 mt-4">
                 <div className="flex items-start gap-2">
@@ -452,69 +632,115 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   </div>
                 </div>
               </div>
-              <p className="text-[11px] text-text-muted mt-4">
-                Takes about 5 minutes. All credentials are stored locally in your{" "}
-                <code className="bg-bg px-1 py-0.5 rounded">.env</code> file &mdash; never sent
-                anywhere.
-              </p>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-[11px] text-text-muted">
+                  Takes ~5 min. Credentials stay in your{" "}
+                  <code className="bg-bg px-1 py-0.5 rounded">.env</code> &mdash; never sent
+                  anywhere.
+                </p>
+                <button
+                  onClick={dismissIntro}
+                  className="text-xs font-medium text-accent hover:underline shrink-0 ml-4"
+                >
+                  Got it &rarr;
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Step indicator */}
-      <div className="flex items-center justify-between mb-8 px-8">
+      {/* ── Draft restore banner ───────────────────────────────── */}
+      {draftLoaded && hasAnyDraft && !saved && (
+        <div className="mb-6 border border-accent/30 bg-accent/5 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-accent"
+            >
+              <path d="M21 12a9 9 0 1 1-6.22-8.56M21 3v6h-6" />
+            </svg>
+            <span className="text-text-dim">We restored your previous progress.</span>
+          </div>
+          <button onClick={clearDraft} className="text-xs text-text-muted hover:text-red">
+            Start over
+          </button>
+        </div>
+      )}
+
+      {/* ── Step indicator with descriptions ────────────────────── */}
+      <div className="flex items-start justify-between mb-10 px-4">
         {STEPS.map((s, i) => (
-          <div key={s.label} className="flex items-center gap-0 flex-1">
+          <div key={s.label} className="flex items-start gap-0 flex-1">
             <button
               onClick={() => i <= step + 1 && setStep(i)}
-              className={`flex flex-col items-center gap-1 transition-all ${i <= step + 1 ? "cursor-pointer" : "cursor-default"}`}
+              disabled={i > step + 1}
+              className={`flex flex-col items-center gap-1.5 transition-all ${i <= step + 1 ? "cursor-pointer" : "cursor-not-allowed"}`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${i === step ? "bg-accent text-white" : i < step ? "bg-green text-white" : "bg-bg-muted text-text-muted"}`}
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all border-2 ${
+                  i === step
+                    ? "bg-accent text-white border-accent shadow-sm"
+                    : i < step
+                      ? "bg-green text-white border-green"
+                      : "bg-bg border-border text-text-muted"
+                }`}
               >
-                {i < step ? "\u2713" : i + 1}
+                {i < step ? <CheckIcon size={16} /> : i + 1}
               </div>
-              <span
-                className={`text-[10px] font-medium ${i === step ? "text-accent" : i < step ? "text-green" : "text-text-muted"}`}
-              >
-                {s.label}
-              </span>
+              <div className="text-center">
+                <p
+                  className={`text-xs font-semibold ${i === step ? "text-accent" : i < step ? "text-green" : "text-text-muted"}`}
+                >
+                  {s.label}
+                </p>
+                <p className="text-[10px] text-text-muted mt-0.5">{s.description}</p>
+              </div>
             </button>
             {i < STEPS.length - 1 && (
               <div
-                className={`flex-1 h-px mx-3 mt-[-12px] ${i < step ? "bg-green" : "bg-border"}`}
+                className={`flex-1 h-0.5 mx-2 mt-[18px] rounded ${i < step ? "bg-green" : "bg-border"}`}
               />
             )}
           </div>
         ))}
       </div>
 
-      {/* ─── Step 0: Packs + Credentials (merged) ─────────────── */}
+      {/* ═══ Step 0: Tools (Packs + Credentials) ═══════════════════ */}
       {step === 0 && (
         <div>
           <div className="mb-6">
             <h2 className="font-semibold text-lg">Choose your tools</h2>
             <p className="text-sm text-text-dim mt-1">
-              Toggle packs on, then enter the credentials for each. If you paste a{" "}
-              <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">KEY=value</code> line, the
-              prefix is stripped automatically.
+              Click a pack to enable it, then fill in the credentials for that service.
             </p>
           </div>
 
           {/* Summary bar */}
-          <div className="flex items-center gap-3 mb-5 p-3 bg-bg-muted rounded-lg text-sm">
-            <span className="font-semibold text-accent">{activePacks.length}</span>
-            <span className="text-text-dim">packs</span>
-            <span className="text-text-muted">&middot;</span>
-            <span className="font-semibold text-accent">{totalTools}</span>
-            <span className="text-text-dim">tools</span>
+          <div className="flex items-center justify-between mb-5 p-3 bg-bg-muted rounded-lg text-sm">
+            <div>
+              <span className="font-semibold text-accent">{activePacks.length}</span>
+              <span className="text-text-dim"> of {PACKS.length} packs</span>
+              <span className="text-text-muted mx-2">&middot;</span>
+              <span className="font-semibold text-accent">{totalTools}</span>
+              <span className="text-text-dim"> tools selected</span>
+            </div>
+            {activePacks.length === 0 && (
+              <span className="text-[11px] text-orange">Pick at least one pack</span>
+            )}
           </div>
 
           <div className="space-y-3">
             {PACKS.map((pack) => {
               const selected = selectedPacks.has(pack.id);
-              const ready = isPackReady(pack);
+              const fillStatus = packFillStatus(pack);
               const test = testResults[pack.id];
               const guideOpen = expandedGuide === pack.id;
               const errorOpen = expandedError === pack.id;
@@ -524,49 +750,82 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   key={pack.id}
                   className={`border rounded-lg overflow-hidden transition-all ${selected ? "border-accent" : "border-border"}`}
                 >
-                  {/* Pack header — always visible, toggles the pack */}
-                  <button
-                    onClick={() => togglePack(pack.id)}
-                    className={`w-full text-left flex items-center justify-between px-5 py-4 transition-colors ${selected ? "bg-accent/5" : "hover:bg-bg-muted"}`}
+                  <div
+                    className={`flex items-center justify-between px-5 py-4 transition-colors ${selected ? "bg-accent/5" : ""}`}
                   >
-                    <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => togglePack(pack.id)}
+                      className="flex items-center gap-3 flex-1 text-left"
+                    >
                       <div
-                        className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${selected ? "bg-accent text-white" : "bg-bg-muted text-text-muted border border-border-light"}`}
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
+                          selected
+                            ? "bg-accent text-white"
+                            : "bg-bg-muted text-text-muted border border-border-light"
+                        }`}
                       >
                         {pack.icon}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm">{pack.name}</p>
                           <span
-                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${selected ? "text-accent bg-accent/10" : "text-text-muted bg-bg-muted"}`}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                              selected ? "text-accent bg-accent/10" : "text-text-muted bg-bg-muted"
+                            }`}
                           >
                             {pack.toolCount} tools
                           </span>
+                          {selected && fillStatus.total > 0 && (
+                            <span
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                fillStatus.ready
+                                  ? "text-green bg-green-bg"
+                                  : "text-orange bg-orange-bg"
+                              }`}
+                            >
+                              {fillStatus.ready && <CheckIcon size={10} />}
+                              {fillStatus.filled}/{fillStatus.total} required
+                            </span>
+                          )}
                           {selected && test && (
                             <span
-                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${test.message === "Testing..." ? "text-accent bg-accent/10" : test.ok ? "text-green bg-green-bg" : "text-red bg-red-bg"}`}
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                                test.message === "Testing..."
+                                  ? "text-accent bg-accent/10"
+                                  : test.ok
+                                    ? "text-green bg-green-bg"
+                                    : "text-red bg-red-bg"
+                              }`}
                             >
-                              {test.message}
+                              {test.message === "Testing..."
+                                ? "Testing..."
+                                : test.ok
+                                  ? "Verified"
+                                  : "Test failed"}
                             </span>
                           )}
                         </div>
                         <p className="text-xs text-text-dim mt-0.5">{pack.description}</p>
                       </div>
-                    </div>
-                    <div
-                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${selected ? "bg-accent" : "bg-bg-muted border border-border"}`}
+                    </button>
+                    <button
+                      onClick={() => togglePack(pack.id)}
+                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ml-3 ${
+                        selected ? "bg-accent" : "bg-bg-muted border border-border"
+                      }`}
                     >
                       <div
-                        className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${selected ? "left-6" : "left-1"}`}
+                        className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${
+                          selected ? "left-6" : "left-1"
+                        }`}
                       />
-                    </div>
-                  </button>
+                    </button>
+                  </div>
 
-                  {/* Credentials — shown when pack is selected */}
+                  {/* Credentials form — shown when selected */}
                   {selected && (
                     <div className="px-5 py-4 border-t border-border bg-bg">
-                      {/* Setup guide */}
                       <button
                         onClick={() => setExpandedGuide(guideOpen ? null : pack.id)}
                         className="flex items-center gap-1.5 text-xs text-accent hover:underline mb-4"
@@ -586,7 +845,6 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                         </div>
                       )}
 
-                      {/* Credential fields */}
                       <div className="space-y-4">
                         {pack.vars.map((v) => (
                           <div key={v.key}>
@@ -602,49 +860,55 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                                   <InfoIcon />
                                 </Tooltip>
                               )}
+                              {v.helpUrl && (
+                                <a
+                                  href={v.helpUrl}
+                                  target="_blank"
+                                  rel="noopener"
+                                  className="text-[11px] text-accent hover:underline ml-auto"
+                                >
+                                  Get it here <ExtIcon />
+                                </a>
+                              )}
                             </div>
-                            {v.helpUrl && (
-                              <a
-                                href={v.helpUrl}
-                                target="_blank"
-                                rel="noopener"
-                                className="text-xs text-accent hover:underline mb-1.5 inline-block"
-                              >
-                                Get it here <ExtIcon />
-                              </a>
-                            )}
-                            <input
-                              type={v.sensitive ? "password" : "text"}
-                              placeholder={v.placeholder || v.key}
+                            <CredentialInput
+                              v={v}
                               value={credentials[v.key] || ""}
-                              onChange={(e) => updateCredential(v.key, e.target.value)}
-                              className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              onChange={(val) => updateCredential(v.key, val)}
                             />
                           </div>
                         ))}
                       </div>
 
-                      {/* Test button + error detail */}
                       <div className="mt-4 flex items-center gap-3">
                         <button
                           onClick={() => testPack(pack.id)}
-                          disabled={!ready}
-                          className={`text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${ready ? "bg-bg-muted text-text-dim hover:bg-border-light hover:text-text" : "bg-bg-muted text-text-muted cursor-not-allowed"}`}
+                          disabled={!fillStatus.ready}
+                          className={`text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${
+                            fillStatus.ready
+                              ? "bg-bg-muted text-text-dim hover:bg-border-light hover:text-text"
+                              : "bg-bg-muted text-text-muted cursor-not-allowed"
+                          }`}
+                          title={
+                            fillStatus.ready
+                              ? "Verify credentials work"
+                              : "Fill all required fields first"
+                          }
                         >
                           Test connection
                         </button>
                         {test && !test.ok && test.detail && (
                           <button
                             onClick={() => setExpandedError(errorOpen ? null : pack.id)}
-                            className="text-xs text-text-muted hover:text-text"
+                            className="text-xs text-text-muted hover:text-text underline"
                           >
-                            {errorOpen ? "Hide details" : "Show error details"}
+                            {errorOpen ? "Hide error" : "Show error details"}
                           </button>
                         )}
                       </div>
 
                       {errorOpen && test && !test.ok && test.detail && (
-                        <div className="mt-3 bg-red-bg border border-red/10 rounded-md p-3 text-xs font-mono text-red">
+                        <div className="mt-3 bg-red-bg border border-red/20 rounded-md p-3 text-xs font-mono text-red break-all">
                           {test.detail}
                         </div>
                       )}
@@ -656,10 +920,15 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
           </div>
 
           <div className="mt-8 flex justify-between items-center">
-            <p className="text-xs text-text-muted">Admin pack (logs) is always active.</p>
+            <p className="text-xs text-text-muted">Logging is always enabled.</p>
             <button
               onClick={() => setStep(1)}
-              className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
+              disabled={activePacks.length === 0}
+              className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                activePacks.length > 0
+                  ? "bg-accent text-white hover:bg-accent/90"
+                  : "bg-bg-muted text-text-muted cursor-not-allowed"
+              }`}
             >
               Next &rarr;
             </button>
@@ -667,15 +936,14 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         </div>
       )}
 
-      {/* ─── Step 1: Settings ────────────────────────────────────── */}
+      {/* ═══ Step 1: Settings ══════════════════════════════════════ */}
       {step === 1 && (
         <div>
           <div className="mb-6">
             <h2 className="font-semibold text-lg">Personalize your instance</h2>
             <p className="text-sm text-text-dim mt-1">
               These settings customize how your MCP server formats dates and identifies itself. All
-              can be changed later in{" "}
-              <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code>.
+              can be changed later.
             </p>
           </div>
 
@@ -728,7 +996,6 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
             </div>
           </div>
 
-          {/* Auth Token */}
           <div className="border border-border rounded-lg p-5 mt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
@@ -739,18 +1006,19 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
               </div>
               <button
                 onClick={() => setShowToken(!showToken)}
-                className="text-xs text-accent hover:underline"
+                className="text-xs text-accent hover:underline flex items-center gap-1"
               >
+                <EyeIcon open={showToken} />
                 {showToken ? "Hide" : "Show"}
               </button>
             </div>
             <p className="text-xs text-text-muted mb-2">
               Auto-generated. You&rsquo;ll need this to connect your AI clients.
             </p>
-            <code className="text-xs font-mono bg-bg-muted px-3 py-2 rounded-md border border-border block overflow-x-auto select-all">
+            <code className="text-xs font-mono bg-bg-muted px-3 py-2 rounded-md border border-border block overflow-x-auto select-all break-all">
               {showToken
                 ? mcpToken
-                : `${mcpToken.slice(0, 8)}${"•".repeat(24)}${mcpToken.slice(-4)}`}
+                : `${mcpToken.slice(0, 8)}${"\u2022".repeat(24)}${mcpToken.slice(-4)}`}
             </code>
           </div>
 
@@ -771,7 +1039,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         </div>
       )}
 
-      {/* ─── Step 2: Save ────────────────────────────────────────── */}
+      {/* ═══ Step 2: Save ══════════════════════════════════════════ */}
       {step === 2 && (
         <div>
           <div className="mb-6">
@@ -783,14 +1051,13 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
             </p>
           </div>
 
-          {/* Summary */}
           <div className="border border-border rounded-lg p-5 mb-6">
             <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
               Configuration Summary
             </p>
             <div className="space-y-3">
               <div>
-                <p className="text-xs text-text-muted mb-1.5">Packs</p>
+                <p className="text-xs text-text-muted mb-1.5">Packs ({activePacks.length})</p>
                 <div className="flex flex-wrap gap-1.5">
                   {activePacks.map((p) => (
                     <span
@@ -823,19 +1090,23 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                 <p className="text-xs text-text-muted mb-1.5">Pack status</p>
                 <div className="space-y-1">
                   {activePacks.map((p) => {
-                    const ready = isPackReady(p);
+                    const status = packFillStatus(p);
                     const test = testResults[p.id];
                     const tested = test && test.ok;
                     return (
                       <div key={p.id} className="flex items-center gap-2 text-sm">
                         <div
-                          className={`w-1.5 h-1.5 rounded-full ${tested ? "bg-green" : ready ? "bg-accent" : "bg-orange"}`}
+                          className={`w-1.5 h-1.5 rounded-full ${tested ? "bg-green" : status.ready ? "bg-accent" : "bg-orange"}`}
                         />
                         <span className="text-text-dim">{p.name}</span>
                         <span
-                          className={`text-xs ${tested ? "text-green" : ready ? "text-accent" : "text-orange"}`}
+                          className={`text-xs ${tested ? "text-green" : status.ready ? "text-accent" : "text-orange"}`}
                         >
-                          {tested ? "verified" : ready ? "credentials set" : "missing credentials"}
+                          {tested
+                            ? "verified"
+                            : status.ready
+                              ? "credentials set"
+                              : `${status.filled}/${status.total} required`}
                         </span>
                       </div>
                     );
@@ -845,31 +1116,42 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
             </div>
           </div>
 
-          {/* Actions */}
           <div className="space-y-3">
             {!isVercel && (
               <button
                 onClick={saveEnv}
                 disabled={saving || saved}
-                className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${saved ? "bg-green-bg text-green border border-green/20" : "bg-accent text-white hover:bg-accent/90"} disabled:opacity-60`}
+                className={`w-full py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  saved
+                    ? "bg-green-bg text-green border border-green/20"
+                    : "bg-accent text-white hover:bg-accent/90"
+                } disabled:opacity-60`}
               >
-                {saved ? "\u2713 .env saved successfully" : saving ? "Saving..." : "Save .env file"}
+                {saved && <CheckIcon size={16} />}
+                {saved ? ".env saved successfully" : saving ? "Saving..." : "Save .env file"}
               </button>
             )}
             <button
               onClick={copyEnv}
-              className={`w-full py-3 rounded-lg text-sm font-medium border transition-colors ${copied ? "border-green/20 bg-green-bg text-green" : "border-border hover:bg-bg-muted text-text-dim"}`}
+              className={`w-full py-3 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${
+                copied
+                  ? "border-green/20 bg-green-bg text-green"
+                  : "border-border hover:bg-bg-muted text-text-dim"
+              }`}
             >
-              {copied ? "\u2713 Copied to clipboard!" : "Copy env vars to clipboard"}
+              {copied && <CheckIcon size={16} />}
+              {copied ? "Copied to clipboard!" : "Copy env vars to clipboard"}
             </button>
           </div>
 
-          {/* Next steps */}
           {saved && (
-            <div className="mt-6 border border-border rounded-lg p-5">
-              <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
-                Next Steps
-              </p>
+            <div className="mt-6 border border-green/20 bg-green-bg/30 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-full bg-green text-white flex items-center justify-center">
+                  <CheckIcon size={14} />
+                </div>
+                <p className="font-semibold text-sm text-green">You&rsquo;re all set!</p>
+              </div>
               <div className="space-y-3 text-sm">
                 <div className="flex gap-3">
                   <span className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-semibold shrink-0">
@@ -877,7 +1159,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   </span>
                   <div>
                     <p className="font-medium">Restart the dev server</p>
-                    <code className="text-xs font-mono bg-bg-muted px-2 py-1 rounded mt-1 inline-block">
+                    <code className="text-xs font-mono bg-bg px-2 py-1 rounded mt-1 inline-block">
                       npm run dev
                     </code>
                   </div>
@@ -888,7 +1170,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   </span>
                   <div>
                     <p className="font-medium">Connect your AI client</p>
-                    <div className="mt-1 bg-bg-muted rounded-md p-3 text-xs font-mono text-text-dim space-y-1">
+                    <div className="mt-1 bg-bg rounded-md p-3 text-xs font-mono text-text-dim space-y-1 border border-border">
                       <p>
                         Endpoint: <span className="text-text">http://localhost:3000/api/mcp</span>
                       </p>
@@ -905,7 +1187,7 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                   </span>
                   <div>
                     <p className="font-medium">Deploy to Vercel when ready</p>
-                    <code className="text-xs font-mono bg-bg-muted px-2 py-1 rounded mt-1 inline-block">
+                    <code className="text-xs font-mono bg-bg px-2 py-1 rounded mt-1 inline-block">
                       vercel
                     </code>
                   </div>
