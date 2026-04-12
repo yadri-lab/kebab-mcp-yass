@@ -2,13 +2,14 @@
 
 import { useState, useCallback } from "react";
 
-// ── Pack definitions (mirrors CLI) ──────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────
 
 interface PackVar {
   key: string;
   label: string;
   help?: string;
-  example?: string;
+  helpUrl?: string;
+  placeholder?: string;
   sensitive?: boolean;
   optional?: boolean;
 }
@@ -17,31 +18,45 @@ interface PackDef {
   id: string;
   name: string;
   description: string;
+  toolCount: number;
   icon: string;
+  setupGuide: string[];
   vars: PackVar[];
 }
+
+// ── Pack definitions ────────────────────────────────────────────────
 
 const PACKS: PackDef[] = [
   {
     id: "google",
     name: "Google Workspace",
-    description: "Gmail, Calendar, Contacts, Drive — 18 tools",
+    description: "Gmail, Calendar, Contacts, Drive",
+    toolCount: 18,
     icon: "G",
+    setupGuide: [
+      "Go to Google Cloud Console \u2192 APIs & Credentials",
+      "Create an OAuth 2.0 Client (Web application type)",
+      "Add your callback URL in Authorized redirect URIs",
+      "Copy the Client ID and Client Secret below",
+    ],
     vars: [
       {
         key: "GOOGLE_CLIENT_ID",
         label: "OAuth Client ID",
-        help: "https://console.cloud.google.com/apis/credentials",
+        helpUrl: "https://console.cloud.google.com/apis/credentials",
+        placeholder: "123456789-abc.apps.googleusercontent.com",
       },
       {
         key: "GOOGLE_CLIENT_SECRET",
         label: "OAuth Client Secret",
+        placeholder: "GOCSPX-...",
         sensitive: true,
       },
       {
         key: "GOOGLE_REFRESH_TOKEN",
         label: "OAuth Refresh Token",
-        help: "You can get this after deploy via /api/auth/google",
+        help: "You can generate this after deploy via the /api/auth/google flow.",
+        placeholder: "1//...",
         sensitive: true,
         optional: true,
       },
@@ -50,42 +65,60 @@ const PACKS: PackDef[] = [
   {
     id: "vault",
     name: "Obsidian Vault",
-    description: "Read, write, search, backlinks — 15 tools",
+    description: "Read, write, search, backlinks, web clipper",
+    toolCount: 15,
     icon: "V",
+    setupGuide: [
+      "Push your Obsidian vault to a GitHub repository",
+      "Generate a Personal Access Token with 'repo' scope",
+      "Enter the repo in owner/repo format (or paste the GitHub URL)",
+    ],
     vars: [
       {
         key: "GITHUB_PAT",
         label: "GitHub Personal Access Token",
-        help: "https://github.com/settings/tokens — needs 'repo' scope",
+        helpUrl: "https://github.com/settings/tokens",
+        help: "Needs 'repo' scope to read/write vault files.",
+        placeholder: "ghp_...",
         sensitive: true,
       },
       {
         key: "GITHUB_REPO",
         label: "GitHub Repository",
-        example: "owner/repo",
+        help: "You can paste the full URL \u2014 it will be converted automatically.",
+        placeholder: "yourname/your-vault",
       },
     ],
   },
   {
     id: "browser",
     name: "Browser Automation",
-    description: "Web browse, extract, act, LinkedIn — 4 tools",
+    description: "Web browse, extract, act, LinkedIn feed",
+    toolCount: 4,
     icon: "B",
+    setupGuide: [
+      "Create a Browserbase account for cloud browser sessions",
+      "Create an OpenRouter account for AI-powered extraction",
+      "Copy your API keys and project ID below",
+    ],
     vars: [
       {
         key: "BROWSERBASE_API_KEY",
         label: "Browserbase API Key",
-        help: "https://browserbase.com",
+        helpUrl: "https://browserbase.com",
+        placeholder: "bb_live_...",
         sensitive: true,
       },
       {
         key: "BROWSERBASE_PROJECT_ID",
         label: "Browserbase Project ID",
+        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
       },
       {
         key: "OPENROUTER_API_KEY",
         label: "OpenRouter API Key",
-        help: "https://openrouter.ai/keys",
+        helpUrl: "https://openrouter.ai/keys",
+        placeholder: "sk-or-v1-...",
         sensitive: true,
       },
     ],
@@ -93,13 +126,22 @@ const PACKS: PackDef[] = [
   {
     id: "slack",
     name: "Slack",
-    description: "Channels, messages, threads, profiles — 6 tools",
+    description: "Channels, messages, threads, profiles, search",
+    toolCount: 6,
     icon: "S",
+    setupGuide: [
+      "Create a Slack App at api.slack.com/apps",
+      "Add Bot Token Scopes: channels:history, channels:read, chat:write, search:read",
+      "Install the app to your workspace",
+      "Copy the Bot User OAuth Token below",
+    ],
     vars: [
       {
         key: "SLACK_BOT_TOKEN",
         label: "Bot User OAuth Token",
-        help: "https://api.slack.com/apps → OAuth & Permissions",
+        helpUrl: "https://api.slack.com/apps",
+        help: "Starts with xoxb-",
+        placeholder: "xoxb-...",
         sensitive: true,
       },
     ],
@@ -107,13 +149,21 @@ const PACKS: PackDef[] = [
   {
     id: "notion",
     name: "Notion",
-    description: "Search, read, create, update, query — 5 tools",
+    description: "Search, read, create, update, query databases",
+    toolCount: 5,
     icon: "N",
+    setupGuide: [
+      "Create an Internal Integration at notion.so/my-integrations",
+      "Share your target pages/databases with the integration",
+      "Copy the Internal Integration Token below",
+    ],
     vars: [
       {
         key: "NOTION_API_KEY",
         label: "Internal Integration Token",
-        help: "https://www.notion.so/my-integrations",
+        helpUrl: "https://www.notion.so/my-integrations",
+        help: "Starts with ntn_ or secret_",
+        placeholder: "ntn_...",
         sensitive: true,
       },
     ],
@@ -121,20 +171,32 @@ const PACKS: PackDef[] = [
   {
     id: "composio",
     name: "Composio",
-    description: "1000+ app integrations — 2 tools",
+    description: "1000+ app integrations (Jira, HubSpot, Salesforce...)",
+    toolCount: 2,
     icon: "C",
+    setupGuide: [
+      "Create a Composio account at composio.dev",
+      "Go to Settings to find your API key",
+      "Connect your apps in the Composio dashboard",
+    ],
     vars: [
       {
         key: "COMPOSIO_API_KEY",
         label: "API Key",
-        help: "https://composio.dev → Settings",
+        helpUrl: "https://composio.dev",
+        placeholder: "ck_...",
         sensitive: true,
       },
     ],
   },
 ];
 
-const STEPS = ["Packs", "Credentials", "Settings", "Save"];
+const STEPS = [
+  { label: "Packs", description: "Choose your tools" },
+  { label: "Credentials", description: "Connect your accounts" },
+  { label: "Settings", description: "Personalize" },
+  { label: "Save", description: "Finish setup" },
+];
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -154,6 +216,57 @@ function cleanCredential(value: string): string {
   return value.trim().replace(/^[A-Z_]+=/, "");
 }
 
+// ── Tooltip ─────────────────────────────────────────────────────────
+
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="relative group/tip inline-flex items-center">
+      {children}
+      <span className="invisible group-hover/tip:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-1.5 rounded-md bg-text text-bg text-xs whitespace-nowrap z-50 shadow-lg">
+        {text}
+        <span className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 bg-text -mt-1" />
+      </span>
+    </span>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-text-muted"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4m0-4h.01" />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="inline ml-1 opacity-50"
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6m4-3h6v6m-11 5L21 3" />
+    </svg>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 
 export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVercel: boolean }) {
@@ -168,9 +281,11 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>(
     {}
   );
+  const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   const mcpToken = useState(() => generateToken())[0];
 
@@ -183,9 +298,8 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
     });
   }, []);
 
-  const setCredential = useCallback((key: string, rawValue: string) => {
-    const value = cleanCredential(rawValue);
-    setCredentials((prev) => ({ ...prev, [key]: value }));
+  const updateCredential = useCallback((key: string, rawValue: string) => {
+    setCredentials((prev) => ({ ...prev, [key]: cleanCredential(rawValue) }));
   }, []);
 
   const testPack = useCallback(
@@ -194,29 +308,24 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         ...prev,
         [packId]: { ok: false, message: "Testing..." },
       }));
-
       try {
         const res = await fetch("/api/setup/test", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pack: packId,
-            credentials,
-          }),
+          body: JSON.stringify({ pack: packId, credentials }),
         });
         const data = await res.json();
         setTestResults((prev) => ({ ...prev, [packId]: data }));
       } catch {
         setTestResults((prev) => ({
           ...prev,
-          [packId]: { ok: false, message: "Test failed" },
+          [packId]: { ok: false, message: "Connection failed" },
         }));
       }
     },
     [credentials]
   );
 
-  // Build the full env vars object
   const buildEnvVars = useCallback(() => {
     const env: Record<string, string> = {
       MCP_AUTH_TOKEN: mcpToken,
@@ -224,17 +333,13 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
       MYMCP_LOCALE: settings.locale,
       MYMCP_DISPLAY_NAME: settings.displayName || "User",
     };
-
     for (const pack of PACKS) {
       if (!selectedPacks.has(pack.id)) continue;
       for (const v of pack.vars) {
         const val = credentials[v.key];
-        if (val) {
-          env[v.key] = v.key === "GITHUB_REPO" ? normalizeGitHubRepo(val) : val;
-        }
+        if (val) env[v.key] = v.key === "GITHUB_REPO" ? normalizeGitHubRepo(val) : val;
       }
     }
-
     return env;
   }, [mcpToken, settings, selectedPacks, credentials]);
 
@@ -257,46 +362,71 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
   const copyEnv = useCallback(() => {
     const env = buildEnvVars();
-    const text = Object.entries(env)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("\n");
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(
+      Object.entries(env)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n")
+    );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [buildEnvVars]);
 
   const activePacks = PACKS.filter((p) => selectedPacks.has(p.id));
+  const totalTools = activePacks.reduce((sum, p) => sum + p.toolCount, 0);
+
+  const isPackReady = (pack: PackDef) =>
+    pack.vars.filter((v) => !v.optional).every((v) => credentials[v.key]);
+
+  const canProceedFromCredentials = activePacks.length === 0 || activePacks.some(isPackReady);
 
   return (
     <div className="min-h-screen bg-bg">
       <div className="max-w-2xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold tracking-tight">MyMCP Setup</h1>
-          <p className="text-text-dim mt-2">
+          <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-2">
+            {firstTime ? "First-time setup" : "Configuration"}
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight">MyMCP Setup</h1>
+          <p className="text-text-dim mt-1.5 text-sm">
             {firstTime
-              ? "Configure your personal MCP server in a few steps."
+              ? "Welcome! Let\u2019s configure your personal MCP server step by step."
               : "Update your server configuration."}
           </p>
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          {STEPS.map((label, i) => (
-            <div key={label} className="flex items-center gap-2">
+        <div className="flex items-center justify-between mb-10 px-4">
+          {STEPS.map((s, i) => (
+            <div key={s.label} className="flex items-center gap-0 flex-1">
               <button
-                onClick={() => setStep(i)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  i === step
-                    ? "bg-accent text-white"
-                    : i < step
-                      ? "bg-green/10 text-green"
-                      : "bg-bg-muted text-text-muted"
+                onClick={() => i <= step + 1 && setStep(i)}
+                className={`flex flex-col items-center gap-1 transition-all ${
+                  i <= step + 1 ? "cursor-pointer" : "cursor-default"
                 }`}
               >
-                {i < step ? "✓" : i + 1} {label}
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                    i === step
+                      ? "bg-accent text-white"
+                      : i < step
+                        ? "bg-green text-white"
+                        : "bg-bg-muted text-text-muted"
+                  }`}
+                >
+                  {i < step ? "\u2713" : i + 1}
+                </div>
+                <span
+                  className={`text-[10px] font-medium ${i === step ? "text-accent" : i < step ? "text-green" : "text-text-muted"}`}
+                >
+                  {s.label}
+                </span>
               </button>
-              {i < STEPS.length - 1 && <div className="w-6 h-px bg-border" />}
+              {i < STEPS.length - 1 && (
+                <div
+                  className={`flex-1 h-px mx-2 mt-[-12px] ${i < step ? "bg-green" : "bg-border"}`}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -304,11 +434,26 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         {/* Step 0: Pack Selection */}
         {step === 0 && (
           <div>
-            <h2 className="text-lg font-semibold mb-1">Choose your tool packs</h2>
-            <p className="text-sm text-text-dim mb-6">
-              Toggle the packs you want to activate. You can always change this later.
-            </p>
-            <div className="space-y-3">
+            <div className="mb-6">
+              <h2 className="font-semibold text-lg">Choose your tool packs</h2>
+              <p className="text-sm text-text-dim mt-1">
+                Each pack connects to an external service and provides a set of MCP tools. Toggle on
+                the ones you want &mdash; you can always change this later in your{" "}
+                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code> file.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 mb-4 p-3 bg-bg-muted rounded-lg">
+              <div className="text-sm">
+                <span className="font-semibold text-accent">{activePacks.length}</span>
+                <span className="text-text-dim"> packs selected</span>
+                <span className="text-text-muted mx-2">&middot;</span>
+                <span className="font-semibold text-accent">{totalTools}</span>
+                <span className="text-text-dim"> tools</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               {PACKS.map((pack) => {
                 const selected = selectedPacks.has(pack.id);
                 return (
@@ -325,24 +470,37 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                       <div className="flex items-center gap-3">
                         <div
                           className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                            selected ? "bg-accent text-white" : "bg-bg-muted text-text-muted"
+                            selected
+                              ? "bg-accent text-white"
+                              : "bg-bg-muted text-text-muted border border-border-light"
                           }`}
                         >
                           {pack.icon}
                         </div>
                         <div>
-                          <p className="font-medium">{pack.name}</p>
-                          <p className="text-sm text-text-dim">{pack.description}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm">{pack.name}</p>
+                            <span
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                                selected
+                                  ? "text-accent bg-accent/10"
+                                  : "text-text-muted bg-bg-muted"
+                              }`}
+                            >
+                              {pack.toolCount} tools
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-dim mt-0.5">{pack.description}</p>
                         </div>
                       </div>
                       <div
-                        className={`w-10 h-6 rounded-full transition-colors relative ${
-                          selected ? "bg-accent" : "bg-bg-muted"
+                        className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+                          selected ? "bg-accent" : "bg-bg-muted border border-border"
                         }`}
                       >
                         <div
-                          className={`w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${
-                            selected ? "left-5" : "left-1"
+                          className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${
+                            selected ? "left-6" : "left-1"
                           }`}
                         />
                       </div>
@@ -351,12 +509,16 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
                 );
               })}
             </div>
-            <div className="mt-8 flex justify-end">
+
+            <div className="mt-8 flex justify-between items-center">
+              <p className="text-xs text-text-muted">
+                Admin pack (logs) is always active &mdash; no config needed.
+              </p>
               <button
                 onClick={() => setStep(1)}
-                className="bg-accent text-white px-6 py-2.5 rounded-lg font-medium hover:bg-accent/90 transition-colors"
+                className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
               >
-                Next: Credentials →
+                Next &rarr;
               </button>
             </div>
           </div>
@@ -365,165 +527,274 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         {/* Step 1: Credentials */}
         {step === 1 && (
           <div>
-            <h2 className="text-lg font-semibold mb-1">Enter your credentials</h2>
-            <p className="text-sm text-text-dim mb-6">
-              Paste just the value — the KEY= prefix is stripped automatically. Optional fields can
-              be left empty.
-            </p>
+            <div className="mb-6">
+              <h2 className="font-semibold text-lg">Connect your accounts</h2>
+              <p className="text-sm text-text-dim mt-1">
+                For each pack, you&rsquo;ll need API keys from the corresponding service. Click the
+                links to get them. If you paste a{" "}
+                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">KEY=value</code> line, the
+                prefix is stripped automatically.
+              </p>
+            </div>
 
             {activePacks.length === 0 ? (
-              <p className="text-text-dim text-center py-8">
-                No packs selected. Go back to select at least one.
-              </p>
+              <div className="text-center py-12 border border-border rounded-lg">
+                <p className="text-text-dim">No packs selected.</p>
+                <button
+                  onClick={() => setStep(0)}
+                  className="text-accent text-sm hover:underline mt-2"
+                >
+                  &larr; Go back to select packs
+                </button>
+              </div>
             ) : (
-              <div className="space-y-8">
-                {activePacks.map((pack) => (
-                  <div key={pack.id} className="border border-border rounded-lg p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <span className="w-7 h-7 rounded bg-accent text-white flex items-center justify-center text-xs font-bold">
-                          {pack.icon}
-                        </span>
-                        {pack.name}
-                      </h3>
-                      {testResults[pack.id] && (
-                        <span
-                          className={`text-xs font-medium px-2 py-1 rounded-full ${
-                            testResults[pack.id].ok
-                              ? "text-green bg-green-bg"
-                              : "text-red bg-red-bg"
+              <div className="space-y-6">
+                {activePacks.map((pack) => {
+                  const ready = isPackReady(pack);
+                  const test = testResults[pack.id];
+                  const guideOpen = expandedGuide === pack.id;
+
+                  return (
+                    <div key={pack.id} className="border border-border rounded-lg overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-4 bg-bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center text-xs font-bold">
+                            {pack.icon}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm">{pack.name}</p>
+                            <p className="text-xs text-text-muted">{pack.toolCount} tools</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {test && (
+                            <span
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                                test.message === "Testing..."
+                                  ? "text-accent bg-accent/10"
+                                  : test.ok
+                                    ? "text-green bg-green-bg"
+                                    : "text-red bg-red-bg"
+                              }`}
+                            >
+                              {test.message}
+                            </span>
+                          )}
+                          {!test && ready && (
+                            <span className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full">
+                              Ready
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4">
+                        <button
+                          onClick={() => setExpandedGuide(guideOpen ? null : pack.id)}
+                          className="flex items-center gap-1.5 text-xs text-accent hover:underline mb-4"
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`transition-transform ${guideOpen ? "rotate-90" : ""}`}
+                          >
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                          How to get these credentials
+                        </button>
+
+                        {guideOpen && (
+                          <div className="bg-bg-muted rounded-md p-4 mb-4 text-sm text-text-dim space-y-2">
+                            {pack.setupGuide.map((line, i) => (
+                              <div key={i} className="flex gap-2">
+                                <span className="text-accent font-semibold shrink-0">{i + 1}.</span>
+                                <span>{line}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="space-y-4">
+                          {pack.vars.map((v) => (
+                            <div key={v.key}>
+                              <div className="flex items-center gap-1.5 mb-1.5">
+                                <label className="text-sm font-medium">{v.label}</label>
+                                {v.optional && (
+                                  <span className="text-[11px] text-text-muted bg-bg-muted px-1.5 py-0.5 rounded">
+                                    optional
+                                  </span>
+                                )}
+                                {v.help && (
+                                  <Tooltip text={v.help}>
+                                    <InfoIcon />
+                                  </Tooltip>
+                                )}
+                              </div>
+                              {v.helpUrl && (
+                                <a
+                                  href={v.helpUrl}
+                                  target="_blank"
+                                  rel="noopener"
+                                  className="text-xs text-accent hover:underline mb-1.5 inline-block"
+                                >
+                                  Get it here <ExternalLinkIcon />
+                                </a>
+                              )}
+                              <input
+                                type={v.sensitive ? "password" : "text"}
+                                placeholder={v.placeholder || v.key}
+                                value={credentials[v.key] || ""}
+                                onChange={(e) => updateCredential(v.key, e.target.value)}
+                                className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          onClick={() => testPack(pack.id)}
+                          disabled={!ready}
+                          className={`mt-4 text-sm font-medium px-4 py-1.5 rounded-md transition-colors ${
+                            ready
+                              ? "bg-bg-muted text-text-dim hover:bg-border-light hover:text-text"
+                              : "bg-bg-muted text-text-muted cursor-not-allowed"
                           }`}
                         >
-                          {testResults[pack.id].message}
-                        </span>
-                      )}
+                          Test connection
+                        </button>
+                      </div>
                     </div>
-                    <div className="space-y-4">
-                      {pack.vars.map((v) => (
-                        <div key={v.key}>
-                          <label className="block text-sm font-medium mb-1">
-                            {v.label}
-                            {v.optional && (
-                              <span className="text-text-muted font-normal ml-1">(optional)</span>
-                            )}
-                          </label>
-                          {v.help && (
-                            <a
-                              href={v.help.startsWith("http") ? v.help : undefined}
-                              target="_blank"
-                              rel="noopener"
-                              className="text-xs text-accent hover:underline mb-1 block"
-                            >
-                              {v.help}
-                            </a>
-                          )}
-                          <input
-                            type={v.sensitive ? "password" : "text"}
-                            placeholder={v.example || v.key}
-                            value={credentials[v.key] || ""}
-                            onChange={(e) => setCredential(v.key, e.target.value)}
-                            className="w-full border border-border rounded-md px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent font-mono"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => testPack(pack.id)}
-                      className="mt-4 text-sm text-accent hover:underline font-medium"
-                    >
-                      Test connection
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             <div className="mt-8 flex justify-between">
               <button
                 onClick={() => setStep(0)}
-                className="text-text-dim hover:text-text px-4 py-2.5 text-sm"
+                className="text-text-dim hover:text-text text-sm px-4 py-2.5"
               >
-                ← Back
+                &larr; Packs
               </button>
               <button
                 onClick={() => setStep(2)}
-                className="bg-accent text-white px-6 py-2.5 rounded-lg font-medium hover:bg-accent/90 transition-colors"
+                disabled={!canProceedFromCredentials}
+                className={`px-6 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                  canProceedFromCredentials
+                    ? "bg-accent text-white hover:bg-accent/90"
+                    : "bg-bg-muted text-text-muted cursor-not-allowed"
+                }`}
               >
-                Next: Settings →
+                Next &rarr;
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Instance Settings */}
+        {/* Step 2: Settings */}
         {step === 2 && (
           <div>
-            <h2 className="text-lg font-semibold mb-1">Instance settings</h2>
-            <p className="text-sm text-text-dim mb-6">
-              These personalize your MCP server. All are optional.
-            </p>
+            <div className="mb-6">
+              <h2 className="font-semibold text-lg">Personalize your instance</h2>
+              <p className="text-sm text-text-dim mt-1">
+                These settings customize how your MCP server formats dates, numbers, and identifies
+                itself. All can be changed later in your{" "}
+                <code className="bg-bg-muted px-1 py-0.5 rounded text-xs">.env</code> file.
+              </p>
+            </div>
 
-            <div className="space-y-4">
+            <div className="border border-border rounded-lg p-5 space-y-5">
               <div>
-                <label className="block text-sm font-medium mb-1">Display Name</label>
+                <label className="text-sm font-medium mb-1.5 block">Display Name</label>
                 <input
                   type="text"
-                  placeholder="Your name"
+                  placeholder="Your name (shown in dashboard)"
                   value={settings.displayName}
                   onChange={(e) => setSettings((s) => ({ ...s, displayName: e.target.value }))}
-                  className="w-full border border-border rounded-md px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                  className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Timezone</label>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <label className="text-sm font-medium">Timezone</label>
+                    <Tooltip text="Used for formatting dates in tool responses. Use IANA timezone format.">
+                      <InfoIcon />
+                    </Tooltip>
+                  </div>
                   <input
                     type="text"
                     placeholder="Europe/Paris"
                     value={settings.timezone}
                     onChange={(e) => setSettings((s) => ({ ...s, timezone: e.target.value }))}
-                    className="w-full border border-border rounded-md px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                    className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
                   />
                   <p className="text-xs text-text-muted mt-1">
-                    IANA format: Europe/Paris, America/New_York, Asia/Tokyo
+                    Europe/Paris, America/New_York, Asia/Tokyo...
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Locale</label>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <label className="text-sm font-medium">Locale</label>
+                    <Tooltip text="Used for formatting numbers and currencies in tool responses.">
+                      <InfoIcon />
+                    </Tooltip>
+                  </div>
                   <input
                     type="text"
                     placeholder="fr-FR"
                     value={settings.locale}
                     onChange={(e) => setSettings((s) => ({ ...s, locale: e.target.value }))}
-                    className="w-full border border-border rounded-md px-3 py-2 text-sm bg-bg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                    className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
                   />
-                  <p className="text-xs text-text-muted mt-1">Examples: fr-FR, en-US, de-DE</p>
+                  <p className="text-xs text-text-muted mt-1">fr-FR, en-US, de-DE...</p>
                 </div>
               </div>
+            </div>
 
-              <div className="mt-4 p-4 bg-bg-muted rounded-lg">
-                <p className="text-sm font-medium mb-1">Auth Token</p>
-                <p className="text-xs text-text-dim mb-2">
-                  Auto-generated. Use this to connect your AI clients.
-                </p>
-                <code className="text-xs font-mono bg-bg px-2 py-1 rounded border border-border select-all block overflow-x-auto">
-                  {mcpToken}
-                </code>
+            <div className="border border-border rounded-lg p-5 mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium">Auth Token</p>
+                  <Tooltip text="This token secures your MCP endpoint. You'll use it to connect Claude, ChatGPT, or any MCP client.">
+                    <InfoIcon />
+                  </Tooltip>
+                </div>
+                <button
+                  onClick={() => setShowToken(!showToken)}
+                  className="text-xs text-accent hover:underline"
+                >
+                  {showToken ? "Hide" : "Show"}
+                </button>
               </div>
+              <p className="text-xs text-text-muted mb-2">
+                Auto-generated. You&rsquo;ll need this to connect your AI clients.
+              </p>
+              <code className="text-xs font-mono bg-bg-muted px-3 py-2 rounded-md border border-border block overflow-x-auto select-all">
+                {showToken
+                  ? mcpToken
+                  : `${mcpToken.slice(0, 8)}${"•".repeat(24)}${mcpToken.slice(-4)}`}
+              </code>
             </div>
 
             <div className="mt-8 flex justify-between">
               <button
                 onClick={() => setStep(1)}
-                className="text-text-dim hover:text-text px-4 py-2.5 text-sm"
+                className="text-text-dim hover:text-text text-sm px-4 py-2.5"
               >
-                ← Back
+                &larr; Credentials
               </button>
               <button
                 onClick={() => setStep(3)}
-                className="bg-accent text-white px-6 py-2.5 rounded-lg font-medium hover:bg-accent/90 transition-colors"
+                className="bg-accent text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-accent/90 transition-colors"
               >
-                Next: Save →
+                Next &rarr;
               </button>
             </div>
           </div>
@@ -532,58 +803,85 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
         {/* Step 3: Save */}
         {step === 3 && (
           <div>
-            <h2 className="text-lg font-semibold mb-1">Save & Deploy</h2>
-            <p className="text-sm text-text-dim mb-6">
-              {isVercel
-                ? "Copy your environment variables and paste them in the Vercel dashboard."
-                : "Save your configuration and restart the dev server."}
-            </p>
+            <div className="mb-6">
+              <h2 className="font-semibold text-lg">Save & Deploy</h2>
+              <p className="text-sm text-text-dim mt-1">
+                {isVercel
+                  ? "Copy your environment variables and add them in the Vercel dashboard."
+                  : "Save your .env file, then restart the dev server to apply."}
+              </p>
+            </div>
 
-            {/* Recap */}
             <div className="border border-border rounded-lg p-5 mb-6">
-              <h3 className="font-medium mb-3">Configuration summary</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Packs</span>
-                  <span className="font-medium">
-                    {activePacks.map((p) => p.name).join(", ") || "None"}
-                  </span>
+              <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
+                Configuration Summary
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-text-muted mb-1.5">Packs</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activePacks.map((p) => (
+                      <span
+                        key={p.id}
+                        className="text-[11px] font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-full"
+                      >
+                        {p.name} ({p.toolCount})
+                      </span>
+                    ))}
+                    {activePacks.length === 0 && (
+                      <span className="text-[11px] text-text-muted">None selected</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Timezone</span>
-                  <span className="font-mono">{settings.timezone}</span>
+                <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border">
+                  <div>
+                    <p className="text-xs text-text-muted">Display Name</p>
+                    <p className="text-sm font-medium">{settings.displayName || "User"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted">Timezone</p>
+                    <p className="text-sm font-mono">{settings.timezone}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted">Locale</p>
+                    <p className="text-sm font-mono">{settings.locale}</p>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Locale</span>
-                  <span className="font-mono">{settings.locale}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Display Name</span>
-                  <span>{settings.displayName || "User"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Auth Token</span>
-                  <span className="font-mono text-xs">
-                    {mcpToken.slice(0, 8)}...{mcpToken.slice(-4)}
-                  </span>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-text-muted mb-1.5">Pack status</p>
+                  <div className="space-y-1">
+                    {activePacks.map((p) => {
+                      const ready = isPackReady(p);
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 text-sm">
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full ${ready ? "bg-green" : "bg-orange"}`}
+                          />
+                          <span className="text-text-dim">{p.name}</span>
+                          <span className={`text-xs ${ready ? "text-green" : "text-orange"}`}>
+                            {ready ? "ready" : "missing credentials"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Actions */}
             <div className="space-y-3">
               {!isVercel && (
                 <button
                   onClick={saveEnv}
                   disabled={saving || saved}
-                  className={`w-full py-3 rounded-lg font-medium text-sm transition-colors ${
+                  className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${
                     saved
-                      ? "bg-green/10 text-green border border-green/20"
+                      ? "bg-green-bg text-green border border-green/20"
                       : "bg-accent text-white hover:bg-accent/90"
-                  } disabled:opacity-50`}
+                  } disabled:opacity-60`}
                 >
                   {saved
-                    ? "✓ .env saved — restart dev server to apply"
+                    ? "\u2713 .env saved successfully"
                     : saving
                       ? "Saving..."
                       : "Save .env file"}
@@ -592,48 +890,71 @@ export function SetupWizard({ firstTime, isVercel }: { firstTime: boolean; isVer
 
               <button
                 onClick={copyEnv}
-                className="w-full py-3 rounded-lg font-medium text-sm border border-border hover:bg-bg-muted transition-colors"
+                className={`w-full py-3 rounded-lg text-sm font-medium border transition-colors ${
+                  copied
+                    ? "border-green/20 bg-green-bg text-green"
+                    : "border-border hover:bg-bg-muted text-text-dim"
+                }`}
               >
-                {copied ? "✓ Copied!" : "Copy all env vars to clipboard"}
+                {copied ? "\u2713 Copied to clipboard!" : "Copy env vars to clipboard"}
               </button>
             </div>
 
-            {/* Connection instructions */}
             {saved && (
-              <div className="mt-8 p-5 bg-bg-muted rounded-lg">
-                <h3 className="font-medium mb-3">Next steps</h3>
-                <ol className="text-sm text-text-dim space-y-2 list-decimal pl-4">
-                  <li>
-                    Restart the dev server:{" "}
-                    <code className="bg-bg px-1.5 py-0.5 rounded text-xs font-mono">
-                      npm run dev
-                    </code>
-                  </li>
-                  <li>Visit the dashboard to verify everything works</li>
-                  <li>
-                    Connect your AI client with:
-                    <br />
-                    <code className="bg-bg px-1.5 py-0.5 rounded text-xs font-mono mt-1 block">
-                      Endpoint: http://localhost:3000/api/mcp
-                    </code>
-                    <code className="bg-bg px-1.5 py-0.5 rounded text-xs font-mono mt-1 block">
-                      Token: {mcpToken.slice(0, 12)}...
-                    </code>
-                  </li>
-                  <li>
-                    When ready, deploy:{" "}
-                    <code className="bg-bg px-1.5 py-0.5 rounded text-xs font-mono">vercel</code>
-                  </li>
-                </ol>
+              <div className="mt-6 border border-border rounded-lg p-5">
+                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.1em] mb-3">
+                  Next Steps
+                </p>
+                <div className="space-y-3 text-sm">
+                  <div className="flex gap-3">
+                    <span className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                      1
+                    </span>
+                    <div>
+                      <p className="font-medium">Restart the dev server</p>
+                      <code className="text-xs font-mono bg-bg-muted px-2 py-1 rounded mt-1 inline-block">
+                        npm run dev
+                      </code>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                      2
+                    </span>
+                    <div>
+                      <p className="font-medium">Connect your AI client</p>
+                      <div className="mt-1 bg-bg-muted rounded-md p-3 text-xs font-mono text-text-dim space-y-1">
+                        <p>
+                          Endpoint: <span className="text-text">http://localhost:3000/api/mcp</span>
+                        </p>
+                        <p>
+                          Token:{" "}
+                          <span className="text-text select-all">{mcpToken.slice(0, 16)}...</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                      3
+                    </span>
+                    <div>
+                      <p className="font-medium">Deploy to Vercel when ready</p>
+                      <code className="text-xs font-mono bg-bg-muted px-2 py-1 rounded mt-1 inline-block">
+                        vercel
+                      </code>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
             <div className="mt-8 flex justify-start">
               <button
                 onClick={() => setStep(2)}
-                className="text-text-dim hover:text-text px-4 py-2.5 text-sm"
+                className="text-text-dim hover:text-text text-sm px-4 py-2.5"
               >
-                ← Back
+                &larr; Settings
               </button>
             </div>
           </div>
