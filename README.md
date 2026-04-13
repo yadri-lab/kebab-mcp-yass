@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">MyMCP</h1>
-  <p align="center"><strong>Your personal AI backend. One endpoint. 59 tools. Deploy in 5 minutes.</strong></p>
+  <p align="center"><strong>Your personal AI backend. One endpoint. 65 tools. Deploy in 5 minutes.</strong></p>
 </p>
 
 <p align="center">
@@ -54,12 +54,12 @@ I built MyMCP because I wanted a single MCP server that works everywhere (Claude
 
 Most MCP setups require running 5 separate servers, each with their own config. Or paying for a hosted platform that controls your data.
 
-MyMCP gives you **one server, one endpoint, 59 tools** — deployed on Vercel's free tier (or Docker). You own everything.
+MyMCP gives you **one server, one endpoint, 65 tools** — deployed on Vercel's free tier (or Docker). You own everything.
 
 | | MyMCP | Separate MCP servers | Hosted platforms |
 |---|---|---|---|
 | **Setup** | Fork + env vars + deploy | 5 repos, 5 configs | Sign up + monthly fee |
-| **Tools** | 59 pre-built | Build your own | 1000s (but vendor lock-in) |
+| **Tools** | 65 pre-built | Build your own | 1000s (but vendor lock-in) |
 | **Endpoint** | 1 | 5+ | 1 (their server) |
 | **Cost** | Free (Vercel free tier) | Free but complex | $0-80/month |
 | **Data** | Your Vercel, your keys | Your machines | Their servers |
@@ -271,7 +271,7 @@ Your `.env` is never touched — all customization lives in env vars, not in cod
 
 ## Tool Packs
 
-MyMCP ships **59 production-ready tools** organized in 9 packs. Each pack activates automatically when its credentials are present in env vars.
+MyMCP ships **65 production-ready tools** organized in 10 packs. Each pack activates automatically when its credentials are present in env vars.
 
 ### Google Workspace — 18 tools
 
@@ -356,6 +356,19 @@ LinkedIn scraping and general actor execution via the Apify platform.
 | `read_paywalled` | Read paywalled articles via a reader service (with hard-bypass fallback) |
 
 No credentials required — always active.
+
+### Linear — 6 tools
+
+| Tool | What it does |
+|------|-------------|
+| `linear_list_issues` | List issues with team, project, state, and assignee filters |
+| `linear_get_issue` | Get full issue details by identifier (e.g. ENG-123), including comments |
+| `linear_search_issues` | Full-text search across all issues |
+| `linear_list_projects` | List projects with team filter, progress, and dates |
+| `linear_create_issue` | Create an issue with name resolution for team, state, assignee, and labels |
+| `linear_update_issue` | Update an issue with same name resolution layer |
+
+**Requires:** `LINEAR_API_KEY` (Settings → API → Personal API keys in Linear)
 
 ### Composio — 2 tools + 1000s of integrations
 
