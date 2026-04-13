@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import type { Skill } from "../store";
 import { replaceSkill } from "../store";
+import { fetchWithByteCap } from "@/core/fetch-utils";
 
 /**
  * Remote fetcher for skills that point at a GitHub raw / Gist / https URL.
@@ -119,26 +120,28 @@ export async function fetchRemote(url: string): Promise<FetchRemoteResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent": "MyMCP-Skills/1.0",
-        // Optimistic byte cap — many servers honor Range and save bandwidth.
-        // We still enforce MAX_BYTES below as defense in depth.
-        Range: `bytes=0-${MAX_BYTES - 1}`,
+    const result = await fetchWithByteCap(
+      url,
+      {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: {
+          "User-Agent": "MyMCP-Skills/1.0",
+          // Optimistic byte cap — many servers honor Range and save bandwidth.
+          // We still enforce MAX_BYTES via the streaming cap below.
+          Range: `bytes=0-${MAX_BYTES - 1}`,
+        },
       },
-    });
+      MAX_BYTES
+    );
     // 206 = partial content (Range honored); 200 = full body (Range ignored).
-    if (!res.ok && res.status !== 206) {
-      return { ok: false, error: `HTTP ${res.status}` };
+    if (result.status !== 200 && result.status !== 206) {
+      return { ok: false, error: `HTTP ${result.status}` };
     }
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > MAX_BYTES) {
+    if (result.truncated) {
       return { ok: false, error: `response exceeds ${MAX_BYTES} bytes` };
     }
-    const text = new TextDecoder("utf-8").decode(buf);
-    return { ok: true, content: text };
+    return { ok: true, content: result.text };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
