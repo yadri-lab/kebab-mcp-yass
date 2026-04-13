@@ -6,6 +6,15 @@ import { ConfigTabs } from "./tabs";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_META: Record<string, { title: string; subtitle: string }> = {
+  overview: { title: "Overview", subtitle: "Live status of your MCP server." },
+  packs: { title: "Packs", subtitle: "Enable, configure, and test tool packs." },
+  tools: { title: "Tools", subtitle: "Browse and run any registered tool." },
+  skills: { title: "Skills", subtitle: "Create and manage user-defined skills." },
+  logs: { title: "Logs", subtitle: "Recent tool invocations." },
+  settings: { title: "Settings", subtitle: "Server-wide configuration." },
+};
+
 export default async function ConfigPage({
   searchParams,
 }: {
@@ -13,6 +22,7 @@ export default async function ConfigPage({
 }) {
   const params = await searchParams;
   const tab = params.tab || "overview";
+  const meta = PAGE_META[tab] || PAGE_META.overview;
   const config = getInstanceConfig();
 
   const registry = resolveRegistry();
@@ -43,11 +53,7 @@ export default async function ConfigPage({
   }));
 
   return (
-    <AppShell
-      title="Configuration"
-      subtitle="Manage packs, tools, settings, and logs — live."
-      displayName={config.displayName}
-    >
+    <AppShell title={meta.title} subtitle={meta.subtitle} displayName={config.displayName}>
       <ConfigTabs
         activeTab={tab}
         packs={packSummaries}

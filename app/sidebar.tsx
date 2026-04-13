@@ -1,20 +1,17 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import pkg from "../package.json";
 
 const VERSION = `v${pkg.version}`;
 
 const NAV = [
-  { section: "OVERVIEW", items: [{ href: "/config", label: "Dashboard", icon: "grid" }] },
-  {
-    section: "CONFIGURATION",
-    items: [
-      { href: "/config?tab=packs", label: "Packs", icon: "package" },
-      { href: "/config?tab=tools", label: "Tools", icon: "terminal" },
-      { href: "/config?tab=settings", label: "Settings", icon: "settings" },
-    ],
-  },
+  { href: "/config", tab: "overview", label: "Overview", icon: "grid" },
+  { href: "/config?tab=packs", tab: "packs", label: "Packs", icon: "package" },
+  { href: "/config?tab=tools", tab: "tools", label: "Tools", icon: "terminal" },
+  { href: "/config?tab=skills", tab: "skills", label: "Skills", icon: "sparkles" },
+  { href: "/config?tab=logs", tab: "logs", label: "Logs", icon: "activity" },
+  { href: "/config?tab=settings", tab: "settings", label: "Settings", icon: "settings" },
 ];
 
 const ICONS: Record<string, string> = {
@@ -22,6 +19,9 @@ const ICONS: Record<string, string> = {
   package:
     "m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12",
   terminal: "m4 17 6-6-6-6m8 14h8",
+  sparkles:
+    "M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8",
+  activity: "M22 12h-4l-3 9L9 3l-3 9H2",
   settings:
     "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
 };
@@ -61,6 +61,8 @@ export function Sidebar({
   setupMode?: boolean;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") || "overview";
   const orgInitials = getInitials(serverName);
   const userInitials = getInitials(displayName);
 
@@ -85,42 +87,35 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 space-y-5 overflow-y-auto">
-        {NAV.map((section) => (
-          <div key={section.section}>
-            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.12em] px-2 mb-1.5">
-              {section.section}
-            </p>
-            <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const active = pathname === item.href;
-                const disabled = setupMode && item.href !== "/setup";
-                return (
-                  <li key={item.href}>
-                    <a
-                      href={disabled ? undefined : item.href}
-                      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                        active
-                          ? "bg-accent/10 text-accent font-medium"
-                          : disabled
-                            ? "text-text-muted cursor-not-allowed opacity-50"
-                            : "text-text-dim hover:bg-bg-muted hover:text-text"
-                      }`}
-                    >
-                      <Icon name={item.icon} />
-                      <span className="flex-1">{item.label}</span>
-                      {disabled && (
-                        <span className="text-[9px] bg-bg-muted text-text-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
-                          Locked
-                        </span>
-                      )}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+      <nav className="flex-1 px-4 overflow-y-auto">
+        <ul className="space-y-0.5">
+          {NAV.map((item) => {
+            const active = pathname === "/config" && currentTab === item.tab;
+            const disabled = setupMode && pathname !== "/setup";
+            return (
+              <li key={item.href}>
+                <a
+                  href={disabled ? undefined : item.href}
+                  className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                    active
+                      ? "bg-accent/10 text-accent font-medium"
+                      : disabled
+                        ? "text-text-muted cursor-not-allowed opacity-50"
+                        : "text-text-dim hover:bg-bg-muted hover:text-text"
+                  }`}
+                >
+                  <Icon name={item.icon} />
+                  <span className="flex-1">{item.label}</span>
+                  {disabled && (
+                    <span className="text-[9px] bg-bg-muted text-text-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
+                      Locked
+                    </span>
+                  )}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
       {/* Footer: user profile */}

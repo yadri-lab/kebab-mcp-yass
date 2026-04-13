@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { ToolLog } from "@/core/logging";
 import type { InstanceConfig } from "@/core/types";
 import { OverviewTab } from "./tabs/overview";
@@ -22,15 +21,6 @@ export interface PackSummary {
   tools: { name: string; description: string; deprecated?: string; destructive?: boolean }[];
 }
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "packs", label: "Packs" },
-  { id: "tools", label: "Tools" },
-  { id: "skills", label: "Skills" },
-  { id: "logs", label: "Logs" },
-  { id: "settings", label: "Settings" },
-];
-
 export function ConfigTabs({
   activeTab,
   packs,
@@ -48,38 +38,20 @@ export function ConfigTabs({
   baseUrl: string;
   config: InstanceConfig;
 }) {
-  const [tab, setTab] = useState(activeTab);
-
-  const changeTab = (id: string) => {
-    setTab(id);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", id);
-    window.history.replaceState({}, "", url.toString());
-  };
-
-  return (
-    <div>
-      {/* Tab bar */}
-      <div className="border-b border-border mb-6">
-        <div className="flex gap-1 overflow-x-auto">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => changeTab(t.id)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                tab === t.id
-                  ? "border-accent text-accent"
-                  : "border-transparent text-text-dim hover:text-text hover:border-border-light"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      {tab === "overview" && (
+  switch (activeTab) {
+    case "packs":
+      return <PacksTab packs={packs} />;
+    case "tools":
+      return <ToolsTab packs={packs} />;
+    case "skills":
+      return <SkillsTab />;
+    case "logs":
+      return <LogsTab initialLogs={logs} />;
+    case "settings":
+      return <SettingsTab config={config} />;
+    case "overview":
+    default:
+      return (
         <OverviewTab
           baseUrl={baseUrl}
           totalTools={totalTools}
@@ -88,12 +60,6 @@ export function ConfigTabs({
           logs={logs}
           config={config}
         />
-      )}
-      {tab === "packs" && <PacksTab packs={packs} />}
-      {tab === "tools" && <ToolsTab packs={packs} />}
-      {tab === "skills" && <SkillsTab />}
-      {tab === "logs" && <LogsTab initialLogs={logs} />}
-      {tab === "settings" && <SettingsTab config={config} />}
-    </div>
-  );
+      );
+  }
 }
