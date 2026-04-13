@@ -250,24 +250,53 @@ Use the Streamable HTTP endpoint:
 
 ### Staying up to date
 
-MyMCP is a [template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository). Your copy is standalone — it won't auto-update. To pull in new tools and bug fixes:
+MyMCP is a [template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository). Your copy is standalone — it won't auto-update. Three ways to pull new tools and fixes, from zero-effort to fully manual:
+
+#### 1. Automatic — updates on every `npm run dev` (default)
+
+Every time you start the dev server, a `predev` hook checks for upstream changes and fast-forwards your working copy silently. You'll see one of these lines in the terminal before Next.js starts:
+
+```
+[mymcp update] up to date
+[mymcp update] pulled 3 commits from upstream/main
+[mymcp update] skipped (uncommitted changes — commit/stash first)
+```
+
+The check is safe by design: it **never** rewrites local work. If you have uncommitted changes, diverged commits, or no remote configured, it skips silently and lets `next dev` start normally.
+
+To opt out permanently (e.g. on a CI/CD environment), set `MYMCP_SKIP_UPDATE_CHECK=1` in your `.env`. The check is also auto-skipped on Vercel and CI platforms.
+
+#### 2. In-dashboard — "Update now" button in `/config → Overview`
+
+The dashboard polls GitHub when you open it. When new commits land, you'll see an orange banner:
+
+> **3 updates available**
+> New commits on upstream/main (latest: `abc1234`) — fast-forward safe.
+> **[Update now]**
+
+Clicking **Update now** runs the same fast-forward merge as option 1 without touching the terminal. After the merge, Next.js hot-reloads most changes on the fly — only structural changes (dependency bumps, new pack manifests) require a dev server restart.
+
+This is the recommended flow if you keep the dashboard open while working.
+
+#### 3. Manual — `npm run update`
+
+The classic CLI flow still works:
 
 ```bash
 # One-time setup (skip if you used npx @yassinello/create-mymcp — already done)
 git remote add upstream https://github.com/Yassinello/mymcp.git
 
 # Pull updates anytime
-git fetch upstream
-git merge upstream/main
-```
-
-Or simply:
-
-```bash
 npm run update
 ```
 
-Your `.env` is never touched — all customization lives in env vars, not in code. Updates are always safe to merge.
+Equivalent to `git fetch upstream && git merge upstream/main`. Useful when you're already in the terminal and don't want to restart the dev server.
+
+---
+
+**Your `.env` and `data/` are never touched** — all customization lives in env vars and the gitignored `data/` directory, not in tracked code. Updates are always safe to merge.
+
+**When the Vercel flow applies:** if you're running on Vercel instead of locally, the in-dashboard updater is disabled. Just `git push` your fork and Vercel redeploys automatically.
 
 ## Tool Packs
 
