@@ -1,10 +1,26 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import LandingPage from "./landing/landing-page";
 
 export const dynamic = "force-dynamic";
 
+export const metadata: Metadata = {
+  title: "MyMCP — Your Personal MCP Server",
+  description:
+    "One Vercel deploy. 65+ tools. Your data, your keys. MyMCP is the open source personal MCP server that gives your AI assistant access to calendar, email, GitHub, and more.",
+  openGraph: {
+    title: "MyMCP — Your Personal MCP Server",
+    description: "Open source. MIT licensed. One deploy, 65+ tools, zero ongoing cost.",
+  },
+};
+
 export default function HomePage() {
-  if (process.env.MCP_AUTH_TOKEN) {
-    redirect("/config");
+  if (process.env.INSTANCE_MODE === "personal") {
+    if (process.env.MCP_AUTH_TOKEN) {
+      redirect("/config");
+    }
+    redirect("/setup");
   }
-  redirect("/setup");
+
+  return <LandingPage />;
 }
