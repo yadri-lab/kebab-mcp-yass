@@ -53,9 +53,7 @@ export function proxy(request: NextRequest) {
     pathname === "/config" ||
     pathname.startsWith("/config/") ||
     pathname.startsWith("/api/config/") ||
-    pathname === "/setup" ||
-    pathname === "/playground" ||
-    pathname === "/packs";
+    pathname === "/setup";
 
   if (adminGated && !adminToken) {
     // Misconfiguration: admin surface exists but no token set.
@@ -94,13 +92,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/",
-    "/setup",
-    "/playground",
-    "/packs",
-    "/config",
-    "/config/:path*",
-    "/api/config/:path*",
-  ],
+  matcher: ["/", "/setup", "/config", "/config/:path*", "/api/config/:path*"],
 };

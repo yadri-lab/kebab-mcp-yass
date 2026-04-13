@@ -396,10 +396,9 @@ app/
   api/health            ← Public liveness: { ok, version }
   api/admin/*           ← Private: status, stats, verify, call (auth-gated)
   api/auth/google       ← OAuth consent flow
-  /                     ← Private status dashboard
+  /                     ← Private status dashboard (redirects to /config)
   /setup                ← Guided setup with progress bar
-  /playground           ← Tool call playground (test any tool)
-  /packs                ← Public pack listing
+  /config               ← Unified configuration UI (packs, tools, skills, logs, settings)
 ```
 
 ### How it works
@@ -452,10 +451,9 @@ MYMCP_ENABLED_PACKS=vault,admin    # Only listed packs are considered
 
 | Page | Auth | Description |
 |------|------|-------------|
-| `/` | Admin | Status dashboard — pack health, tool counts, config, logs |
+| `/` | Admin | Redirects to `/config` |
 | `/setup` | Admin | Guided setup — progress bar, OAuth flow, credential checks |
-| `/playground` | Admin | Tool playground — test any tool with JSON params |
-| `/packs` | Public | Pack listing — tools, descriptions, required env vars |
+| `/config` | Admin | Unified dashboard — packs, tools, skills, logs, settings |
 
 ## API Endpoints
 
