@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAdminAuth } from "@/core/auth";
-import { listSkills, createSkill, skillCreateInputSchema } from "@/packs/skills/store";
-import { refreshNow } from "@/packs/skills/lib/remote-fetcher";
+import { listSkills, createSkill, skillCreateInputSchema } from "@/connectors/skills/store";
+import { refreshNow } from "@/connectors/skills/lib/remote-fetcher";
 import { getEnabledPacks } from "@/core/registry";
 
 /** GET /api/config/skills — list all skills. */

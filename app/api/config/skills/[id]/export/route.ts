@@ -1,5 +1,5 @@
 import { checkAdminAuth } from "@/core/auth";
-import { getSkill } from "@/packs/skills/store";
+import { getSkill } from "@/connectors/skills/store";
 
 interface RouteContext {
   params: Promise<{ id: string }>;

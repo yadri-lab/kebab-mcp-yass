@@ -1,35 +1,35 @@
-import type { PackManifest, PackState } from "./types";
+import type { ConnectorManifest, ConnectorState } from "./types";
 import { getEnabledPacksOverride } from "./config";
 
 // Import all pack manifests — static, deterministic, no auto-discovery
-import { googlePack } from "@/packs/google/manifest";
-import { vaultPack } from "@/packs/vault/manifest";
-import { browserPack } from "@/packs/browser/manifest";
-import { adminPack } from "@/packs/admin/manifest";
-import { slackPack } from "@/packs/slack/manifest";
-import { notionPack } from "@/packs/notion/manifest";
-import { composioPack } from "@/packs/composio/manifest";
-import { skillsPack } from "@/packs/skills/manifest";
-import { paywallPack } from "@/packs/paywall/manifest";
-import { apifyPack } from "@/packs/apify/manifest";
-import { githubPack } from "@/packs/github/manifest";
-import { linearPack } from "@/packs/linear/manifest";
-import { airtablePack } from "@/packs/airtable/manifest";
+import { googleConnector } from "@/connectors/google/manifest";
+import { vaultConnector } from "@/connectors/vault/manifest";
+import { browserConnector } from "@/connectors/browser/manifest";
+import { adminConnector } from "@/connectors/admin/manifest";
+import { slackConnector } from "@/connectors/slack/manifest";
+import { notionConnector } from "@/connectors/notion/manifest";
+import { composioConnector } from "@/connectors/composio/manifest";
+import { skillsConnector } from "@/connectors/skills/manifest";
+import { paywallConnector } from "@/connectors/paywall/manifest";
+import { apifyConnector } from "@/connectors/apify/manifest";
+import { githubConnector } from "@/connectors/github/manifest";
+import { linearConnector } from "@/connectors/linear/manifest";
+import { airtableConnector } from "@/connectors/airtable/manifest";
 
-const ALL_PACKS: PackManifest[] = [
-  googlePack,
-  vaultPack,
-  browserPack,
-  slackPack,
-  notionPack,
-  composioPack,
-  skillsPack,
-  paywallPack,
-  apifyPack,
-  githubPack,
-  linearPack,
-  airtablePack,
-  adminPack,
+const ALL_CONNECTORS: ConnectorManifest[] = [
+  googleConnector,
+  vaultConnector,
+  browserConnector,
+  slackConnector,
+  notionConnector,
+  composioConnector,
+  skillsConnector,
+  paywallConnector,
+  apifyConnector,
+  githubConnector,
+  linearConnector,
+  airtableConnector,
+  adminConnector,
 ];
 
 /**
@@ -41,10 +41,10 @@ const ALL_PACKS: PackManifest[] = [
  * 3. If all requiredEnvVars are present → pack is active
  * 4. Otherwise → pack is inactive with reason
  */
-export function resolveRegistry(): PackState[] {
+export function resolveRegistry(): ConnectorState[] {
   const enabledOverride = getEnabledPacksOverride();
 
-  return ALL_PACKS.map((pack) => {
+  return ALL_CONNECTORS.map((pack) => {
     // Check explicit enable list (if set)
     if (enabledOverride && !enabledOverride.has(pack.id)) {
       return {
@@ -92,7 +92,7 @@ export function resolveRegistry(): PackState[] {
 }
 
 /** Get only the enabled packs */
-export function getEnabledPacks(): PackState[] {
+export function getEnabledPacks(): ConnectorState[] {
   return resolveRegistry().filter((p) => p.enabled);
 }
 

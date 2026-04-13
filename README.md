@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#tool-packs">Tool Packs</a> &middot;
+  <a href="#connectors">Connectors</a> &middot;
   <a href="#architecture">Architecture</a> &middot;
   <a href="#configuration">Configuration</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -39,7 +39,7 @@
 │  │ 18 tools  │ │14 tools│ │4 tools │ │6 tools│ │5 tools │ │  apps   │ │actors│  │
 │  └─────┬─────┘ └───┬────┘ └───┬────┘ └───┬───┘ └───┬────┘ └────┬────┘ └──┬───┘  │
 │        │           │          │          │         │           │         │       │
-│      Registry ← Pack Manifests ← Env vars (auto-activation)                    │
+│      Registry ← Connector Manifests ← Env vars (auto-activation)                    │
 └────────┼───────────┼──────────┼──────────┼─────────┼───────────┼─────────┼───────┘
          │           │          │          │         │           │         │
          ▼           ▼          ▼          ▼         ▼           ▼         ▼
@@ -92,7 +92,7 @@ Or ask Claude to run it for you:
 
 The installer will:
 1. Clone the repo to your machine
-2. Walk you through which packs to enable (Google, Obsidian, Slack...)
+2. Walk you through which connectors to enable (Google, Obsidian, Slack...)
 3. Generate your `MCP_AUTH_TOKEN` securely
 4. Collect your API credentials (with links to get them)
 5. Create your `.env` file
@@ -114,7 +114,7 @@ The CLI walks you through everything step by step:
 ```
 [1/5] Project setup        → Pick a directory name
 [2/5] Cloning MyMCP        → Downloads the code + sets up update tracking
-[3/5] Choose your packs    → Google Workspace? Obsidian? Slack? (Y/n for each)
+[3/5] Choose your connectors    → Google Workspace? Obsidian? Slack? (Y/n for each)
 [4/5] Configure credentials → Paste your API keys (with links to get them)
 [5/5] Install & deploy     → npm install + optional Vercel deploy
 ```
@@ -128,7 +128,7 @@ At the end you get a working `.env`, installed dependencies, and an `upstream` r
 1. Click the **Deploy with Vercel** button at the top of this page
 2. Choose a name for your private repo copy (e.g. `my-mcp-instance`)
 3. Set `MCP_AUTH_TOKEN` — generate one with `openssl rand -hex 32`
-4. Add credentials for the packs you want (see [Configuration](#configuration))
+4. Add credentials for the connectors you want (see [Configuration](#configuration))
 5. Click **Deploy** — your endpoint is live at `https://your-app.vercel.app/api/mcp`
 
 ---
@@ -274,7 +274,7 @@ The dashboard polls GitHub when you open it. When new commits land, you'll see a
 > New commits on upstream/main (latest: `abc1234`) — fast-forward safe.
 > **[Update now]**
 
-Clicking **Update now** runs the same fast-forward merge as option 1 without touching the terminal. After the merge, Next.js hot-reloads most changes on the fly — only structural changes (dependency bumps, new pack manifests) require a dev server restart.
+Clicking **Update now** runs the same fast-forward merge as option 1 without touching the terminal. After the merge, Next.js hot-reloads most changes on the fly — only structural changes (dependency bumps, new connector manifests) require a dev server restart.
 
 This is the recommended flow if you keep the dashboard open while working.
 
@@ -298,9 +298,9 @@ Equivalent to `git fetch upstream && git merge upstream/main`. Useful when you'r
 
 **When the Vercel flow applies:** if you're running on Vercel instead of locally, the in-dashboard updater is disabled. Just `git push` your fork and Vercel redeploys automatically.
 
-## Tool Packs
+## Connectors
 
-MyMCP ships **65 production-ready tools** organized in 10 packs. Each pack activates automatically when its credentials are present in env vars.
+MyMCP ships **65 production-ready tools** organized in 10 connectors. Each connector activates automatically when its credentials are present in env vars.
 
 ### Google Workspace — 18 tools
 
@@ -433,9 +433,9 @@ Connect your apps in the [Composio dashboard](https://composio.dev), then use `c
 ```
 src/
   core/                 ← Framework: types, registry, config, auth, logging
-  packs/
+  connectors/
     google/             ← Google Workspace (18 tools)
-      manifest.ts       ← Pack definition (single source of truth)
+      manifest.ts       ← Connector definition (single source of truth)
       lib/              ← Gmail, Calendar, Contacts, Drive wrappers
       tools/            ← Individual tool handlers
     vault/              ← Obsidian Vault (14 tools)
@@ -454,20 +454,20 @@ app/
   api/auth/google       ← OAuth consent flow
   /                     ← Private status dashboard (redirects to /config)
   /setup                ← Guided setup with progress bar
-  /config               ← Unified configuration UI (packs, tools, skills, logs, settings)
+  /config               ← Unified configuration UI (connectors, tools, skills, logs, settings)
 ```
 
 ### How it works
 
-1. Each pack has a `manifest.ts` declaring its tools and required env vars
-2. The **registry** checks env vars → determines which packs are active
-3. `route.ts` iterates enabled packs, registers tools via the MCP SDK
+1. Each connector has a `manifest.ts` declaring its tools and required env vars
+2. The **registry** checks env vars → determines which connectors are active
+3. `route.ts` iterates enabled connectors, registers tools via the MCP SDK
 4. **Everything derives from manifests** — dashboard, health, admin API, playground all read from the same source
 
 ### Design principles
 
 - **Env vars only** — no config files to maintain, `git pull` never conflicts
-- **Single source of truth** — pack manifests drive MCP registration, dashboard, health, docs
+- **Single source of truth** — connector manifests drive MCP registration, dashboard, health, docs
 - **Framework vs instance** — framework code has zero personal references; all customization is via env vars
 - **Contract-level compatibility** — same tool names, same schemas, same behavior across versions
 
@@ -504,13 +504,13 @@ Each token must be at least 16 characters. An 8-character SHA-256 hash prefix of
 | `MYMCP_TOOL_TIMEOUT` | `30000` | Tool timeout in ms |
 | `MYMCP_ERROR_WEBHOOK_URL` | — | Webhook for error alerts (Slack-compatible) |
 
-### Pack Control
+### Connector Control
 
-Packs activate automatically when their credentials are present. Override with:
+Connectors activate automatically when their credentials are present. Override with:
 
 ```bash
 MYMCP_DISABLE_GOOGLE=true          # Force-disable even with credentials
-MYMCP_ENABLED_PACKS=vault,admin    # Only listed packs are considered
+MYMCP_ENABLED_PACKS=vault,admin    # Only listed connectors are considered
 ```
 
 ## Dashboard & Tools
@@ -519,7 +519,7 @@ MYMCP_ENABLED_PACKS=vault,admin    # Only listed packs are considered
 |------|------|-------------|
 | `/` | Admin | Redirects to `/config` |
 | `/setup` | Admin | Guided setup — progress bar, OAuth flow, credential checks |
-| `/config` | Admin | Unified dashboard — packs, tools, skills, logs, settings |
+| `/config` | Admin | Unified dashboard — connectors, tools, skills, logs, settings |
 
 ## API Endpoints
 
@@ -527,7 +527,7 @@ MYMCP_ENABLED_PACKS=vault,admin    # Only listed packs are considered
 |----------|------|-------------|
 | `POST /api/mcp` | MCP_AUTH_TOKEN | MCP Streamable HTTP |
 | `GET /api/health` | Public | `{ ok, version }` |
-| `GET /api/admin/status` | Admin | Pack diagnostics + diagnose() results |
+| `GET /api/admin/status` | Admin | Connector diagnostics + diagnose() results |
 | `GET /api/admin/stats` | Admin | Tool usage analytics (ephemeral) |
 | `GET /api/admin/verify` | Admin | Live credential verification |
 | `POST /api/admin/call` | Admin | Invoke any tool (playground API) |
@@ -562,9 +562,9 @@ Pre-commit hook (via Husky): `lint-staged` + `contract test`
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add tools, packs, and custom extensions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add tools, connectors, and custom extensions.
 
-**Quick version:** Create a file in `src/packs/<pack>/tools/`, add it to the pack's `manifest.ts`. Done.
+**Quick version:** Create a file in `src/connectors/<connector>/tools/`, add it to the connector's `manifest.ts`. Done.
 
 ## Tech Stack
 

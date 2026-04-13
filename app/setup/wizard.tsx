@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────
 
-interface PackVar {
+interface ConnectorVar {
   key: string;
   label: string;
   help?: string;
@@ -14,7 +14,7 @@ interface PackVar {
   optional?: boolean;
 }
 
-interface PackDef {
+interface ConnectorDef {
   id: string;
   name: string;
   description: string;
@@ -23,12 +23,12 @@ interface PackDef {
   starter?: boolean;
   recommended?: boolean;
   setupGuide: string[];
-  vars: PackVar[];
+  vars: ConnectorVar[];
 }
 
 // ── Pack definitions ────────────────────────────────────────────────
 
-const PACKS: PackDef[] = [
+const PACKS: ConnectorDef[] = [
   {
     id: "vault",
     name: "Obsidian Vault",
@@ -384,7 +384,7 @@ export function CredentialInput({
   value,
   onChange,
 }: {
-  v: PackVar;
+  v: ConnectorVar;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -425,7 +425,7 @@ export function CredentialInput({
 
 // Also export PACKS + helpers so /config Packs tab can reuse them.
 export { PACKS, normalizeGitHubRepo, cleanCredential };
-export type { PackDef, PackVar };
+export type { ConnectorDef, ConnectorVar };
 
 // ── Main Component ──────────────────────────────────────────────────
 
@@ -487,7 +487,7 @@ export function SetupWizard({
   const activePack = PACKS.find((p) => p.id === selectedPack);
 
   const packFillStatus = useCallback(
-    (pack: PackDef) => {
+    (pack: ConnectorDef) => {
       const required = pack.vars.filter((v) => !v.optional);
       const filled = required.filter((v) => credentials[v.key]);
       return {
@@ -552,7 +552,7 @@ export function SetupWizard({
         // If this was an add-pack flow, bounce to /config
         if (initialPack) {
           setTimeout(() => {
-            window.location.href = "/config?tab=packs";
+            window.location.href = "/config?tab=connectors";
           }, 1000);
         }
       } else {
@@ -574,7 +574,7 @@ export function SetupWizard({
       <div className="flex items-center justify-center gap-2 mb-10">
         <StepDot num={1} active={step === 0} done={step > 0} label="Auth" />
         <div className={`h-0.5 w-12 ${step > 0 ? "bg-green" : "bg-border"}`} />
-        <StepDot num={2} active={step === 1} done={saved} label="Pick a pack" />
+        <StepDot num={2} active={step === 1} done={saved} label="Pick a connector" />
       </div>
 
       {/* ═══ Step 1: Auth token ════════════════════════════════════════ */}
@@ -665,12 +665,12 @@ export function SetupWizard({
         <div>
           <div className="mb-6">
             <h2 className="font-semibold text-lg">
-              {initialPack ? "Connect this pack" : "Pick your first pack"}
+              {initialPack ? "Connect this connector" : "Pick your first connector"}
             </h2>
             <p className="text-sm text-text-dim mt-1">
               {initialPack
                 ? "Fill in the credentials below, test, then save. You'll be redirected to /config."
-                : "Start with one pack — you can add more from /config after setup. Recommended: Vault (just one credential)."}
+                : "Start with one connector — you can add more from /config after setup. Recommended: Vault (just one credential)."}
             </p>
           </div>
 
@@ -726,7 +726,7 @@ export function SetupWizard({
                   onClick={() => setShowAllPacks(true)}
                   className="text-xs text-accent hover:underline mb-4"
                 >
-                  Show all packs ({otherPacks.length} more) &darr;
+                  Show all connectors ({otherPacks.length} more) &darr;
                 </button>
               )}
             </>
@@ -885,7 +885,7 @@ export function SetupWizard({
                 <a href="/config" className="text-accent hover:underline font-medium">
                   /config
                 </a>{" "}
-                to add more packs, run tools, and view logs.
+                to add more connectors, run tools, and view logs.
               </p>
             </div>
           )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { PackSummary } from "../tabs";
+import type { ConnectorSummary } from "../tabs";
 
 interface ToolRow {
   name: string;
@@ -12,7 +12,8 @@ interface ToolRow {
   destructive?: boolean;
 }
 
-export function ToolsTab({ packs }: { packs: PackSummary[] }) {
+export function ToolsTab({ connectors }: { connectors: ConnectorSummary[] }) {
+  const packs = connectors;
   const [search, setSearch] = useState("");
   const [packFilter, setPackFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -100,7 +101,7 @@ export function ToolsTab({ packs }: { packs: PackSummary[] }) {
           onChange={(e) => setPackFilter(e.target.value)}
           className="bg-bg-muted border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
         >
-          <option value="all">All packs</option>
+          <option value="all">All connectors</option>
           {packs
             .filter((p) => p.enabled)
             .map((p) => (

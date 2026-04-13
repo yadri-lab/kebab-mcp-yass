@@ -7,7 +7,7 @@ const VERSION = `v${pkg.version}`;
 
 const NAV = [
   { href: "/config", tab: "overview", label: "Overview", icon: "grid" },
-  { href: "/config?tab=packs", tab: "packs", label: "Packs", icon: "package" },
+  { href: "/config?tab=connectors", tab: "connectors", label: "Connectors", icon: "package" },
   { href: "/config?tab=tools", tab: "tools", label: "Tools", icon: "terminal" },
   { href: "/config?tab=skills", tab: "skills", label: "Skills", icon: "sparkles" },
   { href: "/config?tab=logs", tab: "logs", label: "Logs", icon: "activity" },

@@ -3,13 +3,13 @@
 import type { ToolLog } from "@/core/logging";
 import type { InstanceConfig } from "@/core/types";
 import { OverviewTab } from "./tabs/overview";
-import { PacksTab } from "./tabs/packs";
+import { ConnectorsTab } from "./tabs/connectors";
 import { ToolsTab } from "./tabs/tools";
 import { SkillsTab } from "./tabs/skills";
 import { LogsTab } from "./tabs/logs";
 import { SettingsTab } from "./tabs/settings";
 
-export interface PackSummary {
+export interface ConnectorSummary {
   id: string;
   label: string;
   description: string;
@@ -23,7 +23,7 @@ export interface PackSummary {
 
 export function ConfigTabs({
   activeTab,
-  packs,
+  connectors,
   totalTools,
   enabledCount,
   logs,
@@ -31,7 +31,7 @@ export function ConfigTabs({
   config,
 }: {
   activeTab: string;
-  packs: PackSummary[];
+  connectors: ConnectorSummary[];
   totalTools: number;
   enabledCount: number;
   logs: ToolLog[];
@@ -39,10 +39,10 @@ export function ConfigTabs({
   config: InstanceConfig;
 }) {
   switch (activeTab) {
-    case "packs":
-      return <PacksTab packs={packs} />;
+    case "connectors":
+      return <ConnectorsTab connectors={connectors} />;
     case "tools":
-      return <ToolsTab packs={packs} />;
+      return <ToolsTab connectors={connectors} />;
     case "skills":
       return <SkillsTab />;
     case "logs":
@@ -56,7 +56,7 @@ export function ConfigTabs({
           baseUrl={baseUrl}
           totalTools={totalTools}
           enabledCount={enabledCount}
-          packCount={packs.length}
+          connectorCount={connectors.length}
           logs={logs}
           config={config}
         />

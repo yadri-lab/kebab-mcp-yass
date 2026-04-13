@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAdminAuth } from "@/core/auth";
-import { getSkill } from "@/packs/skills/store";
-import { refreshNow } from "@/packs/skills/lib/remote-fetcher";
+import { getSkill } from "@/connectors/skills/store";
+import { refreshNow } from "@/connectors/skills/lib/remote-fetcher";
 
 interface RouteContext {
   params: Promise<{ id: string }>;

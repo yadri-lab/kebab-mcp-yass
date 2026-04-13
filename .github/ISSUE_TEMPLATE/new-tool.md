@@ -9,7 +9,7 @@ labels: enhancement
 `tool_name`
 
 ## Pack
-Which pack does this belong to? (google / vault / browser / admin / new pack)
+Which connector does this belong to? (google / vault / browser / admin / new connector)
 
 ## Description
 What does this tool do? One sentence.

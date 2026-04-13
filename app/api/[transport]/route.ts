@@ -4,9 +4,9 @@ import { withLogging } from "@/core/logging";
 import { checkMcpAuth, extractToken } from "@/core/auth";
 import { checkRateLimit } from "@/core/rate-limit";
 import { getEnabledPacks, logRegistryState } from "@/core/registry";
-import { listSkillsSync, getSkill } from "@/packs/skills/store";
-import { renderSkill } from "@/packs/skills/lib/render";
-import { maybeRefreshRemote } from "@/packs/skills/lib/remote-fetcher";
+import { listSkillsSync, getSkill } from "@/connectors/skills/store";
+import { renderSkill } from "@/connectors/skills/lib/render";
+import { maybeRefreshRemote } from "@/connectors/skills/lib/remote-fetcher";
 import { VERSION } from "@/core/version";
 
 /**

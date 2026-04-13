@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   overview: { title: "Overview", subtitle: "Live status of your MCP server." },
-  packs: { title: "Packs", subtitle: "Enable, configure, and test tool packs." },
+  connectors: { title: "Connectors", subtitle: "Enable, configure, and test your connectors." },
   tools: { title: "Tools", subtitle: "Browse and run any registered tool." },
   skills: { title: "Skills", subtitle: "Create and manage user-defined skills." },
   logs: { title: "Logs", subtitle: "Recent tool invocations." },
@@ -35,7 +35,7 @@ export default async function ConfigPage({
     ? `https://${process.env.VERCEL_URL}`
     : "http://localhost:3000";
 
-  const packSummaries = registry.map((p) => ({
+  const connectorSummaries = registry.map((p) => ({
     id: p.manifest.id,
     label: p.manifest.label,
     description: p.manifest.description,
@@ -56,7 +56,7 @@ export default async function ConfigPage({
     <AppShell title={meta.title} subtitle={meta.subtitle} displayName={config.displayName}>
       <ConfigTabs
         activeTab={tab}
-        packs={packSummaries}
+        connectors={connectorSummaries}
         totalTools={totalTools}
         enabledCount={enabled.length}
         logs={logs}

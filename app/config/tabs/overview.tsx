@@ -20,14 +20,14 @@ export function OverviewTab({
   baseUrl,
   totalTools,
   enabledCount,
-  packCount,
+  connectorCount,
   logs,
   config,
 }: {
   baseUrl: string;
   totalTools: number;
   enabledCount: number;
-  packCount: number;
+  connectorCount: number;
   logs: ToolLog[];
   config: InstanceConfig;
 }) {
@@ -133,7 +133,7 @@ export function OverviewTab({
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Active tools" value={totalTools} accent />
-        <StatCard label="Active packs" value={`${enabledCount} / ${packCount}`} />
+        <StatCard label="Active connectors" value={`${enabledCount} / ${connectorCount}`} />
         <StatCard
           label="Last invocation"
           value={lastLog ? new Date(lastLog.timestamp).toLocaleTimeString() : "—"}

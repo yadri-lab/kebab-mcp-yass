@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Open-source personal MCP server framework. Ships 45 pre-built tools across 6 packs (Google Workspace, Obsidian Vault, Browser Automation, Slack, Notion, Admin). Deployed on Vercel or Docker as a Next.js app. Config-driven: packs auto-activate based on env vars.
+Open-source personal MCP server framework. Ships 45 pre-built tools across 6 connectors (Google Workspace, Obsidian Vault, Browser Automation, Slack, Notion, Admin). Deployed on Vercel or Docker as a Next.js app. Config-driven: connectors auto-activate based on env vars.
 
 ## Architecture
 
 - **Runtime**: Next.js on Vercel (serverless, 60s timeout)
 - **MCP SDK**: `mcp-handler` wraps `@modelcontextprotocol/sdk` for Streamable HTTP
-- **Registry**: Static manifests in `src/packs/*/manifest.ts` — single source of truth
+- **Registry**: Static manifests in `src/connectors/*/manifest.ts` — single source of truth
 - **Config**: All via env vars (no config files). See `src/core/config.ts`
 - **Auth**: MCP_AUTH_TOKEN (endpoint) + ADMIN_AUTH_TOKEN (dashboard, optional fallback)
 
@@ -16,14 +16,14 @@ Open-source personal MCP server framework. Ships 45 pre-built tools across 6 pac
 
 ```
 src/core/                        — Framework: types, registry, config, auth, logging
-src/packs/google/manifest.ts     — Google Workspace pack (18 tools)
-src/packs/vault/manifest.ts      — Obsidian Vault pack (15 tools)
-src/packs/browser/manifest.ts    — Browser Automation pack (4 tools)
-src/packs/slack/manifest.ts      — Slack pack (4 tools)
-src/packs/notion/manifest.ts     — Notion pack (3 tools)
-src/packs/admin/manifest.ts      — Admin pack (1 tool)
-src/packs/*/tools/               — Individual tool handlers
-src/packs/*/lib/                 — API wrappers and helpers
+src/connectors/google/manifest.ts     — Google Workspace connector (18 tools)
+src/connectors/vault/manifest.ts      — Obsidian Vault connector (15 tools)
+src/connectors/browser/manifest.ts    — Browser Automation connector (4 tools)
+src/connectors/slack/manifest.ts      — Slack connector (4 tools)
+src/connectors/notion/manifest.ts     — Notion connector (3 tools)
+src/connectors/admin/manifest.ts      — Admin connector (1 tool)
+src/connectors/*/tools/               — Individual tool handlers
+src/connectors/*/lib/                 — API wrappers and helpers
 app/api/[transport]/route.ts     — MCP endpoint (~30 lines, reads from registry)
 app/api/health/route.ts          — Public liveness: { ok, version }
 app/api/admin/status/route.ts    — Private diagnostics (auth-gated)
@@ -33,34 +33,34 @@ app/setup/page.tsx               — Guided setup page
 
 ## How the Registry Works
 
-1. `src/core/registry.ts` imports all 6 pack manifests
-2. For each pack, checks if all `requiredEnvVars` are present
-3. Returns `PackState[]` with enabled/disabled + reason
-4. `route.ts` iterates enabled packs, registers tools via `server.tool()`
+1. `src/core/registry.ts` imports all 6 connector manifests
+2. For each connector, checks if all `requiredEnvVars` are present
+3. Returns `ConnectorState[]` with enabled/disabled + reason
+4. `route.ts` iterates enabled connectors, registers tools via `server.tool()`
 5. Dashboard, health, admin API all read from the same registry
 
 ## Adding a Tool
 
-1. Create `src/packs/<pack>/tools/my-tool.ts` with `{ schema, handler }` exports
-2. Add entry to pack's `manifest.ts` tools array
+1. Create `src/connectors/<connector>/tools/my-tool.ts` with `{ schema, handler }` exports
+2. Add entry to connector's `manifest.ts` tools array
 3. Done — registry picks it up automatically
 
-## Adding a Pack
+## Adding a Connector
 
-1. Create `src/packs/mypack/manifest.ts` exporting a `PackManifest`
-2. Add import + entry in `src/core/registry.ts` `ALL_PACKS` array
+1. Create `src/connectors/myconnector/manifest.ts` exporting a `ConnectorManifest`
+2. Add import + entry in `src/core/registry.ts` `ALL_CONNECTORS` array
 3. Document required env vars in `.env.example`
 
 ## Framework vs Instance
 
 **Framework-level** (code, shared by all users):
-- Pack manifests, registry, types, auth, dashboard structure
+- Connector manifests, registry, types, auth, dashboard structure
 - NO personal references, NO hardcoded locale/timezone/names
 
 **Instance-level** (env vars, unique per deployment):
 - Secrets (API keys, tokens)
 - Settings (MYMCP_TIMEZONE, MYMCP_LOCALE, MYMCP_DISPLAY_NAME)
-- Pack activation (presence of credentials)
+- Connector activation (presence of credentials)
 
 ## Conventions
 
@@ -77,17 +77,17 @@ app/setup/page.tsx               — Guided setup page
 |----------|----------|-------------|
 | `MCP_AUTH_TOKEN` | Yes | MCP endpoint auth |
 | `ADMIN_AUTH_TOKEN` | No | Dashboard auth (fallback: MCP_AUTH_TOKEN) |
-| `GOOGLE_CLIENT_ID` | Google pack | OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google pack | OAuth client secret |
-| `GOOGLE_REFRESH_TOKEN` | Google pack | OAuth refresh token |
-| `GITHUB_PAT` | Vault pack | GitHub PAT with `repo` scope |
-| `GITHUB_REPO` | Vault pack | `owner/repo` format |
+| `GOOGLE_CLIENT_ID` | Google connector | OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google connector | OAuth client secret |
+| `GOOGLE_REFRESH_TOKEN` | Google connector | OAuth refresh token |
+| `GITHUB_PAT` | Vault connector | GitHub PAT with `repo` scope |
+| `GITHUB_REPO` | Vault connector | `owner/repo` format |
 | `GITHUB_BRANCH` | No | Default branch (default: `main`) |
-| `BROWSERBASE_API_KEY` | Browser pack | Browserbase API key |
-| `BROWSERBASE_PROJECT_ID` | Browser pack | Browserbase project ID |
-| `OPENROUTER_API_KEY` | Browser pack | OpenRouter API key for Stagehand |
-| `SLACK_BOT_TOKEN` | Slack pack | Slack Bot User OAuth Token |
-| `NOTION_API_KEY` | Notion pack | Notion Internal Integration Token |
+| `BROWSERBASE_API_KEY` | Browser connector | Browserbase API key |
+| `BROWSERBASE_PROJECT_ID` | Browser connector | Browserbase project ID |
+| `OPENROUTER_API_KEY` | Browser connector | OpenRouter API key for Stagehand |
+| `SLACK_BOT_TOKEN` | Slack connector | Slack Bot User OAuth Token |
+| `NOTION_API_KEY` | Notion connector | Notion Internal Integration Token |
 | `MYMCP_TIMEZONE` | No | Default: `UTC` |
 | `MYMCP_LOCALE` | No | Default: `en-US` |
 | `MYMCP_DISPLAY_NAME` | No | Default: `User` |

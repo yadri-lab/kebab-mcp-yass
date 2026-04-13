@@ -13,28 +13,28 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
 // Import all pack manifests
-import { googlePack } from "../src/packs/google/manifest";
-import { vaultPack } from "../src/packs/vault/manifest";
-import { browserPack } from "../src/packs/browser/manifest";
-import { slackPack } from "../src/packs/slack/manifest";
-import { notionPack } from "../src/packs/notion/manifest";
-import { adminPack } from "../src/packs/admin/manifest";
-import { paywallPack } from "../src/packs/paywall/manifest";
-import { apifyPack } from "../src/packs/apify/manifest";
-import { githubPack } from "../src/packs/github/manifest";
-import { linearPack } from "../src/packs/linear/manifest";
+import { googleConnector } from "../src/connectors/google/manifest";
+import { vaultConnector } from "../src/connectors/vault/manifest";
+import { browserConnector } from "../src/connectors/browser/manifest";
+import { slackConnector } from "../src/connectors/slack/manifest";
+import { notionConnector } from "../src/connectors/notion/manifest";
+import { adminConnector } from "../src/connectors/admin/manifest";
+import { paywallConnector } from "../src/connectors/paywall/manifest";
+import { apifyConnector } from "../src/connectors/apify/manifest";
+import { githubConnector } from "../src/connectors/github/manifest";
+import { linearConnector } from "../src/connectors/linear/manifest";
 
-const ALL_PACKS = [
-  googlePack,
-  vaultPack,
-  browserPack,
-  slackPack,
-  notionPack,
-  paywallPack,
-  apifyPack,
-  githubPack,
-  linearPack,
-  adminPack,
+const ALL_CONNECTORS = [
+  googleConnector,
+  vaultConnector,
+  browserConnector,
+  slackConnector,
+  notionConnector,
+  paywallConnector,
+  apifyConnector,
+  githubConnector,
+  linearConnector,
+  adminConnector,
 ];
 const SNAPSHOT_PATH = resolve(__dirname, "contract-snapshot.json");
 
@@ -45,7 +45,7 @@ interface ToolContract {
 }
 
 function getCurrentContract(): ToolContract[] {
-  return ALL_PACKS.flatMap((pack) =>
+  return ALL_CONNECTORS.flatMap((pack) =>
     pack.tools.map((tool) => ({
       name: tool.name,
       pack: pack.id,
@@ -57,10 +57,12 @@ function getCurrentContract(): ToolContract[] {
 function main() {
   const current = getCurrentContract();
 
-  console.log(`[Contract Test] Found ${current.length} tools across ${ALL_PACKS.length} packs\n`);
+  console.log(
+    `[Contract Test] Found ${current.length} tools across ${ALL_CONNECTORS.length} connectors\n`
+  );
 
   // Print summary
-  for (const pack of ALL_PACKS) {
+  for (const pack of ALL_CONNECTORS) {
     console.log(`  ${pack.label}: ${pack.tools.length} tools`);
   }
   console.log();

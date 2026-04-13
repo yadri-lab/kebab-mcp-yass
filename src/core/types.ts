@@ -16,7 +16,7 @@ export interface ToolResult {
 
 /** Single tool definition — the unit of functionality.
  *
- * Stored heterogeneously inside `PackManifest.tools` so its handler takes
+ * Stored heterogeneously inside `ConnectorManifest.tools` so its handler takes
  * `Record<string, unknown>` and the schema is `z.ZodRawShape`. Tool authors
  * who want compile-time-typed `args` should reach for the generic
  * `defineTool()` helper below, which infers the exact args type from the
@@ -72,7 +72,7 @@ export function defineTool<TSchema extends z.ZodRawShape>(
 }
 
 /** Pack manifest — groups related tools */
-export interface PackManifest {
+export interface ConnectorManifest {
   /** Pack identifier (e.g., "google", "vault") */
   id: string;
   /** Human-readable label (e.g., "Google Workspace") */
@@ -104,8 +104,8 @@ export interface PackManifest {
 }
 
 /** Resolved state of a pack at runtime */
-export interface PackState {
-  manifest: PackManifest;
+export interface ConnectorState {
+  manifest: ConnectorManifest;
   enabled: boolean;
   reason: string;
 }
