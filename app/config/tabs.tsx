@@ -18,6 +18,7 @@ export interface ConnectorSummary {
   toolCount: number;
   requiredEnvVars: string[];
   guide?: string;
+  core?: boolean;
   tools: { name: string; description: string; deprecated?: string; destructive?: boolean }[];
 }
 

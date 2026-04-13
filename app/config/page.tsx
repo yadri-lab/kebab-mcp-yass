@@ -44,6 +44,7 @@ export default async function ConfigPage({
     toolCount: p.manifest.tools.length,
     requiredEnvVars: p.manifest.requiredEnvVars,
     guide: p.manifest.guide,
+    core: p.manifest.core,
     tools: p.manifest.tools.map((t) => ({
       name: t.name,
       description: t.description,

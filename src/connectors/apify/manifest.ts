@@ -145,6 +145,21 @@ export const apifyConnector: ConnectorManifest = {
   label: "Apify",
   description:
     "Scrape LinkedIn profiles, companies, and posts via Apify actors — plus a search/escape hatch for any actor in the Apify store.",
+  guide: `Run Apify actors (LinkedIn scrapers and anything else in the Apify store) using your personal API token.
+
+### Prerequisites
+An [Apify](https://apify.com) account with credits or a paid plan. The LinkedIn wrappers call rented actors that cost a few cents per run.
+
+### How to get credentials
+1. Sign in to the [Apify Console](https://console.apify.com)
+2. Open **Settings → Integrations → API & Integrations**
+3. Copy your **Personal API token** and set it as \`APIFY_TOKEN\`
+4. Optional: set \`APIFY_ACTORS\` to a comma-separated allowlist of actor IDs if you want to restrict which wrappers are registered
+
+### Troubleshooting
+- _401 from Apify_: the token is wrong or was regenerated — grab a fresh one from Settings.
+- _Actor run succeeds but dataset is empty_: LinkedIn actors occasionally get blocked; retry or switch to a different actor via \`apify_search_actors\`.
+- _Out of credits_: top up your Apify account; each LinkedIn run consumes a small amount.`,
   requiredEnvVars: ["APIFY_TOKEN"],
   diagnose: async () => {
     try {

@@ -51,6 +51,7 @@ export function buildSkillTool(skill: Skill): ToolDefinition {
 export const skillsConnector: ConnectorManifest = {
   id: "skills",
   label: "Skills",
+  core: true,
   description:
     "User-defined skills (prompts + templates) exposed as MCP tools and prompts. Always on — define skills in /config → Skills.",
   requiredEnvVars: [],

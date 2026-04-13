@@ -101,6 +101,13 @@ export interface ConnectorManifest {
    * cookies for the paywall pack).
    */
   guide?: string;
+  /**
+   * When true, this connector is considered framework-core (e.g., Skills,
+   * Admin) — still registered and exposing tools, but hidden from the
+   * user-facing Connectors page since it isn't a user-configurable
+   * integration.
+   */
+  core?: boolean;
 }
 
 /** Resolved state of a pack at runtime */

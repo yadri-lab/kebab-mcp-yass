@@ -4,6 +4,7 @@ import { mcpLogsSchema, handleMcpLogs } from "./tools/mcp-logs";
 export const adminConnector: ConnectorManifest = {
   id: "admin",
   label: "Admin & Observability",
+  core: true,
   description: "Tool call logs, diagnostics",
   requiredEnvVars: [], // Always active — no credentials needed
   tools: [

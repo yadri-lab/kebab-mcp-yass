@@ -132,11 +132,15 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
     return <p className="text-sm text-text-muted">Loading connectors...</p>;
   }
 
+  // Hide core connectors (skills, admin) — they're not user-configurable
+  // integrations, just framework plumbing that still lives in the registry.
+  const visibleConnectors = connectors.filter((c) => !c.core);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-text-dim">
-          Toggle connectors on/off, edit credentials, and test connections.
+          Click a connector to configure credentials, test, and toggle on or off.
         </p>
         <a
           href="/setup?add="
@@ -146,16 +150,38 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
         </a>
       </div>
 
-      {connectors.map((pack) => {
+      {visibleConnectors.map((pack) => {
         const packDef = PACKS.find((p) => p.id === pack.id);
         const isOpen = expanded === pack.id;
         const test = testResults[pack.id];
+        // "Configured" = active, or inactive for a reason other than missing env vars.
+        // A connector that's missing creds should be treated as not-yet-configured
+        // so the toggle acts as a "Setup" affordance instead of a silent no-op.
+        const isConfigured = pack.enabled || !pack.reason.startsWith("missing env");
+
+        const handleCardClick = () => {
+          setExpanded(isOpen ? null : pack.id);
+        };
+
         return (
           <div
             key={pack.id}
-            className={`border rounded-lg overflow-hidden transition-colors ${pack.enabled ? "border-accent/30" : "border-border"}`}
+            className={`border rounded-lg overflow-hidden transition-all ${
+              pack.enabled ? "border-accent/30" : "border-border"
+            } ${isOpen ? "shadow-sm" : ""}`}
           >
-            <div className="flex items-center gap-3 px-5 py-4">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={handleCardClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleCardClick();
+                }
+              }}
+              className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-bg-muted/40 transition-colors"
+            >
               <div
                 className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
                   pack.enabled
@@ -169,9 +195,15 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-sm">{pack.label}</p>
                   <span
-                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${pack.enabled ? "text-green bg-green-bg" : "text-text-muted bg-bg-muted"}`}
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                      pack.enabled
+                        ? "text-green bg-green-bg"
+                        : isConfigured
+                          ? "text-text-muted bg-bg-muted"
+                          : "text-accent bg-accent/10"
+                    }`}
                   >
-                    {pack.enabled ? "Active" : "Inactive"}
+                    {pack.enabled ? "Active" : isConfigured ? "Inactive" : "Setup needed"}
                   </span>
                   <span className="text-[11px] text-text-muted">{pack.toolCount} tools</span>
                   {savedFlash === pack.id && (
@@ -180,85 +212,135 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-text-dim mt-0.5">
+                <p className="text-xs text-text-dim mt-0.5 truncate">
                   {pack.enabled ? pack.description : `${pack.description} — ${pack.reason}`}
                 </p>
               </div>
-              {packDef && (
+
+              {isConfigured ? (
                 <button
-                  onClick={() => setExpanded(isOpen ? null : pack.id)}
-                  className="text-xs text-accent hover:underline px-3 py-1 rounded"
-                >
-                  {isOpen ? "Close" : "Edit"}
-                </button>
-              )}
-              <button
-                onClick={() => togglePack(pack.id, !pack.enabled)}
-                className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
-                  pack.enabled ? "bg-accent" : "bg-bg-muted border border-border"
-                }`}
-                title={pack.enabled ? "Disable connector" : "Enable connector"}
-              >
-                <div
-                  className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${
-                    pack.enabled ? "left-6" : "left-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePack(pack.id, !pack.enabled);
+                  }}
+                  className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+                    pack.enabled ? "bg-accent" : "bg-bg-muted border border-border"
                   }`}
-                />
-              </button>
+                  title={pack.enabled ? "Disable connector" : "Enable connector"}
+                  aria-label={pack.enabled ? "Disable connector" : "Enable connector"}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-all ${
+                      pack.enabled ? "left-6" : "left-1"
+                    }`}
+                  />
+                </button>
+              ) : (
+                <span
+                  aria-hidden
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-md text-accent bg-accent/10 shrink-0"
+                  title="Click the card to add credentials"
+                >
+                  Setup {isOpen ? "▲" : "▼"}
+                </span>
+              )}
             </div>
 
-            {isOpen && packDef && (
-              <div className="border-t border-border bg-bg px-5 py-4 space-y-4">
-                {pack.guide && <PackGuide markdown={pack.guide} />}
-                {packDef.vars.map((v) => (
-                  <div key={v.key}>
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <label className="text-sm font-medium">{v.label}</label>
-                      <code className="text-[11px] text-text-muted">{v.key}</code>
-                      {v.optional && (
-                        <span className="text-[11px] text-text-muted bg-bg-muted px-1.5 py-0.5 rounded">
-                          optional
-                        </span>
-                      )}
+            <div
+              className={`overflow-hidden transition-all duration-200 ease-out ${
+                isOpen ? "max-h-[4000px] opacity-100" : "max-h-0 opacity-0"
+              }`}
+            >
+              {packDef ? (
+                <div className="border-t border-border bg-bg px-5 py-4 space-y-4">
+                  {pack.guide ? (
+                    <PackGuide markdown={pack.guide} />
+                  ) : (
+                    <p className="text-xs text-text-muted italic">
+                      No guide available yet — see the README for setup instructions.
+                    </p>
+                  )}
+                  {packDef.vars.map((v) => (
+                    <div key={v.key}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <label className="text-sm font-medium">{v.label}</label>
+                        <code className="text-[11px] text-text-muted">{v.key}</code>
+                        {v.optional && (
+                          <span className="text-[11px] text-text-muted bg-bg-muted px-1.5 py-0.5 rounded">
+                            optional
+                          </span>
+                        )}
+                      </div>
+                      <CredentialInput
+                        v={v}
+                        value={getValue(v.key)}
+                        onChange={(val) => updateEdit(v.key, val)}
+                      />
                     </div>
-                    <CredentialInput
-                      v={v}
-                      value={getValue(v.key)}
-                      onChange={(val) => updateEdit(v.key, val)}
-                    />
-                  </div>
-                ))}
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={() => savePack(pack.id)}
-                    disabled={savingId === pack.id}
-                    className="bg-accent text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-accent/90 disabled:opacity-60"
-                  >
-                    {savingId === pack.id ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    onClick={() => testPack(pack.id)}
-                    disabled={testing === pack.id}
-                    className="text-sm font-medium px-4 py-1.5 rounded-md bg-bg-muted hover:bg-border-light text-text-dim hover:text-text disabled:opacity-60"
-                  >
-                    {testing === pack.id ? "Testing..." : "Test connection"}
-                  </button>
-                  {test && test.message !== "Testing..." && (
-                    <span
-                      className={`text-xs font-medium px-2 py-1 rounded-full ${test.ok ? "text-green bg-green-bg" : "text-red bg-red-bg"}`}
+                  ))}
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={() => savePack(pack.id)}
+                      disabled={savingId === pack.id}
+                      className="bg-accent text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-accent/90 disabled:opacity-60"
                     >
-                      {test.ok ? "✓ " : "✗ "}
-                      {test.message}
-                    </span>
+                      {savingId === pack.id ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => testPack(pack.id)}
+                      disabled={testing === pack.id}
+                      className="text-sm font-medium px-4 py-1.5 rounded-md bg-bg-muted hover:bg-border-light text-text-dim hover:text-text disabled:opacity-60"
+                    >
+                      {testing === pack.id ? "Testing..." : "Test connection"}
+                    </button>
+                    {test && test.message !== "Testing..." && (
+                      <span
+                        className={`text-xs font-medium px-2 py-1 rounded-full ${test.ok ? "text-green bg-green-bg" : "text-red bg-red-bg"}`}
+                      >
+                        {test.ok ? "✓ " : "✗ "}
+                        {test.message}
+                      </span>
+                    )}
+                  </div>
+                  {test && !test.ok && test.detail && (
+                    <div className="bg-red-bg border border-red/20 rounded-md p-3 text-xs font-mono text-red break-all">
+                      {test.detail}
+                    </div>
+                  )}
+                  {pack.tools.length > 0 && (
+                    <div className="pt-3 border-t border-border">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+                        Tools provided ({pack.tools.length})
+                      </p>
+                      <ul className="space-y-1.5">
+                        {pack.tools.map((t) => (
+                          <li key={t.name} className="text-xs">
+                            <code className="text-[11px] font-mono text-text">{t.name}</code>
+                            {t.deprecated && (
+                              <span className="ml-1.5 text-[10px] text-orange bg-orange-bg px-1 rounded">
+                                deprecated
+                              </span>
+                            )}
+                            {t.destructive && (
+                              <span className="ml-1.5 text-[10px] text-red bg-red-bg px-1 rounded">
+                                write
+                              </span>
+                            )}
+                            <span className="text-text-dim ml-2">{t.description}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
-                {test && !test.ok && test.detail && (
-                  <div className="bg-red-bg border border-red/20 rounded-md p-3 text-xs font-mono text-red break-all">
-                    {test.detail}
-                  </div>
-                )}
-              </div>
-            )}
+              ) : (
+                <div className="border-t border-border bg-bg px-5 py-4">
+                  <p className="text-xs text-text-muted italic">
+                    No configuration form registered for this connector.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         );
       })}

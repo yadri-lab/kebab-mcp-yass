@@ -6,6 +6,22 @@ export const composioConnector: ConnectorManifest = {
   id: "composio",
   label: "Composio",
   description: "1000+ app integrations via Composio (Jira, HubSpot, Salesforce, Airtable, etc.)",
+  guide: `Call any of 1000+ SaaS apps (Jira, HubSpot, Salesforce, Figma, Trello, …) through [Composio](https://composio.dev)'s managed-auth layer — Composio handles the per-app OAuth so you don't have to.
+
+### Prerequisites
+A Composio account. You'll connect each target app _inside_ the Composio dashboard; MyMCP only needs your Composio API key to dispatch calls.
+
+### How to get credentials
+1. Sign up at [app.composio.dev](https://app.composio.dev)
+2. Open **Settings → API Keys** and create a new key
+3. Copy it into \`COMPOSIO_API_KEY\`
+4. In the Composio dashboard, go to **Connections** and connect the apps you want to use (Jira, HubSpot, …). Each connection is OAuth-based and one-click.
+5. Use \`composio_list\` to discover available actions per app, then \`composio_action\` to execute them
+
+### Troubleshooting
+- _"No connected account"_: you added the API key but forgot to link the app inside Composio — go to **Connections**.
+- _Action fails with permission error_: re-auth the Composio connection with broader scopes.
+- _Rate limits_: each underlying app (e.g. HubSpot) enforces its own — Composio passes those errors through.`,
   requiredEnvVars: ["COMPOSIO_API_KEY"],
   diagnose: async () => {
     try {

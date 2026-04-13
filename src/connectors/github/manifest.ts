@@ -11,6 +11,22 @@ export const githubConnector: ConnectorManifest = {
   id: "github",
   label: "GitHub Issues",
   description: "Create, read, update, and search GitHub issues",
+  guide: `List, read, create, update, comment on, and search GitHub issues on any repo you have access to.
+
+### Prerequisites
+A GitHub account and at least one repository. Works with both personal and org repos, as long as the token's owner has access.
+
+### How to get credentials
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) (or **Settings → Developer settings → Personal access tokens**)
+2. Click **Generate new token** — fine-grained tokens are recommended
+3. Grant **Read and write** access to **Issues** for the repos you want to expose
+4. Copy the generated token and set it as \`GITHUB_TOKEN\`
+5. Optional: set a default repo via \`GITHUB_DEFAULT_REPO=owner/repo\` so you don't have to pass \`repo\` on every call
+
+### Troubleshooting
+- _404 on a repo you own_: fine-grained tokens must explicitly list the repo under **Repository access**.
+- _403 rate limit_: authenticated calls get 5000/hr — if you hit it, wait or use a second token.
+- _Cannot create issues_: the token needs **Issues: Read and write**, not just read.`,
   requiredEnvVars: ["GITHUB_TOKEN"],
   diagnose: async () => {
     try {

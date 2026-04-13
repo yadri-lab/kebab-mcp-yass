@@ -11,6 +11,21 @@ export const linearConnector: ConnectorManifest = {
   id: "linear",
   label: "Linear",
   description: "Create, read, update, and search Linear issues and projects",
+  guide: `List, search, create, and update Linear issues and projects across every team you belong to.
+
+### Prerequisites
+A [Linear](https://linear.app) account. The API key acts on your behalf, so permissions match your user.
+
+### How to get credentials
+1. Open Linear and go to **Settings → Account → Security & access → Personal API keys** (or visit [linear.app/settings/account/security](https://linear.app/settings/account/security))
+2. Click **New API key**, give it a label (e.g. _MyMCP_), and copy the generated secret
+3. Set it as \`LINEAR_API_KEY\` in your environment
+4. Tools like \`linear_list_issues\` accept a \`team\` key (e.g. \`ENG\`) — use \`linear_list_projects\` to discover them
+
+### Troubleshooting
+- _Authentication failed_: API keys are tied to the user who created them — if that user is removed from the workspace the key stops working.
+- _Cannot find state/assignee by name_: creation/update tools resolve by name case-insensitively; verify the exact label exists in that team.
+- _Rate limits_: Linear enforces complexity-based limits; batch-heavy runs may need to pace requests.`,
   requiredEnvVars: ["LINEAR_API_KEY"],
   diagnose: async () => {
     try {
