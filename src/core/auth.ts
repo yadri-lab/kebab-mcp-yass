@@ -35,7 +35,7 @@ function safeCompare(a: string, b: string): boolean {
   }
 }
 
-function extractToken(request: Request): string | null {
+export function extractToken(request: Request): string | null {
   // Check Authorization header
   const authHeader = request.headers.get("authorization");
   if (authHeader) {

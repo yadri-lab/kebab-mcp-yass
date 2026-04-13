@@ -1,7 +1,8 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { withLogging } from "@/core/logging";
-import { checkMcpAuth } from "@/core/auth";
+import { checkMcpAuth, extractToken } from "@/core/auth";
+import { checkRateLimit } from "@/core/rate-limit";
 import { getEnabledPacks, logRegistryState } from "@/core/registry";
 import { listSkillsSync, getSkill } from "@/packs/skills/store";
 import { renderSkill } from "@/packs/skills/lib/render";
@@ -103,6 +104,24 @@ function buildHandler() {
 async function handler(request: Request): Promise<Response> {
   const authError = checkMcpAuth(request);
   if (authError) return authError;
+
+  if (process.env.MYMCP_RATE_LIMIT_ENABLED === "true") {
+    const token = extractToken(request);
+    if (token) {
+      const result = await checkRateLimit(token);
+      if (!result.allowed) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(Math.ceil((result.resetAt - Date.now()) / 1000)),
+            "X-RateLimit-Remaining": "0",
+          },
+        });
+      }
+    }
+  }
+
   const mcpHandler = buildHandler();
   return mcpHandler(request);
 }
