@@ -18,16 +18,16 @@ import { isLoopbackRequest } from "@/core/request-utils";
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  const vercelCronHeader = request.headers.get("x-vercel-cron");
 
   if (cronSecret) {
-    const authorized = authHeader === `Bearer ${cronSecret}`;
-    const fromVercelCron = process.env.VERCEL === "1" && vercelCronHeader;
-    if (!authorized && !fromVercelCron) {
+    // Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` when the
+    // env var is configured — that's the documented contract, no
+    // separate header to check.
+    if (authHeader !== `Bearer ${cronSecret}`) {
       return new Response("Unauthorized", { status: 401 });
     }
   } else {
-    // Fail-closed when CRON_SECRET is not configured
+    // Fail-closed when CRON_SECRET is not configured.
     if (!isLoopbackRequest(request)) {
       return new Response(
         "CRON_SECRET not configured — cron endpoint is locked to loopback",

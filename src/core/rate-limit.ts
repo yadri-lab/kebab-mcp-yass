@@ -21,6 +21,19 @@ function hashToken(token: string): string {
  * Use `scope` to partition limits — e.g. "mcp" for the tool endpoint vs
  * "setup" for the first-run credential tester, which should have much
  * tighter budgets.
+ *
+ * **Concurrency note.** The `get` → `set` sequence is not atomic; two
+ * concurrent requests reading `count=N` can both write `N+1` and both
+ * be allowed. For the purposes of this limiter (abuse protection, not
+ * billing) the imprecision is acceptable — the observed cap under
+ * contention is `limit × concurrent_callers` per window, which is
+ * still bounded. Upstream `INCR` would fix this atomically; we defer
+ * that to a future enhancement that touches the KVStore interface.
+ *
+ * **Key cleanup.** Each write also runs a best-effort sweep of stale
+ * buckets for the same scope+id so the KV store doesn't grow unbounded
+ * on long-running instances. Sweep runs at most every N minutes per
+ * caller to bound its own cost.
  */
 export async function checkRateLimit(
   identifier: string,
@@ -46,6 +59,14 @@ export async function checkRateLimit(
     }
 
     await kv.set(key, String(count + 1));
+
+    // Fire-and-forget sweep of older buckets for the same scope+id. Only
+    // runs on first request of each new bucket window (i.e. once per
+    // minute per caller) to keep the cost bounded.
+    if (count === 0) {
+      void sweepOldBuckets(scope, idHash, minuteBucket);
+    }
+
     return { allowed: true, remaining: limit - count - 1, resetAt };
   } catch (err) {
     // Fail open: KV errors must not block legitimate requests
@@ -54,5 +75,30 @@ export async function checkRateLimit(
       err instanceof Error ? err.message : String(err)
     );
     return { allowed: true, remaining: -1, resetAt };
+  }
+}
+
+/**
+ * Best-effort bucket cleanup. Lists keys under the scope+id prefix and
+ * deletes anything older than the current minute. Failures are swallowed.
+ */
+async function sweepOldBuckets(
+  scope: string,
+  idHash: string,
+  currentBucket: number
+): Promise<void> {
+  try {
+    const kv = getKVStore();
+    const prefix = `ratelimit:${scope}:${idHash}:`;
+    const keys = await kv.list(prefix);
+    for (const key of keys) {
+      const bucketStr = key.slice(prefix.length);
+      const bucket = parseInt(bucketStr, 10);
+      if (Number.isFinite(bucket) && bucket < currentBucket) {
+        await kv.delete(key);
+      }
+    }
+  } catch {
+    // ignore — cleanup is best-effort
   }
 }

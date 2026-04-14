@@ -29,6 +29,12 @@ export async function GET(request: Request) {
   const registry = resolveRegistry();
   const enabled = registry.filter((p) => p.enabled);
 
+  // Per-connector timeout — a single flaky upstream (Google token endpoint
+  // taking 30s) must not block the whole health check past Vercel's 60s
+  // function limit. 5s per connector × up to 13 connectors is still well
+  // under the overall budget because the calls run in parallel.
+  const PER_CONNECTOR_TIMEOUT_MS = 5_000;
+
   const checks = await Promise.all(
     enabled.map(async (p) => {
       const start = Date.now();
@@ -42,7 +48,15 @@ export async function GET(request: Request) {
         };
       }
       try {
-        const diag = await p.manifest.diagnose();
+        const diag = await Promise.race([
+          p.manifest.diagnose(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`diagnose() timeout after ${PER_CONNECTOR_TIMEOUT_MS}ms`)),
+              PER_CONNECTOR_TIMEOUT_MS
+            )
+          ),
+        ]);
         return {
           connector: p.manifest.id,
           label: p.manifest.label,

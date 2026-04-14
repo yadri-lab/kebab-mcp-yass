@@ -28,18 +28,52 @@ export interface FrontmatterResult {
   warnings: string[];
 }
 
+/**
+ * Max size of the frontmatter block (the text between `---` delimiters).
+ * YAML anchor/alias expansion can blow a few KB of input into GB of
+ * output (billion-laughs attack), so we hard-cap the INPUT size *and*
+ * reject any frontmatter containing anchor/alias syntax before calling
+ * yaml.load. JSON schema restricts types but does NOT disable anchors.
+ */
+const MAX_FRONTMATTER_BYTES = 16 * 1024;
+
+// Strip trailing UTF-8 BOM if present — some editors add it and it
+// would break the `/^---/` anchor.
+const BOM = "\uFEFF";
+
+function stripBom(s: string): string {
+  return s.startsWith(BOM) ? s.slice(1) : s;
+}
+
 export function parseFrontmatter(raw: string): FrontmatterResult {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  const src = stripBom(raw);
+  const match = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) {
     return {
       meta: {},
-      body: raw,
+      body: src,
       warnings: ["No frontmatter found — meta is empty"],
     };
   }
 
   const [, frontText, body] = match;
   const warnings: string[] = [];
+
+  if (frontText.length > MAX_FRONTMATTER_BYTES) {
+    warnings.push(
+      `Frontmatter exceeds ${MAX_FRONTMATTER_BYTES} bytes — refusing to parse`
+    );
+    return { meta: {}, body, warnings };
+  }
+
+  // YAML anchors (`&name`) and aliases (`*name`) enable amplification
+  // attacks. We never use them in skill.md files, so reject outright if
+  // any appear. Quick lexer check — matches at line start or after
+  // whitespace to avoid false positives inside quoted strings.
+  if (/(^|\s)[&*][A-Za-z_]/.test(frontText)) {
+    warnings.push("Frontmatter contains YAML anchors/aliases — refusing to parse");
+    return { meta: {}, body, warnings };
+  }
 
   let parsed: unknown;
   try {

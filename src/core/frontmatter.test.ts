@@ -118,4 +118,32 @@ body`);
     const config = meta.config as { nested: { deep: { value: number } } };
     expect(config.nested.deep.value).toBe(42);
   });
+
+  it("rejects frontmatter exceeding 16 KB (H2 regression)", () => {
+    const huge = "name: my-skill\n" + "x: ".padEnd(20_000, "y") + "\n";
+    const src = `---\n${huge}\n---\nbody`;
+    const { meta, warnings } = parseFrontmatter(src);
+    expect(meta).toEqual({});
+    expect(warnings.some((w) => /exceeds/.test(w))).toBe(true);
+  });
+
+  it("rejects frontmatter containing YAML anchors (H2 billion-laughs guard)", () => {
+    const src = `---
+a: &anchor
+  - 1
+  - 2
+b: *anchor
+---
+body`;
+    const { meta, warnings } = parseFrontmatter(src);
+    expect(meta).toEqual({});
+    expect(warnings.some((w) => /anchors|aliases/.test(w))).toBe(true);
+  });
+
+  it("strips UTF-8 BOM before parsing (N5 regression)", () => {
+    const src = "\uFEFF---\nname: bom-skill\n---\nbody";
+    const { meta, body } = parseFrontmatter(src);
+    expect(meta.name).toBe("bom-skill");
+    expect(body.trim()).toBe("body");
+  });
 });
