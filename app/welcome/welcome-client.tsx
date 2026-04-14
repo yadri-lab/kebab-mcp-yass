@@ -391,6 +391,8 @@ export default function WelcomeClient({
       {token && <TokenUsagePanel token={token} instanceUrl={instanceUrl} />}
       <MultiClientNote />
 
+      {token && <StarterSkillsPanel />}
+
       <TestMcpPanel
         permanent={permanent}
         testStatus={testStatus}
@@ -632,6 +634,128 @@ function TokenUsagePanel({ token, instanceUrl }: { token: string; instanceUrl: s
       <p className="text-[10px] text-slate-600 mt-3">
         Endpoint: <code className="font-mono text-slate-500">{baseUrl}</code>
       </p>
+    </div>
+  );
+}
+
+interface StarterSkill {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+function StarterSkillsPanel() {
+  const [skills, setSkills] = useState<StarterSkill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/welcome/starter-skills", { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const data = (await res.json()) as { skills: StarterSkill[] };
+        if (!cancelled) {
+          setSkills(data.skills || []);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const install = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      const res = await fetch("/api/welcome/starter-skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (data.ok) {
+        setInstalled((s) => {
+          const next = new Set(s);
+          next.add(id);
+          return next;
+        });
+      } else {
+        setError(data.error || "Install failed");
+      }
+    } catch {
+      setError("Network error");
+    }
+    setBusy(null);
+  };
+
+  if (loading) return null;
+  if (skills.length === 0) return null;
+
+  return (
+    <div className="mb-8 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+      <div className="flex items-baseline justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-sm font-semibold text-white">
+          Or skip credentials — start with a skill
+        </p>
+        <span className="text-[11px] text-slate-500">No connector setup required</span>
+      </div>
+      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+        Skills are reusable prompt templates exposed to your AI client as MCP tools. These three
+        starters work in any client without needing Google, Notion, GitHub, or any other
+        credentials. Install one now to feel the value, then come back to set up real connectors
+        when you&apos;re ready.
+      </p>
+      <ul className="space-y-2">
+        {skills.map((s) => {
+          const done = installed.has(s.id);
+          return (
+            <li
+              key={s.id}
+              className="flex items-start gap-3 rounded-md border border-slate-800 bg-slate-950 p-3"
+            >
+              <span className="text-xl leading-none mt-0.5" aria-hidden>
+                {s.icon}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-200">
+                  <code className="font-mono text-blue-300">skill_{s.name}</code>
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{s.description}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !done && install(s.id)}
+                disabled={done || busy === s.id}
+                className={`shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-md transition-colors ${
+                  done
+                    ? "bg-emerald-900/60 text-emerald-300 cursor-default"
+                    : "bg-blue-500 hover:bg-blue-400 text-white disabled:opacity-50"
+                }`}
+              >
+                {done ? "Installed ✓" : busy === s.id ? "Installing…" : "Install"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {error && (
+        <p className="mt-3 text-[11px] text-red-300">
+          {error} — you can also add starter skills later from /config → Skills.
+        </p>
+      )}
     </div>
   );
 }
