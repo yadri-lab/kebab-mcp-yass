@@ -631,16 +631,22 @@ export function SetupWizard({
             </div>
           </div>
 
+          <HowToUseToken token={mcpToken} />
+
           <div className="mt-4 border border-border rounded-lg p-4 bg-bg-muted/30">
-            <p className="text-xs font-medium text-text-dim mb-1">Multi-token support</p>
-            <p className="text-[11px] text-text-muted">
-              To allow multiple MCP clients (e.g. Claude Desktop + ChatGPT), set{" "}
-              <code className="font-mono bg-bg-muted px-1 rounded">MCP_AUTH_TOKEN</code> to a
-              comma-separated list of tokens in your{" "}
-              <code className="font-mono bg-bg-muted px-1 rounded">.env</code>:{" "}
-              <code className="font-mono bg-bg-muted px-1 rounded">token1,token2,token3</code>. Each
-              token must be at least 16 characters. Token hashes appear in logs so you can identify
-              which client made each call.
+            <p className="text-xs font-medium text-text-dim mb-1">
+              One token, any number of clients
+            </p>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              The single token above works in <strong>every</strong> MCP client you own (Claude
+              Desktop, Claude Code, Cursor, ChatGPT, etc.) — just paste the same value everywhere.
+              You only need multiple tokens if you want to{" "}
+              <strong>revoke access for one client without breaking the others</strong>. To do that,
+              set <code className="font-mono bg-bg-muted px-1 rounded">MCP_AUTH_TOKEN</code> in your{" "}
+              <code className="font-mono bg-bg-muted px-1 rounded">.env</code> to a comma-separated
+              list (<code className="font-mono bg-bg-muted px-1 rounded">token1,token2,token3</code>
+              ). Each must be ≥16 chars; token hashes appear in logs so you can tell which client
+              made each call.
             </p>
           </div>
 
@@ -891,6 +897,121 @@ export function SetupWizard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function HowToUseToken({ token }: { token: string | null }) {
+  const [tab, setTab] = useState<"desktop" | "code" | "other">("desktop");
+  const [origin, setOrigin] = useState<string>("http://localhost:3000");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setOrigin(window.location.origin);
+  }, []);
+
+  const url = `${origin}/api/mcp`;
+  const display = token || "<YOUR_TOKEN>";
+
+  const desktopSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        mymcp: {
+          url,
+          headers: { Authorization: `Bearer ${display}` },
+        },
+      },
+    },
+    null,
+    2
+  );
+
+  const codeSnippet = `claude mcp add --transport http mymcp ${url} \\\n  --header "Authorization: Bearer ${display}"`;
+
+  const desktopPath =
+    typeof navigator !== "undefined" && /Mac/i.test(navigator.platform)
+      ? "~/Library/Application Support/Claude/claude_desktop_config.json"
+      : "%APPDATA%\\Claude\\claude_desktop_config.json";
+
+  const snippet = tab === "desktop" ? desktopSnippet : tab === "code" ? codeSnippet : url;
+
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="mt-4 border border-border rounded-lg p-5">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold">How to use this token</p>
+        <div className="flex items-center gap-1 bg-bg-muted rounded-md p-0.5">
+          {(
+            [
+              ["desktop", "Claude Desktop"],
+              ["code", "Claude Code"],
+              ["other", "Other"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`text-[11px] font-medium px-2.5 py-1 rounded ${
+                tab === k ? "bg-bg text-text shadow-sm" : "text-text-muted hover:text-text"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "desktop" && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-text-muted leading-relaxed">
+            Open <code className="font-mono bg-bg-muted px-1 rounded">{desktopPath}</code> (create
+            it if it doesn&apos;t exist), paste the snippet below, then restart Claude Desktop.
+          </p>
+        </div>
+      )}
+
+      {tab === "code" && (
+        <p className="text-[11px] text-text-muted mb-2 leading-relaxed">
+          Run this command in any terminal — it registers MyMCP as an HTTP MCP server in your Claude
+          Code config.
+        </p>
+      )}
+
+      {tab === "other" && (
+        <p className="text-[11px] text-text-muted mb-2 leading-relaxed">
+          For Cursor, ChatGPT desktop, n8n, or any other MCP client: point it at the URL below and
+          send your token as a <code className="font-mono bg-bg-muted px-1 rounded">Bearer</code>{" "}
+          header in the <code className="font-mono bg-bg-muted px-1 rounded">Authorization</code>{" "}
+          field. The exact UI varies per client.
+        </p>
+      )}
+
+      <div className="relative mt-2">
+        <pre className="text-[11px] font-mono bg-bg-muted px-3 py-2.5 rounded-md border border-border overflow-x-auto whitespace-pre-wrap break-all">
+          {snippet}
+        </pre>
+        <button
+          onClick={copySnippet}
+          className={`absolute top-2 right-2 text-[10px] font-medium px-2 py-1 rounded transition-colors ${
+            copied ? "bg-green-bg text-green" : "bg-bg hover:bg-border-light text-text-dim"
+          }`}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+
+      <p className="text-[10px] text-text-muted mt-2">
+        Endpoint: <code className="font-mono">{url}</code>
+      </p>
     </div>
   );
 }
