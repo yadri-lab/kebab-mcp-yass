@@ -568,6 +568,34 @@ export function SetupWizard({
   const otherPacks = PACKS.filter((p) => !p.starter);
   const visiblePacks = showAllPacks ? PACKS : starterPacks;
 
+  // Vercel + first-run: this wizard cannot work because /api/setup/save is
+  // disabled in serverless mode. Show a clear escape hatch to /welcome
+  // instead of trapping the user with a disabled Continue button.
+  if (isVercel && firstTime) {
+    return (
+      <div className="border border-amber-500/40 bg-amber-50/50 rounded-lg p-6">
+        <h2 className="font-semibold text-base text-text mb-2">
+          This wizard isn&apos;t available on Vercel
+        </h2>
+        <p className="text-sm text-text-dim leading-relaxed mb-4">
+          The <code className="font-mono bg-bg-muted px-1 rounded">/setup</code> wizard writes to a
+          local <code className="font-mono bg-bg-muted px-1 rounded">.env</code> file, which
+          doesn&apos;t exist in serverless deployments. Your zero-config flow lives at{" "}
+          <code className="font-mono bg-bg-muted px-1 rounded">/welcome</code> — it generates a
+          permanent token and (if{" "}
+          <code className="font-mono bg-bg-muted px-1 rounded">VERCEL_TOKEN</code> is set)
+          auto-deploys it for you.
+        </p>
+        <a
+          href="/welcome"
+          className="inline-block bg-accent text-white text-sm font-semibold px-5 py-2.5 rounded-md hover:bg-accent/90 transition-colors"
+        >
+          Go to /welcome →
+        </a>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* ── Step indicator ─────────────────────────────────────────── */}
