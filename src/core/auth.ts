@@ -82,10 +82,32 @@ export function extractToken(request: Request): string | null {
   return null;
 }
 
-/** Check MCP endpoint auth. Returns error Response or null if OK, plus the matched tokenId. */
+/**
+ * Check MCP endpoint auth. Returns error Response or null if OK, plus the
+ * matched tokenId.
+ *
+ * Fail-closed semantics:
+ * - If MCP_AUTH_TOKEN is set → one of the tokens must match
+ * - If MCP_AUTH_TOKEN is unset → only loopback requests are allowed
+ *   (local dev convenience). Public deploys that forget to set the env
+ *   var MUST NOT expose the tools endpoint — that would let the internet
+ *   drive the operator's Gmail, GitHub, Calendar, Slack, etc. using the
+ *   connector credentials the server already has.
+ */
 export function checkMcpAuth(request: Request): { error: Response | null; tokenId: string | null } {
   const tokens = parseTokens(process.env.MCP_AUTH_TOKEN);
-  if (tokens.length === 0) return { error: null, tokenId: null }; // No tokens configured = open access
+
+  if (tokens.length === 0) {
+    // First-run / dev: only loopback may skip auth.
+    if (isLoopbackRequest(request)) return { error: null, tokenId: null };
+    return {
+      error: new Response(
+        "MCP_AUTH_TOKEN not configured on this server. Set it to enable the MCP endpoint.",
+        { status: 503 }
+      ),
+      tokenId: null,
+    };
+  }
 
   const provided = extractToken(request);
   if (provided) {

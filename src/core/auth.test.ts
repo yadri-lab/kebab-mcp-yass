@@ -79,10 +79,27 @@ describe("checkMcpAuth", () => {
     }
   });
 
-  it("returns no error when no token is configured (open access)", () => {
+  it("allows loopback when no token is configured (dev convenience)", () => {
     delete process.env.MCP_AUTH_TOKEN;
+    // makeRequest() points at http://localhost/... which is loopback.
     const { error, tokenId: tid } = checkMcpAuth(makeRequest());
     expect(error).toBeNull();
+    expect(tid).toBeNull();
+  });
+
+  it("rejects non-loopback when no token is configured (fail-closed)", async () => {
+    delete process.env.MCP_AUTH_TOKEN;
+    // Simulate a request that appears to come from the public internet.
+    const req = new Request("https://mymcp.example.com/api/mcp", {
+      headers: {
+        "x-forwarded-for": "203.0.113.42",
+        "x-forwarded-host": "mymcp.example.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+    const { error, tokenId: tid } = checkMcpAuth(req);
+    expect(error).not.toBeNull();
+    expect((error as Response).status).toBe(503);
     expect(tid).toBeNull();
   });
 

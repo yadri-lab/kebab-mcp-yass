@@ -1,5 +1,78 @@
 [
   {
+    "name": "airtable_create_record",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id",
+      "fields",
+      "table"
+    ],
+    "destructive": true
+  },
+  {
+    "name": "airtable_get_record",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id",
+      "record_id",
+      "table"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "airtable_list_bases",
+    "pack": "airtable",
+    "schemaKeys": [
+      "_placeholder"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "airtable_list_records",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id",
+      "filter_formula",
+      "limit",
+      "sort_direction",
+      "sort_field",
+      "table",
+      "view"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "airtable_list_tables",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "airtable_search_records",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id",
+      "limit",
+      "query",
+      "search_field",
+      "table"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "airtable_update_record",
+    "pack": "airtable",
+    "schemaKeys": [
+      "base_id",
+      "fields",
+      "record_id",
+      "table"
+    ],
+    "destructive": true
+  },
+  {
     "name": "apify_linkedin_company",
     "pack": "apify",
     "schemaKeys": [
@@ -129,6 +202,24 @@
       "summary"
     ],
     "destructive": true
+  },
+  {
+    "name": "composio_action",
+    "pack": "composio",
+    "schemaKeys": [
+      "action",
+      "connected_account_id",
+      "params"
+    ],
+    "destructive": true
+  },
+  {
+    "name": "composio_list",
+    "pack": "composio",
+    "schemaKeys": [
+      "app"
+    ],
+    "destructive": false
   },
   {
     "name": "contacts_search",

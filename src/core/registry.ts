@@ -16,7 +16,7 @@ import { githubConnector } from "@/connectors/github/manifest";
 import { linearConnector } from "@/connectors/linear/manifest";
 import { airtableConnector } from "@/connectors/airtable/manifest";
 
-const ALL_CONNECTORS: ConnectorManifest[] = [
+export const ALL_CONNECTORS: ConnectorManifest[] = [
   googleConnector,
   vaultConnector,
   browserConnector,

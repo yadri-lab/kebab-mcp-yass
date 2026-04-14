@@ -12,30 +12,11 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
-// Import all pack manifests
-import { googleConnector } from "../src/connectors/google/manifest";
-import { vaultConnector } from "../src/connectors/vault/manifest";
-import { browserConnector } from "../src/connectors/browser/manifest";
-import { slackConnector } from "../src/connectors/slack/manifest";
-import { notionConnector } from "../src/connectors/notion/manifest";
-import { adminConnector } from "../src/connectors/admin/manifest";
-import { paywallConnector } from "../src/connectors/paywall/manifest";
-import { apifyConnector } from "../src/connectors/apify/manifest";
-import { githubConnector } from "../src/connectors/github/manifest";
-import { linearConnector } from "../src/connectors/linear/manifest";
-
-const ALL_CONNECTORS = [
-  googleConnector,
-  vaultConnector,
-  browserConnector,
-  slackConnector,
-  notionConnector,
-  paywallConnector,
-  apifyConnector,
-  githubConnector,
-  linearConnector,
-  adminConnector,
-];
+// Derive the connector list from the same source as the runtime registry.
+// Previously this file maintained its own list and three connectors (composio,
+// skills, airtable) silently drifted out of test coverage. Importing the
+// source of truth directly closes that gap.
+import { ALL_CONNECTORS } from "../src/core/registry";
 const SNAPSHOT_PATH = resolve(__dirname, "contract-snapshot.json");
 
 interface ToolContract {
