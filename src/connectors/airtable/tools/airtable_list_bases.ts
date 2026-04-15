@@ -13,7 +13,7 @@ interface BasesResponse {
   }>;
 }
 
-export async function handleAirtableListBases(_params: Record<string, unknown>) {
+export async function handleAirtableListBases() {
   const data = await airtableRequest<BasesResponse>("/meta/bases");
 
   const bases = data.bases;

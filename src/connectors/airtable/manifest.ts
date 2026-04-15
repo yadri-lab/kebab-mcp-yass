@@ -1,4 +1,4 @@
-import type { ConnectorManifest } from "@/core/types";
+import { defineTool, type ConnectorManifest } from "@/core/types";
 import { airtableRequest } from "./lib/airtable-api";
 import { airtableListBasesSchema, handleAirtableListBases } from "./tools/airtable_list_bases";
 import { airtableListTablesSchema, handleAirtableListTables } from "./tools/airtable_list_tables";
@@ -55,91 +55,59 @@ An Airtable account with access to at least one base. Free plans work fine.
     }
   },
   tools: [
-    {
+    defineTool({
       name: "airtable_list_bases",
       description:
         "List all Airtable bases accessible with the current API key, including IDs and permission levels.",
       schema: airtableListBasesSchema,
-      handler: async (params) => handleAirtableListBases(params as Record<string, unknown>),
+      handler: async () => handleAirtableListBases(),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_list_tables",
       description: "List all tables in an Airtable base, including fields and views.",
       schema: airtableListTablesSchema,
-      handler: async (params) => handleAirtableListTables(params as { base_id: string }),
+      handler: async (args) => handleAirtableListTables(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_list_records",
       description:
         "List records in an Airtable table. Supports optional view, filter formula, sort, and limit (default 25, max 100).",
       schema: airtableListRecordsSchema,
-      handler: async (params) =>
-        handleAirtableListRecords(
-          params as {
-            base_id: string;
-            table: string;
-            view?: string;
-            filter_formula?: string;
-            sort_field?: string;
-            sort_direction?: "asc" | "desc";
-            limit?: number;
-          }
-        ),
+      handler: async (args) => handleAirtableListRecords(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_get_record",
       description: "Get a single Airtable record by ID with all its field values.",
       schema: airtableGetRecordSchema,
-      handler: async (params) =>
-        handleAirtableGetRecord(params as { base_id: string; table: string; record_id: string }),
+      handler: async (args) => handleAirtableGetRecord(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_create_record",
       description:
         "Create a new record in an Airtable table. Always confirm field values with the user before calling.",
       schema: airtableCreateRecordSchema,
-      handler: async (params) =>
-        handleAirtableCreateRecord(
-          params as { base_id: string; table: string; fields: Record<string, unknown> }
-        ),
+      handler: async (args) => handleAirtableCreateRecord(args),
       destructive: true,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_update_record",
       description:
         "Partially update an existing Airtable record (PATCH — untouched fields are preserved). Always confirm changes with the user before calling.",
       schema: airtableUpdateRecordSchema,
-      handler: async (params) =>
-        handleAirtableUpdateRecord(
-          params as {
-            base_id: string;
-            table: string;
-            record_id: string;
-            fields: Record<string, unknown>;
-          }
-        ),
+      handler: async (args) => handleAirtableUpdateRecord(args),
       destructive: true,
-    },
-    {
+    }),
+    defineTool({
       name: "airtable_search_records",
       description:
         "Search records in an Airtable table using a case-insensitive text match on a specified field.",
       schema: airtableSearchRecordsSchema,
-      handler: async (params) =>
-        handleAirtableSearchRecords(
-          params as {
-            base_id: string;
-            table: string;
-            search_field: string;
-            query: string;
-            limit?: number;
-          }
-        ),
+      handler: async (args) => handleAirtableSearchRecords(args),
       destructive: false,
-    },
+    }),
   ],
 };
