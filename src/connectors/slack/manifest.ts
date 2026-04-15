@@ -1,4 +1,4 @@
-import type { ConnectorManifest } from "@/core/types";
+import { defineTool, type ConnectorManifest } from "@/core/types";
 import { slackChannelsSchema, handleSlackChannels } from "./tools/slack-channels";
 import { slackReadSchema, handleSlackRead } from "./tools/slack-read";
 import { slackSendSchema, handleSlackSend } from "./tools/slack-send";
@@ -66,55 +66,53 @@ Admin access (or approval) to install a custom app in a Slack workspace. Free Sl
     }
   },
   tools: [
-    {
+    defineTool({
       name: "slack_channels",
       description:
         "List Slack channels the bot has access to. Returns channel name, topic, member count, and ID.",
       schema: slackChannelsSchema,
-      handler: async (params) => handleSlackChannels(params as { limit?: number }),
+      handler: async (args) => handleSlackChannels(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "slack_read",
       description:
         "Read recent messages from a Slack channel. Returns sender, text, timestamp, and thread info. Use slack_channels to find the channel ID.",
       schema: slackReadSchema,
-      handler: async (params) => handleSlackRead(params as { channel: string; limit?: number }),
+      handler: async (args) => handleSlackRead(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "slack_send",
       description:
         "Send a message to a Slack channel. Supports Slack markdown. Can reply in a thread using thread_ts. Always show the message to the user for approval before calling.",
       schema: slackSendSchema,
-      handler: async (params) =>
-        handleSlackSend(params as { channel: string; text: string; thread_ts?: string }),
+      handler: async (args) => handleSlackSend(args),
       destructive: true,
-    },
-    {
+    }),
+    defineTool({
       name: "slack_search",
       description:
         "Search Slack messages. Supports Slack search operators: from:user, in:channel, has:link, before:date, after:date.",
       schema: slackSearchSchema,
-      handler: async (params) => handleSlackSearch(params as { query: string; count?: number }),
+      handler: async (args) => handleSlackSearch(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "slack_thread",
       description:
         "Read replies in a Slack thread. Provide the channel ID and parent message timestamp (thread_ts from slack_read).",
       schema: slackThreadSchema,
-      handler: async (params) =>
-        handleSlackThread(params as { channel: string; thread_ts: string; limit?: number }),
+      handler: async (args) => handleSlackThread(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "slack_profile",
       description:
         "Get a Slack user's profile: name, title, email, timezone, status. Use the user ID from slack_read results.",
       schema: slackProfileSchema,
-      handler: async (params) => handleSlackProfile(params as { user: string }),
+      handler: async (args) => handleSlackProfile(args),
       destructive: false,
-    },
+    }),
   ],
 };
