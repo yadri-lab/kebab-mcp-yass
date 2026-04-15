@@ -116,6 +116,17 @@ describe("v0.6 settings storage (A1)", () => {
     expect(sync.timezone).toBe("America/New_York");
   });
 
+  it("saveInstanceConfig emits env.changed so subscribers invalidate (MED-3)", async () => {
+    const events = await import("../../src/core/events");
+    events.__resetEventsForTests();
+    let fired = 0;
+    events.on("env.changed", () => {
+      fired++;
+    });
+    await saveInstanceConfig({ displayName: "Bob" });
+    expect(fired).toBe(1);
+  });
+
   it("PUT /api/config/env routes the four settings to KV, not EnvStore", async () => {
     // Mock EnvStore.write so we can assert it's NOT called for KV-backed
     // keys. Dynamic import after mocks.

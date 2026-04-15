@@ -51,6 +51,14 @@ export async function checkRateLimit(
     // even under clock skew, without accumulating forever.
     if (typeof kv.incr === "function") {
       const count = await kv.incr(key, { ttlSeconds: Math.ceil((windowMs / 1000) * 2) });
+      // v0.6 MED-1: FilesystemKV.incr does not honor TTL (dev-only path),
+      // so stale buckets accumulate in `data/kv.json` forever without a
+      // sweep. Upstash handles eviction natively via EXPIRE. We only
+      // trigger the sweep on `count === 1` (fresh bucket boundary) to
+      // avoid doing it on every request.
+      if (kv.kind === "filesystem" && count === 1) {
+        void sweepOldBuckets(scope, idHash, minuteBucket);
+      }
       if (count > limit) {
         return { allowed: false, remaining: 0, resetAt };
       }

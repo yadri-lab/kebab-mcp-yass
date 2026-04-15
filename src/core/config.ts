@@ -1,5 +1,6 @@
 import type { InstanceConfig } from "./types";
 import { getKVStore } from "./kv-store";
+import { emit } from "./events";
 
 /**
  * Reads instance configuration.
@@ -130,6 +131,10 @@ export async function saveInstanceConfig(patch: Partial<InstanceConfig>): Promis
   if (patch.contextPath !== undefined) writes.push(kv.set(KV_KEYS.contextPath, patch.contextPath));
   await Promise.all(writes);
   cached = null;
+  // v0.6 MED-3: notify subscribers (registry cache, dashboard SSE) that
+  // a setting backing process.env-equivalent state has changed, so they
+  // can invalidate without waiting for the next lambda restart.
+  emit("env.changed");
 }
 
 /** Default tool timeout in ms. Override via MYMCP_TOOL_TIMEOUT env var. */

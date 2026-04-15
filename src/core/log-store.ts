@@ -153,16 +153,22 @@ export class FilesystemLogStore implements LogStore {
   }
 
   async recent(n: number): Promise<LogEntry[]> {
-    await this.writeQueue;
-    const all = await this.readAllLines();
-    const take = Math.max(0, Math.min(n, all.length));
-    return all.slice(all.length - take).reverse();
+    // v0.6 MED-5: schedule the read through the same write queue so it
+    // observes a consistent pre/post-rotation state. Without this a
+    // concurrent append+rotate could have `rotated` moved out from under
+    // the `Promise.all` read and return partial data.
+    return this.enqueue(async () => {
+      const all = await this.readAllLines();
+      const take = Math.max(0, Math.min(n, all.length));
+      return all.slice(all.length - take).reverse();
+    });
   }
 
   async since(ts: number): Promise<LogEntry[]> {
-    await this.writeQueue;
-    const all = await this.readAllLines();
-    return all.filter((e) => e.ts >= ts).reverse();
+    return this.enqueue(async () => {
+      const all = await this.readAllLines();
+      return all.filter((e) => e.ts >= ts).reverse();
+    });
   }
 }
 

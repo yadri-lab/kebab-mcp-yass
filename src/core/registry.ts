@@ -70,16 +70,18 @@ function invalidateRegistryCache(): void {
   cachedRegistry = null;
 }
 
-// NIT-12: subscribe at most once. Without this guard, Next.js HMR
-// re-evaluates this module on every hot reload during dev and each
-// reload adds another listener — leaking handlers and slowing down
-// invalidation linearly with the number of edits made in a session.
-// We use a module-scoped flag rather than an `off()` call because the
-// listener identity changes across module evaluations.
-let isSubscribed = false;
+// NIT-12 / v0.6 MED-2: subscribe at most once, survives HMR.
+// A module-scoped flag is reset every time Next.js re-evaluates this
+// module during hot reload, so each edit would leak another pair of
+// listeners. Stashing the flag on `globalThis` under a Symbol.for()
+// key keeps it alive across module reloads — the flag is not reset
+// until the Node process exits.
+const REGISTRY_SUBSCRIBED = Symbol.for("mymcp.registry.subscribed");
+type GlobalWithFlag = typeof globalThis & { [REGISTRY_SUBSCRIBED]?: boolean };
 function subscribeOnce(): void {
-  if (isSubscribed) return;
-  isSubscribed = true;
+  const g = globalThis as GlobalWithFlag;
+  if (g[REGISTRY_SUBSCRIBED]) return;
+  g[REGISTRY_SUBSCRIBED] = true;
   on("env.changed", invalidateRegistryCache);
   on("connector.toggled", invalidateRegistryCache);
 }

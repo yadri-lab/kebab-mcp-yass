@@ -10,8 +10,19 @@ import { VERSION } from "@/core/version";
 // NIT-03: Log the registry state once at module load, then re-log only
 // when env.changed fires. Previous behavior logged on every MCP request,
 // which dominated dev console output and produced log spam in production.
-logRegistryState();
-on("env.changed", logRegistryState);
+// v0.6 MED-2: guard the subscription with a globalThis flag so Next.js
+// HMR re-evaluating this module doesn't accumulate listeners on each
+// hot reload during development.
+const TRANSPORT_SUBSCRIBED = Symbol.for("mymcp.transport.subscribed");
+type GlobalWithFlag = typeof globalThis & { [TRANSPORT_SUBSCRIBED]?: boolean };
+{
+  const g = globalThis as GlobalWithFlag;
+  if (!g[TRANSPORT_SUBSCRIBED]) {
+    g[TRANSPORT_SUBSCRIBED] = true;
+    logRegistryState();
+    on("env.changed", logRegistryState);
+  }
+}
 
 /**
  * Build a fresh MCP handler that reflects the current registry state.

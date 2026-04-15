@@ -173,6 +173,21 @@ class FilesystemKV implements KVStore {
 
 // ── UpstashKV ───────────────────────────────────────────────────────
 
+/**
+ * v0.6 MED-4: bound Upstash error bodies to 80 chars and scrub any
+ * `authorization: …` header echoes. Upstash's REST API rarely does so,
+ * but a misconfigured proxy in front (common for self-hosted Redis
+ * clones sitting behind nginx) can reflect the request headers into
+ * its own 4xx response bodies. Logging the raw text would then leak
+ * our bearer token to anywhere the exception surfaces.
+ */
+function sanitizeUpstashError(text: string): string {
+  const scrubbed = text
+    .replace(/authorization\s*:\s*bearer\s+[^\s,;"']+/gi, "authorization: [redacted]")
+    .replace(/bearer\s+[a-z0-9._-]{8,}/gi, "Bearer [redacted]");
+  return scrubbed.slice(0, 80);
+}
+
 class UpstashKV implements KVStore {
   kind = "upstash" as const;
   private url: string;
@@ -194,7 +209,7 @@ class UpstashKV implements KVStore {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Upstash ${command[0]} failed: ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`Upstash ${command[0]} failed: ${res.status} ${sanitizeUpstashError(text)}`);
     }
     const json = (await res.json()) as { result?: unknown; error?: string };
     if (json.error) throw new Error(`Upstash error: ${json.error}`);
@@ -245,7 +260,7 @@ class UpstashKV implements KVStore {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Upstash pipeline failed: ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`Upstash pipeline failed: ${res.status} ${sanitizeUpstashError(text)}`);
     }
     const json = (await res.json()) as Array<{ result?: unknown; error?: string }>;
     if (!Array.isArray(json) || json.length === 0) {
@@ -281,7 +296,7 @@ class UpstashKV implements KVStore {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Upstash pipeline failed: ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`Upstash pipeline failed: ${res.status} ${sanitizeUpstashError(text)}`);
     }
   }
 
