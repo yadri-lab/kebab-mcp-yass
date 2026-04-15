@@ -63,7 +63,13 @@ describe("tokenId", () => {
 // ── checkMcpAuth ─────────────────────────────────────────────────────
 
 function makeRequest(token?: string): Request {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Set x-forwarded-for to a loopback IP so isLoopbackRequest returns
+  // true via the proxy-header path. We avoid relying on URL-host trust
+  // because v0.6 NIT-05 made that opt-in (MYMCP_TRUST_URL_HOST=1).
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-forwarded-for": "127.0.0.1",
+  };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return new Request("http://localhost/api/mcp", { headers });
 }
@@ -245,8 +251,11 @@ describe("checkAdminAuth — first-run mode", () => {
   });
 
   it("allows loopback requests when no token is configured", () => {
-    // No proxy headers → treated as direct (loopback).
-    const req = new Request("http://localhost/api/admin/status");
+    // x-forwarded-for points at loopback (proxy-header path). v0.6 NIT-05
+    // made URL-host trust opt-in, so we test the proxy path explicitly.
+    const req = new Request("http://localhost/api/admin/status", {
+      headers: { "x-forwarded-for": "127.0.0.1" },
+    });
     expect(checkAdminAuth(req)).toBeNull();
   });
 

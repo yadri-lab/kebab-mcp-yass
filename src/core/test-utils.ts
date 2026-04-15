@@ -17,15 +17,22 @@
 export interface MakeRequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
-  /** Override the full URL. Default: `http://mymcp.local${path}` */
+  /**
+   * Override the full URL. Default: `http://mymcp.local${path}`.
+   *
+   * NIT-06: `mymcp.local` is intentionally a non-loopback hostname so
+   * `isLoopbackRequest()` does NOT auto-grant first-run admin access in
+   * tests that just call `makeRequest("GET", "/api/...")` without an
+   * explicit `x-forwarded-for: 127.0.0.1` header. Tests that want the
+   * loopback path must opt in by passing the header (or the URL host)
+   * explicitly. This avoids accidental "auth bypass via test default"
+   * regressions where a test thought it was unauthenticated but was
+   * actually getting waved through the first-run loopback check.
+   */
   url?: string;
 }
 
-export function makeRequest(
-  method: string,
-  path: string,
-  opts: MakeRequestOptions = {}
-): Request {
+export function makeRequest(method: string, path: string, opts: MakeRequestOptions = {}): Request {
   const url = opts.url ?? `http://mymcp.local${path}`;
   const headers: Record<string, string> = {
     host: new URL(url).host,

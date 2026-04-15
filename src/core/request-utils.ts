@@ -25,15 +25,15 @@ function isLoopbackCandidate(ip: string): boolean {
  * 2. If `x-forwarded-for` / `x-real-ip` is set (proxy in front), require
  *    the leftmost IP to be loopback.
  * 3. If `NextRequest.ip` is available (older Next versions), check it.
- * 4. Fall back to inspecting the URL hostname — trust the request only
- *    when the destination itself is a loopback name (`localhost`, `127.x`,
- *    `::1`). This handles `next dev` via `http://localhost:3000` without
- *    false-positives for Docker/custom deploys behind a proxy that
- *    forgets to set `x-forwarded-for`.
+ * 4. Optional URL-host fallback (NIT-05): only when MYMCP_TRUST_URL_HOST=1.
+ *    Off by default — a reverse proxy that forgets x-forwarded-for and
+ *    happens to forward Host: localhost would otherwise grant first-run
+ *    admin access on a non-Vercel deploy. Operators of `next dev` via
+ *    http://localhost:3000 with no proxy in front can opt back in.
  *
- * Previous behavior fell through to `return true` which silently granted
- * admin access to any unproxied request on non-Vercel deploys. Fixed in
- * v0.5 phase 13 after API route tests caught the regression.
+ * Previous behavior (v0.5 phase 13) trusted the URL host unconditionally.
+ * v0.6 NIT-05 narrowed it to opt-in to shrink the attack surface for
+ * Docker/custom deploys behind misconfigured proxies.
  */
 export function isLoopbackRequest(request: Request): boolean {
   if (process.env.VERCEL === "1") return false;
@@ -50,13 +50,19 @@ export function isLoopbackRequest(request: Request): boolean {
   const ip = (request as unknown as NextRequest & { ip?: string }).ip;
   if (ip) return isLoopbackCandidate(ip);
 
-  // Last resort: check the URL hostname. Only trust loopback destinations.
-  try {
-    const urlHost = new URL(request.url).hostname.toLowerCase();
-    return isLoopbackCandidate(urlHost);
-  } catch {
-    return false;
+  // Last resort, opt-in only: check the URL hostname. Off by default
+  // because a misconfigured reverse proxy can forward Host: localhost
+  // from the public internet. Set MYMCP_TRUST_URL_HOST=1 only when you
+  // know nothing in front of this server can spoof Host.
+  if (process.env.MYMCP_TRUST_URL_HOST === "1") {
+    try {
+      const urlHost = new URL(request.url).hostname.toLowerCase();
+      return isLoopbackCandidate(urlHost);
+    } catch {
+      return false;
+    }
   }
+  return false;
 }
 
 /**
