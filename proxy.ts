@@ -61,12 +61,26 @@ function generateNonce(): string {
   return btoa(bin);
 }
 
+/**
+ * Constant-time string comparison without an early length side-channel.
+ *
+ * v0.6 LOW: the previous implementation returned early on length
+ * mismatch, which leaks the length of the expected admin token through
+ * response timing. We now always walk the full length of the LONGER
+ * input, XOR-accumulating into the same accumulator and mixing in the
+ * length delta so unequal lengths still produce a non-zero result.
+ * `crypto.timingSafeEqual` isn't available on the Edge runtime, so we
+ * stay with the manual loop. A sha256-digest-based variant was
+ * considered but adds an async barrier the middleware can't tolerate
+ * on its synchronous auth path.
+ */
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  // Constant-time comparison (Edge Runtime compatible — no crypto.timingSafeEqual)
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const len = Math.max(a.length, b.length);
+  let result = a.length ^ b.length;
+  for (let i = 0; i < len; i++) {
+    const ca = i < a.length ? a.charCodeAt(i) : 0;
+    const cb = i < b.length ? b.charCodeAt(i) : 0;
+    result |= ca ^ cb;
   }
   return result === 0;
 }
