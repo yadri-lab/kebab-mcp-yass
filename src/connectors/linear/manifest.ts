@@ -1,4 +1,4 @@
-import type { ConnectorManifest } from "@/core/types";
+import { defineTool, type ConnectorManifest } from "@/core/types";
 import { linearQuery } from "./lib/linear-api";
 import { linearListIssuesSchema, handleLinearListIssues } from "./tools/linear_list_issues";
 import { linearGetIssueSchema, handleLinearGetIssue } from "./tools/linear_get_issue";
@@ -41,101 +41,52 @@ A [Linear](https://linear.app) account. The API key acts on your behalf, so perm
     }
   },
   tools: [
-    {
+    defineTool({
       name: "linear_list_issues",
       description:
         "List Linear issues. Filters: team key, project name, workflow state, assignee. Returns identifiers, titles, state, and assignees.",
       schema: linearListIssuesSchema,
-      handler: async (params) =>
-        handleLinearListIssues(
-          params as {
-            team?: string;
-            project?: string;
-            state?: string;
-            assignee?: string;
-            limit?: number;
-          }
-        ),
+      handler: async (args) => handleLinearListIssues(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "linear_get_issue",
       description:
         "Get full details of a Linear issue by identifier (e.g. 'ENG-123'), including description and comments.",
       schema: linearGetIssueSchema,
-      handler: async (params) =>
-        handleLinearGetIssue(
-          params as {
-            identifier: string;
-            include_comments?: boolean;
-          }
-        ),
+      handler: async (args) => handleLinearGetIssue(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "linear_search_issues",
       description: "Full-text search across Linear issues.",
       schema: linearSearchIssuesSchema,
-      handler: async (params) =>
-        handleLinearSearchIssues(
-          params as {
-            query: string;
-            limit?: number;
-          }
-        ),
+      handler: async (args) => handleLinearSearchIssues(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "linear_list_projects",
       description:
         "List Linear projects with optional team filter. Returns state, progress, and dates.",
       schema: linearListProjectsSchema,
-      handler: async (params) =>
-        handleLinearListProjects(
-          params as {
-            team?: string;
-            limit?: number;
-          }
-        ),
+      handler: async (args) => handleLinearListProjects(args),
       destructive: false,
-    },
-    {
+    }),
+    defineTool({
       name: "linear_create_issue",
       description:
         "Create a new Linear issue. Requires team key. Resolves state, assignee, and label names automatically. Always confirm with the user before calling.",
       schema: linearCreateIssueSchema,
-      handler: async (params) =>
-        handleLinearCreateIssue(
-          params as {
-            title: string;
-            team: string;
-            description?: string;
-            priority?: "no_priority" | "urgent" | "high" | "medium" | "low";
-            state?: string;
-            assignee?: string;
-            labels?: string[];
-          }
-        ),
+      handler: async (args) => handleLinearCreateIssue(args),
       destructive: true,
-    },
-    {
+    }),
+    defineTool({
       name: "linear_update_issue",
       description:
         "Update a Linear issue by identifier. Resolves state, assignee, and label names automatically. Always confirm changes with the user before calling.",
       schema: linearUpdateIssueSchema,
-      handler: async (params) =>
-        handleLinearUpdateIssue(
-          params as {
-            identifier: string;
-            title?: string;
-            description?: string;
-            priority?: "no_priority" | "urgent" | "high" | "medium" | "low";
-            state?: string;
-            assignee?: string | null;
-            labels?: string[];
-          }
-        ),
+      handler: async (args) => handleLinearUpdateIssue(args),
       destructive: true,
-    },
+    }),
   ],
 };
