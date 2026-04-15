@@ -39,7 +39,7 @@ export function buildSkillTool(skill: Skill): ToolDefinition {
       // For remote skills, lazy-refresh if TTL expired (fire-and-forget).
       // Returns the (possibly stale) current state immediately.
       const ready = await maybeRefreshRemote(latest);
-      const rendered = renderSkill(ready, (params ?? {}) as Record<string, unknown>);
+      const rendered = renderSkill(ready, params ?? {});
 
       return {
         content: [{ type: "text", text: rendered }],
@@ -116,28 +116,26 @@ export const skillsConnector: ConnectorManifest = {
         for (const arg of skill.arguments) {
           argsSchema[arg.name] = arg.required
             ? z.string().describe(arg.description || arg.name)
-            : z.string().optional().describe(arg.description || arg.name);
+            : z
+                .string()
+                .optional()
+                .describe(arg.description || arg.name);
         }
 
         try {
-          server.prompt(
-            skill.id,
-            skill.description || skill.name,
-            argsSchema,
-            async (args) => {
-              const latest = (await getSkill(skill.id)) ?? skill;
-              const ready = await maybeRefreshRemote(latest);
-              const text = renderSkill(ready, args as Record<string, unknown>);
-              return {
-                messages: [
-                  {
-                    role: "user" as const,
-                    content: { type: "text" as const, text },
-                  },
-                ],
-              };
-            }
-          );
+          server.prompt(skill.id, skill.description || skill.name, argsSchema, async (args) => {
+            const latest = (await getSkill(skill.id)) ?? skill;
+            const ready = await maybeRefreshRemote(latest);
+            const text = renderSkill(ready, args as Record<string, unknown>);
+            return {
+              messages: [
+                {
+                  role: "user" as const,
+                  content: { type: "text" as const, text },
+                },
+              ],
+            };
+          });
         } catch (err) {
           console.info(
             `[MyMCP] Skipping prompt registration for skill "${skill.id}": ${
