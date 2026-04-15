@@ -217,6 +217,8 @@ describe("e2e: auto-magic happy path with mocked Vercel API", () => {
       kind: "vercel",
       read: async () => ({}),
       write: writeMock,
+      // NIT-09: EnvStore.delete is required by the interface as of v0.6.
+      delete: async () => ({ deleted: false }),
     });
 
     // Mock fetch for the Vercel deployments REST calls.

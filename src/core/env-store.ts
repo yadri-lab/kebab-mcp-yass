@@ -26,6 +26,13 @@ export interface EnvStore {
   read(): Promise<Record<string, string>>;
   /** Merge and persist the given vars. Returns the count of vars written. */
   write(vars: Record<string, string>): Promise<{ written: number; note?: string }>;
+  /**
+   * Delete a single key from the store. NIT-09: previously routes that
+   * wanted to "unset" a var wrote `""` instead. That left a dangling row
+   * on Vercel and a bogus `KEY=` line in `.env`. The delete path removes
+   * the entry entirely. No-ops if the key is not present.
+   */
+  delete(key: string): Promise<{ deleted: boolean; note?: string }>;
 }
 
 // ── Filesystem impl ──────────────────────────────────────────────────
@@ -128,6 +135,31 @@ class FilesystemEnvStore implements EnvStore {
       written: Object.keys(vars).length,
       note: "Written to .env. Dev server auto-reloads on change.",
     };
+  }
+
+  async delete(key: string): Promise<{ deleted: boolean; note?: string }> {
+    if (!(await pathExists(this.envPath))) return { deleted: false };
+    const content = await fs.readFile(this.envPath, "utf-8");
+    const { rawLines } = parseEnvFile(content);
+    let deleted = false;
+    const out: string[] = [];
+    for (const line of rawLines) {
+      const m = line.match(ENV_LINE);
+      if (m && m[1] === key) {
+        deleted = true;
+        continue;
+      }
+      out.push(line);
+    }
+    if (!deleted) return { deleted: false };
+
+    let text = out.join("\n");
+    if (!text.endsWith("\n")) text += "\n";
+    const tmpPath = this.envPath + ".tmp";
+    await fs.writeFile(tmpPath, text, "utf-8");
+    await fs.rename(tmpPath, this.envPath);
+    delete process.env[key];
+    return { deleted: true, note: `Removed ${key} from .env.` };
   }
 }
 
@@ -405,6 +437,30 @@ class VercelEnvStore implements EnvStore {
     return {
       written,
       note: "Vercel env updated. A redeploy is typically required (~30s) for changes to apply.",
+    };
+  }
+
+  async delete(key: string): Promise<{ deleted: boolean; note?: string }> {
+    const existing = await this.apiList();
+    const found = existing.find((e) => e.key === key);
+    if (!found?.id) return { deleted: false };
+    const res = await fetch(
+      `https://api.vercel.com/v9/projects/${this.projectId}/env/${found.id}${this.qs()}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${this.token}` },
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `Vercel DELETE ${key} failed: ${res.status} ${sanitizeVercelBody(text, this.token)}`
+      );
+    }
+    delete process.env[key];
+    return {
+      deleted: true,
+      note: "Vercel env entry removed. A redeploy is typically required (~30s) for changes to apply.",
     };
   }
 }
