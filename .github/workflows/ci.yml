@@ -16,6 +16,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # SUPPLY-02 (SV6-4): fail CI on any high-severity vulnerability.
+      # Currently 0 high vulns (3 moderate from langsmith via stagehand,
+      # tracked separately). Moderate is non-blocking; high is fatal.
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run format:check
       - run: npm run build
