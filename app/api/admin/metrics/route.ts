@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAdminAuth } from "@/core/auth";
-import { getToolStats } from "@/core/logging";
+import { getToolStats, getRecentLogs } from "@/core/logging";
+import { getLogStore } from "@/core/log-store";
 
 /**
  * GET /api/admin/metrics
@@ -24,5 +25,20 @@ import { getToolStats } from "@/core/logging";
 export async function GET(request: Request) {
   const authError = checkAdminAuth(request);
   if (authError) return authError;
-  return NextResponse.json(getToolStats());
+
+  const stats = getToolStats();
+  // NIT-07: surface whether the underlying log store is ephemeral so a
+  // monitoring poller can detect cold-start zeroing. `isEphemeral` is true
+  // for any backend other than Upstash. `bufferSize` is the number of
+  // in-memory ring-buffer entries currently feeding `byTool`/`byToken`.
+  const store = getLogStore();
+  const isEphemeral = store.kind !== "upstash";
+  const bufferSize = getRecentLogs().length;
+
+  return NextResponse.json({
+    ...stats,
+    isEphemeral,
+    bufferSize,
+    storeKind: store.kind,
+  });
 }

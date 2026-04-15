@@ -16,6 +16,15 @@
  * lambda are invisible to another. For real-time dashboard updates across
  * instances we'd need an external pub/sub (Redis pubsub / NATS / Postgres
  * LISTEN). Tracked for v0.6+.
+ *
+ * NIT-08 (v0.6): in particular, `env.changed` does NOT propagate across
+ * Vercel lambdas. If lambda A writes a setting via `/api/config/env` and
+ * emits `env.changed`, lambda B's registry cache stays stale until B is
+ * restarted (or the cache invalidated locally). The real fix is the O1
+ * roadmap item — move settings to a persistent store with read-through
+ * semantics so each lambda sees fresh values without a pub/sub event.
+ * Until then, treat in-process invalidation as a best-effort dev nicety,
+ * not a multi-lambda guarantee.
  */
 
 export type FrameworkEvent =
