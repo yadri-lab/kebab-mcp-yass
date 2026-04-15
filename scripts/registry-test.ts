@@ -5,7 +5,7 @@
  * Run: npx tsx scripts/registry-test.ts
  */
 
-import { resolveRegistry } from "../src/core/registry";
+import { resolveRegistry, __resetRegistryCacheForTests } from "../src/core/registry";
 
 let passed = 0;
 let failed = 0;
@@ -38,6 +38,11 @@ function resetEnv() {
       delete process.env[key];
     }
   }
+  // NIT-12 root cause: this script mutates process.env directly and
+  // does NOT emit("env.changed"), so the registry cache (added in v0.5
+  // phase 15) was retained across tests and every test after the first
+  // saw stale state. Drop the cache explicitly via the test escape hatch.
+  __resetRegistryCacheForTests();
 }
 
 function setGoogleEnv() {

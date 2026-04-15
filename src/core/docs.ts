@@ -30,8 +30,24 @@ const DOCS_DIR = resolve(process.cwd(), "content", "docs");
  *
  * Cache key is implicit (no args), so this is effectively a singleton
  * for the current request — perfect for static in-repo content.
+ *
+ * NIT-11 caveat: `React.cache()` only memoizes inside an active server
+ * component render tree. Calls from API route handlers, scripts, or
+ * client components are NOT memoized — each call re-reads the disk.
+ * That's OK here because the file walk is small (~12 markdown files,
+ * <1 ms total) and only the dashboard renders this. We add a tiny
+ * module-level snapshot below as a safety net so non-RSC callers still
+ * benefit from a 1-instance cache for the lifetime of the lambda.
  */
+let nonRscCache: DocEntry[] | null = null;
 export const loadDocs = cache((): DocEntry[] => {
+  if (nonRscCache !== null) return nonRscCache;
+  const result = loadDocsRaw();
+  nonRscCache = result;
+  return result;
+});
+
+function loadDocsRaw(): DocEntry[] {
   if (!existsSync(DOCS_DIR)) return [];
   let files: string[];
   try {
@@ -77,4 +93,4 @@ export const loadDocs = cache((): DocEntry[] => {
   }
 
   return docs.sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
-});
+}

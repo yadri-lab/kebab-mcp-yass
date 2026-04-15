@@ -33,6 +33,25 @@ export const ALL_CONNECTORS: ConnectorManifest[] = [
   adminConnector,
 ];
 
+// NIT-10: `ConnectorManifest.registerPrompts` is typed `?: (server) => …`
+// but the type is structurally cast — TypeScript can't enforce at runtime
+// that a connector author who set the field actually assigned a callable.
+// A non-function would only fail at the first MCP request that loads that
+// connector, which is far from the module that introduced the bug. Validate
+// once at module init so a mistake fails the whole process at startup.
+for (const connector of ALL_CONNECTORS) {
+  if (
+    "registerPrompts" in connector &&
+    connector.registerPrompts !== undefined &&
+    typeof connector.registerPrompts !== "function"
+  ) {
+    throw new Error(
+      `[MyMCP] Connector "${connector.id}" sets registerPrompts to a ` +
+        `${typeof connector.registerPrompts} — it must be a function or omitted.`
+    );
+  }
+}
+
 // ── Cached registry resolution ──────────────────────────────────────
 //
 // `resolveRegistry()` is called on every dashboard render + every MCP
@@ -51,10 +70,20 @@ function invalidateRegistryCache(): void {
   cachedRegistry = null;
 }
 
-// Register once, idempotently. Subsequent imports are safe because the
-// module is evaluated once per process.
-on("env.changed", invalidateRegistryCache);
-on("connector.toggled", invalidateRegistryCache);
+// NIT-12: subscribe at most once. Without this guard, Next.js HMR
+// re-evaluates this module on every hot reload during dev and each
+// reload adds another listener — leaking handlers and slowing down
+// invalidation linearly with the number of edits made in a session.
+// We use a module-scoped flag rather than an `off()` call because the
+// listener identity changes across module evaluations.
+let isSubscribed = false;
+function subscribeOnce(): void {
+  if (isSubscribed) return;
+  isSubscribed = true;
+  on("env.changed", invalidateRegistryCache);
+  on("connector.toggled", invalidateRegistryCache);
+}
+subscribeOnce();
 
 /**
  * Test-only escape hatch for resetting the registry cache between
