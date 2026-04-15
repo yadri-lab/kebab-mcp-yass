@@ -16,8 +16,13 @@ export function renderSkill(skill: Skill, args: Record<string, unknown>): string
 
   const used = new Set<string>();
 
+  // SV6-3 (FUZZ-01): use Object.prototype.hasOwnProperty.call rather
+  // than `name in args`. The `in` operator walks the prototype chain, so
+  // `{{toString}}` would hit `Object.prototype.toString` and render the
+  // native function source — both surprising for users and a minor info
+  // leak in shared deployments. Only own enumerable keys count.
   const rendered = content.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_m, name) => {
-    if (name in args) {
+    if (Object.prototype.hasOwnProperty.call(args, name)) {
       used.add(name);
       return String(args[name] ?? "");
     }
