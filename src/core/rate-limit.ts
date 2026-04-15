@@ -18,22 +18,16 @@ function hashToken(token: string): string {
  * Default limit controlled by MYMCP_RATE_LIMIT_RPM env var (default 60).
  * KV failures are treated as allow (fail open).
  *
- * Use `scope` to partition limits — e.g. "mcp" for the tool endpoint vs
- * "setup" for the first-run credential tester, which should have much
- * tighter budgets.
+ * **Atomic path (v0.6):** when the KV implementation provides `incr`
+ * (UpstashKV and MemoryKV for tests), we pipeline INCR + EXPIRE in a
+ * single round-trip. This eliminates the classic get-then-set race
+ * where two concurrent callers each read `count=N` and both write
+ * `N+1`. The bucket TTL auto-expires stale keys, so no sweep is needed
+ * on the incr path.
  *
- * **Concurrency note.** The `get` → `set` sequence is not atomic; two
- * concurrent requests reading `count=N` can both write `N+1` and both
- * be allowed. For the purposes of this limiter (abuse protection, not
- * billing) the imprecision is acceptable — the observed cap under
- * contention is `limit × concurrent_callers` per window, which is
- * still bounded. Upstream `INCR` would fix this atomically; we defer
- * that to a future enhancement that touches the KVStore interface.
- *
- * **Key cleanup.** Each write also runs a best-effort sweep of stale
- * buckets for the same scope+id so the KV store doesn't grow unbounded
- * on long-running instances. Sweep runs at most every N minutes per
- * caller to bound its own cost.
+ * **Legacy path:** the old get-then-set branch is kept only for stores
+ * that don't implement `incr` (none in production). It's racy but
+ * bounded, and runs a best-effort sweep of stale buckets.
  */
 export async function checkRateLimit(
   identifier: string,
@@ -43,14 +37,27 @@ export async function checkRateLimit(
   const defaultLimit = Math.max(1, parseInt(process.env.MYMCP_RATE_LIMIT_RPM ?? "60", 10) || 60);
   const limit = options.limit ?? defaultLimit;
   const now = Date.now();
-  const minuteBucket = Math.floor(now / 60_000);
-  const resetAt = (minuteBucket + 1) * 60_000;
+  const windowMs = 60_000;
+  const minuteBucket = Math.floor(now / windowMs);
+  const resetAt = (minuteBucket + 1) * windowMs;
   const idHash = hashToken(identifier);
   const key = `ratelimit:${scope}:${idHash}:${minuteBucket}`;
 
   const kv = getKVStore();
 
   try {
+    // Atomic path — preferred whenever incr is implemented. TTL is set
+    // to 2× the window so the bucket always outlives its own relevance
+    // even under clock skew, without accumulating forever.
+    if (typeof kv.incr === "function") {
+      const count = await kv.incr(key, { ttlSeconds: Math.ceil((windowMs / 1000) * 2) });
+      if (count > limit) {
+        return { allowed: false, remaining: 0, resetAt };
+      }
+      return { allowed: true, remaining: Math.max(0, limit - count), resetAt };
+    }
+
+    // Legacy fallback (stores without incr). Racy but bounded.
     const raw = await kv.get(key);
     const count = raw ? parseInt(raw, 10) : 0;
 
@@ -60,9 +67,6 @@ export async function checkRateLimit(
 
     await kv.set(key, String(count + 1));
 
-    // Fire-and-forget sweep of older buckets for the same scope+id. Only
-    // runs on first request of each new bucket window (i.e. once per
-    // minute per caller) to keep the cost bounded.
     if (count === 0) {
       void sweepOldBuckets(scope, idHash, minuteBucket);
     }

@@ -25,6 +25,32 @@ export interface KVStore {
   set(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
   list(prefix?: string): Promise<string[]>;
+  /**
+   * Atomically increment a counter key and (optionally) set its TTL.
+   * Returns the post-increment value.
+   *
+   * Upstash path is genuinely atomic (pipelined INCR + EXPIRE). The
+   * filesystem path is read-modify-write under the existing write queue
+   * — single-process dev only, racy across processes but fine for the
+   * in-repo dev loop.
+   *
+   * Used by the rate limiter to avoid the classic get-then-set race
+   * (two concurrent callers both reading `N` and both writing `N+1`).
+   */
+  incr?(key: string, opts?: { ttlSeconds?: number }): Promise<number>;
+  /**
+   * Push a JSON line onto the head of a capped list. The store is
+   * responsible for trimming to `maxLength`. Used by the log store.
+   * Optional — only Upstash implements it today; callers must feature-check.
+   */
+  lpushCapped?(
+    key: string,
+    value: string,
+    maxLength: number,
+    opts?: { ttlSeconds?: number }
+  ): Promise<void>;
+  /** Read a range from a list (head-indexed, inclusive). */
+  lrange?(key: string, start: number, stop: number): Promise<string[]>;
 }
 
 // ── FilesystemKV ────────────────────────────────────────────────────
@@ -127,6 +153,22 @@ class FilesystemKV implements KVStore {
     const keys = Object.keys(map);
     return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
   }
+
+  // Read-modify-write under the write queue. TTL is not enforced on the
+  // filesystem backend — dev-only path, and the rate limiter treats TTL
+  // as a best-effort hint anyway. Callers relying on eviction should
+  // prefer Upstash in prod.
+  async incr(key: string, _opts?: { ttlSeconds?: number }): Promise<number> {
+    this.cache = null;
+    return this.enqueue(async () => {
+      const map = await this.readAll();
+      const prev = parseInt(map[key] ?? "0", 10);
+      const next = Number.isFinite(prev) ? prev + 1 : 1;
+      map[key] = String(next);
+      await this.writeAll(map);
+      return next;
+    });
+  }
 }
 
 // ── UpstashKV ───────────────────────────────────────────────────────
@@ -176,6 +218,77 @@ class UpstashKV implements KVStore {
     const pattern = prefix ? `${prefix}*` : "*";
     const result = await this.call(["KEYS", pattern]);
     return Array.isArray(result) ? (result as string[]) : [];
+  }
+
+  /**
+   * Pipelined INCR + EXPIRE. Upstash's REST pipeline endpoint (POST
+   * `/pipeline`) executes an array of commands in a single round-trip.
+   * INCR runs first; EXPIRE is only issued when a TTL is requested.
+   * Returns the post-increment value.
+   *
+   * Note: Upstash pipeline != transaction, but for this use case
+   * (single counter key) atomicity of INCR alone is sufficient to
+   * eliminate the get-then-set race.
+   */
+  async incr(key: string, opts?: { ttlSeconds?: number }): Promise<number> {
+    const commands: (string | number)[][] = [["INCR", key]];
+    if (opts?.ttlSeconds && opts.ttlSeconds > 0) {
+      commands.push(["EXPIRE", key, Math.ceil(opts.ttlSeconds)]);
+    }
+    const res = await fetch(`${this.url}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(commands),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Upstash pipeline failed: ${res.status} ${text.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as Array<{ result?: unknown; error?: string }>;
+    if (!Array.isArray(json) || json.length === 0) {
+      throw new Error("Upstash pipeline returned empty response");
+    }
+    const incrResult = json[0];
+    if (incrResult.error) throw new Error(`Upstash INCR error: ${incrResult.error}`);
+    const n = typeof incrResult.result === "number" ? incrResult.result : Number(incrResult.result);
+    if (!Number.isFinite(n)) throw new Error("Upstash INCR returned non-numeric result");
+    return n;
+  }
+
+  async lpushCapped(
+    key: string,
+    value: string,
+    maxLength: number,
+    opts?: { ttlSeconds?: number }
+  ): Promise<void> {
+    const commands: (string | number)[][] = [
+      ["LPUSH", key, value],
+      ["LTRIM", key, 0, Math.max(0, maxLength - 1)],
+    ];
+    if (opts?.ttlSeconds && opts.ttlSeconds > 0) {
+      commands.push(["EXPIRE", key, Math.ceil(opts.ttlSeconds)]);
+    }
+    const res = await fetch(`${this.url}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(commands),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Upstash pipeline failed: ${res.status} ${text.slice(0, 200)}`);
+    }
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const result = await this.call(["LRANGE", key, start, stop]);
+    if (!Array.isArray(result)) return [];
+    return (result as unknown[]).map((v) => (typeof v === "string" ? v : String(v)));
   }
 }
 
