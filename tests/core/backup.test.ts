@@ -5,21 +5,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockKV: Record<string, string> = {};
 
-vi.mock("@/core/kv-store", () => ({
-  getKVStore: () => ({
-    kind: "filesystem" as const,
-    get: vi.fn(async (key: string) => mockKV[key] ?? null),
-    set: vi.fn(async (key: string, value: string) => {
-      mockKV[key] = value;
-    }),
-    delete: vi.fn(async (key: string) => {
-      delete mockKV[key];
-    }),
-    list: vi.fn(async (prefix?: string) => {
-      const keys = Object.keys(mockKV);
-      return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
-    }),
+const mockKVInstance = {
+  kind: "filesystem" as const,
+  get: vi.fn(async (key: string) => mockKV[key] ?? null),
+  set: vi.fn(async (key: string, value: string) => {
+    mockKV[key] = value;
   }),
+  delete: vi.fn(async (key: string) => {
+    delete mockKV[key];
+  }),
+  list: vi.fn(async (prefix?: string) => {
+    const keys = Object.keys(mockKV);
+    return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
+  }),
+};
+
+vi.mock("@/core/kv-store", () => ({
+  getKVStore: () => mockKVInstance,
+  getTenantKVStore: () => mockKVInstance,
 }));
 
 import { exportBackup, importBackup, BACKUP_VERSION } from "@/core/backup";
@@ -88,6 +91,36 @@ describe("backup export/import", () => {
     expect(result.ok).toBe(true);
     expect(result.count).toBe(1);
     expect(mockKV["valid"]).toBe("ok");
+  });
+
+  it("merge mode (default) preserves existing keys not in backup", async () => {
+    mockKV["existing"] = "keep-me";
+    mockKV["overwrite"] = "old";
+
+    const result = await importBackup(
+      { version: 1, entries: { overwrite: "new", added: "fresh" } },
+      { mode: "merge" }
+    );
+    expect(result.ok).toBe(true);
+    expect(mockKV["existing"]).toBe("keep-me");
+    expect(mockKV["overwrite"]).toBe("new");
+    expect(mockKV["added"]).toBe("fresh");
+  });
+
+  it("replace mode deletes keys not in backup", async () => {
+    mockKV["existing"] = "remove-me";
+    mockKV["keep"] = "old-value";
+
+    const result = await importBackup(
+      { version: 1, entries: { keep: "new-value", added: "fresh" } },
+      { mode: "replace" }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.count).toBe(2);
+    expect(mockKV["existing"]).toBeUndefined();
+    expect(mockKV["keep"]).toBe("new-value");
+    expect(mockKV["added"]).toBe("fresh");
+    expect(result.message).toContain("Replaced");
   });
 });
 

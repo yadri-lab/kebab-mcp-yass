@@ -489,7 +489,8 @@
     "name": "mcp_backup_import",
     "pack": "admin",
     "schemaKeys": [
-      "data"
+      "data",
+      "mode"
     ],
     "destructive": true
   },

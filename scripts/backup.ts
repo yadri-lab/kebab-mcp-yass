@@ -22,9 +22,23 @@ async function main() {
   }
 
   if (command === "import") {
-    const filePath = rest[0];
+    // Parse optional --mode=replace|merge flag
+    let filePath: string | undefined;
+    let mode: "merge" | "replace" = "merge";
+    for (const arg of rest) {
+      if (arg.startsWith("--mode=")) {
+        const val = arg.slice(7);
+        if (val === "replace" || val === "merge") mode = val;
+        else {
+          console.error(`Invalid mode: ${val}. Use "merge" or "replace".`);
+          process.exit(1);
+        }
+      } else {
+        filePath = arg;
+      }
+    }
     if (!filePath) {
-      console.error("Usage: npx tsx scripts/backup.ts import <file.json>");
+      console.error("Usage: npx tsx scripts/backup.ts import <file.json> [--mode=merge|replace]");
       process.exit(1);
     }
     const raw = await fs.readFile(filePath, "utf-8");
@@ -35,13 +49,13 @@ async function main() {
       console.error("Error: invalid JSON in", filePath);
       process.exit(1);
     }
-    const result = await importBackup(data);
+    const result = await importBackup(data, { mode });
     console.log(result.message);
     process.exit(result.ok ? 0 : 1);
   }
 
   console.error(`Unknown command: ${command}`);
-  console.error("Usage: npx tsx scripts/backup.ts <export|import> [file]");
+  console.error("Usage: npx tsx scripts/backup.ts <export|import> [file] [--mode=merge|replace]");
   console.error(`Backup format version: ${BACKUP_VERSION}`);
   process.exit(1);
 }

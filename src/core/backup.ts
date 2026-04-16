@@ -15,7 +15,7 @@
  * Only KV data is exported — no env vars or secrets.
  */
 
-import { getKVStore } from "./kv-store";
+import { getKVStore, type KVStore } from "./kv-store";
 
 export const BACKUP_VERSION = 1;
 
@@ -25,18 +25,34 @@ export interface BackupData {
   entries: Record<string, string>;
 }
 
+export interface ImportOptions {
+  /**
+   * "merge" (default): additive — only writes keys from the backup.
+   * "replace": deletes all existing keys not in the backup, then writes all backup keys.
+   */
+  mode?: "merge" | "replace";
+}
+
 /**
  * Export all KV entries as a BackupData object.
+ * Accepts an optional KV store for tenant-scoped exports.
+ *
+ * MEDIUM-1: Parallelizes KV gets in batches of 10 to avoid N+1.
  */
-export async function exportBackup(): Promise<BackupData> {
-  const kv = getKVStore();
+export async function exportBackup(kvOverride?: KVStore): Promise<BackupData> {
+  const kv = kvOverride ?? getKVStore();
   const keys = await kv.list();
   const entries: Record<string, string> = {};
 
-  for (const key of keys) {
-    const value = await kv.get(key);
-    if (value !== null) {
-      entries[key] = value;
+  // Batch parallel reads in groups of 10
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batch = keys.slice(i, i + BATCH_SIZE);
+    const values = await Promise.all(batch.map((key) => kv.get(key)));
+    for (let j = 0; j < batch.length; j++) {
+      if (values[j] !== null) {
+        entries[batch[j]] = values[j]!;
+      }
     }
   }
 
@@ -50,9 +66,13 @@ export async function exportBackup(): Promise<BackupData> {
 /**
  * Import a backup into the KV store.
  * Validates schema version before writing.
+ * Accepts an optional KV store for tenant-scoped imports.
+ *
+ * HIGH-1: Supports `mode: "replace"` — deletes keys not in the backup.
  */
 export async function importBackup(
-  data: unknown
+  data: unknown,
+  opts?: ImportOptions & { kv?: KVStore }
 ): Promise<{ ok: boolean; message: string; count?: number }> {
   if (!data || typeof data !== "object") {
     return { ok: false, message: "Invalid backup: expected a JSON object" };
@@ -72,8 +92,20 @@ export async function importBackup(
   }
 
   const entries = backup.entries as Record<string, unknown>;
-  const kv = getKVStore();
+  const kv = opts?.kv ?? getKVStore();
+  const mode = opts?.mode ?? "merge";
   let count = 0;
+
+  // In "replace" mode, delete all existing keys not present in the backup
+  if (mode === "replace") {
+    const existingKeys = await kv.list();
+    const backupKeySet = new Set(Object.keys(entries));
+    for (const key of existingKeys) {
+      if (!backupKeySet.has(key)) {
+        await kv.delete(key);
+      }
+    }
+  }
 
   for (const [key, value] of Object.entries(entries)) {
     if (typeof value === "string") {
@@ -82,5 +114,6 @@ export async function importBackup(
     }
   }
 
-  return { ok: true, message: `Imported ${count} entries`, count };
+  const modeLabel = mode === "replace" ? "Replaced" : "Imported";
+  return { ok: true, message: `${modeLabel} ${count} entries`, count };
 }
