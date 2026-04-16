@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       description: string;
       connector: string;
       connectorLabel: string;
+      destructive: boolean;
     }[] = [];
     for (const pack of enabledPacks) {
       for (const tool of pack.manifest.tools) {
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
           description: tool.description,
           connector: pack.manifest.id,
           connectorLabel: pack.manifest.label,
+          destructive: tool.destructive,
         });
       }
     }

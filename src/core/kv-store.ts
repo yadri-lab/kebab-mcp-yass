@@ -356,7 +356,10 @@ export function getKVStore(): KVStore {
     return cached;
   }
 
-  cached = new FilesystemKV(path.resolve(process.cwd(), "data", "kv.json"));
+  // Allow test overrides via MYMCP_KV_PATH (used by store-versioning tests
+  // to point at a unique temp file per test, preventing cross-test state leak).
+  const kvPath = process.env.MYMCP_KV_PATH?.trim();
+  cached = new FilesystemKV(kvPath || path.resolve(process.cwd(), "data", "kv.json"));
   return cached;
 }
 

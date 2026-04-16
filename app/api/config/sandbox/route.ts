@@ -3,19 +3,7 @@ import { z, ZodError } from "zod";
 import { checkAdminAuth } from "@/core/auth";
 import { getEnabledPacks } from "@/core/registry";
 import { withLogging } from "@/core/logging";
-
-// In-memory rate limit: max 20 invocations per minute, global (simple enough for P1)
-const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 20;
-let callTimes: number[] = [];
-
-function withinRateLimit(): boolean {
-  const now = Date.now();
-  callTimes = callTimes.filter((t) => now - t < WINDOW_MS);
-  if (callTimes.length >= MAX_PER_WINDOW) return false;
-  callTimes.push(now);
-  return true;
-}
+import { checkRateLimit } from "@/core/rate-limit";
 
 /**
  * POST /api/config/sandbox
@@ -26,7 +14,11 @@ export async function POST(request: Request) {
   const authError = checkAdminAuth(request);
   if (authError) return authError;
 
-  if (!withinRateLimit()) {
+  // Rate limit using the shared KV-backed limiter (survives cold starts).
+  // Identify by admin token or fallback to a fixed key.
+  const authHeader = request.headers.get("authorization") || "sandbox-global";
+  const rlResult = await checkRateLimit(authHeader, { scope: "sandbox", limit: 20 });
+  if (!rlResult.allowed) {
     return NextResponse.json(
       { ok: false, error: "Rate limit exceeded (max 20 / minute)" },
       { status: 429 }

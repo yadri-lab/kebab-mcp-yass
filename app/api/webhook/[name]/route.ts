@@ -148,9 +148,7 @@ export async function POST(
       .map((k) => ({ key: k, ts: parseInt(k.slice(historyPrefix.length), 10) }))
       .sort((a, b) => a.ts - b.ts);
     const toDelete = sorted.slice(0, sorted.length - historyLimit);
-    for (const { key } of toDelete) {
-      await kv.delete(key);
-    }
+    await Promise.all(toDelete.map(({ key }) => kv.delete(key)));
   }
 
   return new Response(JSON.stringify({ ok: true }), {

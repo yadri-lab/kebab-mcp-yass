@@ -11,9 +11,11 @@ import {
   rollbackSkill,
   listSkills,
 } from "./store";
+import { resetKVStoreCache } from "@/core/kv-store";
 
 let tmpDir = "";
 let originalPath: string | undefined;
+let originalKvPath: string | undefined;
 
 async function withTempSkillsFile(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mymcp-skills-ver-"));
@@ -23,14 +25,25 @@ async function withTempSkillsFile(): Promise<string> {
 describe("skill versioning", () => {
   beforeEach(async () => {
     originalPath = process.env.MYMCP_SKILLS_PATH;
+    originalKvPath = process.env.MYMCP_KV_PATH;
     const p = await withTempSkillsFile();
     tmpDir = path.dirname(p);
     process.env.MYMCP_SKILLS_PATH = p;
+    // Reset the KV store singleton so each test gets a fresh instance
+    // pointing at a unique temp directory (prevents cross-test state leak).
+    resetKVStoreCache();
+    // Point KV store to a temp file inside the same temp dir so versioning
+    // keys don't accumulate across tests.
+    process.env.MYMCP_KV_PATH = path.join(tmpDir, "kv.json");
+    resetKVStoreCache();
   });
 
   afterEach(async () => {
     if (originalPath === undefined) delete process.env.MYMCP_SKILLS_PATH;
     else process.env.MYMCP_SKILLS_PATH = originalPath;
+    if (originalKvPath === undefined) delete process.env.MYMCP_KV_PATH;
+    else process.env.MYMCP_KV_PATH = originalKvPath;
+    resetKVStoreCache();
     try {
       await fs.rm(tmpDir, { recursive: true, force: true });
     } catch {

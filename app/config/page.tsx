@@ -32,9 +32,13 @@ export default async function ConfigPage({
   const meta = PAGE_META[tab] || PAGE_META.overview;
   const config = await getInstanceConfigAsync();
 
-  // Tenant scoping: read from cookie (set by admin) or query param
+  // Tenant scoping: read from cookie (set by admin) or query param.
+  // Validate that the tenant was deliberately configured (env var exists)
+  // to prevent unauthenticated tenant impersonation.
   const cookieStore = await cookies();
-  const tenantId = cookieStore.get("mymcp-tenant")?.value || params.tenant || null;
+  const rawTenantId = cookieStore.get("mymcp-tenant")?.value || params.tenant || null;
+  const tenantId =
+    rawTenantId && process.env[`MCP_AUTH_TOKEN_${rawTenantId.toUpperCase()}`] ? rawTenantId : null;
 
   const registry = resolveRegistry();
   const logs = getRecentLogs(100);

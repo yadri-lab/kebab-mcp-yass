@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { InfoTooltip } from "./settings/info-tooltip";
 import { ImportSkillModal } from "./skills-import-modal";
 import { SkillComposer } from "./skill-composer";
+import { toClaudeSkillFile } from "@/connectors/skills/lib/export-claude";
 
 interface SkillArgument {
   name: string;
@@ -255,18 +256,7 @@ export function SkillsTab() {
 
   /** Client-side export to Claude Desktop .skill format (JSON). */
   const exportClaudeSkill = (skill: Skill) => {
-    const body =
-      skill.content || (skill.source.type === "remote" ? skill.source.cachedContent || "" : "");
-    const payload = {
-      name: skill.name,
-      description: skill.description || skill.name,
-      content: body,
-      metadata: {
-        source: "mymcp",
-        version: "1.0",
-        exportedAt: new Date().toISOString(),
-      },
-    };
+    const payload = toClaudeSkillFile(skill);
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });

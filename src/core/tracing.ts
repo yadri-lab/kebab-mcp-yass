@@ -68,9 +68,14 @@ function autoBootstrap(): void {
     api.trace.setGlobalTracerProvider(provider);
 
     otelBootstrapped = true;
-  } catch {
-    // SDK packages not installed or failed to load — silent no-op.
-    // This preserves the existing zero-overhead behavior.
+  } catch (error) {
+    // SDK packages not installed or failed to load — warn so the operator
+    // knows OTel was requested but could not be started.
+    console.warn(
+      "[MyMCP] OTel bootstrap failed: " +
+        (error instanceof Error ? error.message : String(error)) +
+        ". Install @opentelemetry/sdk-trace-node and @opentelemetry/exporter-trace-otlp-http to enable tracing."
+    );
   }
 }
 

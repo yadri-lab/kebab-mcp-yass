@@ -254,6 +254,13 @@ export function deleteSkill(id: string): Promise<boolean> {
     const next = all.filter((s) => s.id !== id);
     if (next.length === all.length) return false;
     await writeRaw(next);
+
+    // Clean up all versioning keys for this skill
+    const kv = getKVStore();
+    const prefix = `skill:${id}:`;
+    const keys = await kv.list(prefix);
+    await Promise.all(keys.map((k) => kv.delete(k)));
+
     return true;
   });
 }
@@ -324,7 +331,13 @@ async function saveVersion(skill: Skill): Promise<number> {
   return nextVersion;
 }
 
-/** List all version numbers for a skill, sorted ascending. */
+/** List all version numbers for a skill, sorted ascending.
+ *
+ * **Caveat**: KVStore.list() uses the Redis KEYS command on Upstash,
+ * which is O(N) over all keys and blocks the server. For low-volume
+ * usage (dashboard UI) this is acceptable, but a SCAN-based
+ * implementation should replace it if skill count grows significantly.
+ */
 export async function listSkillVersions(skillId: string): Promise<number[]> {
   const kv = getKVStore();
   const prefix = `skill:${skillId}:v`;

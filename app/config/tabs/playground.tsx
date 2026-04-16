@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -9,6 +9,7 @@ interface ToolInfo {
   description: string;
   connector: string;
   connectorLabel: string;
+  destructive: boolean;
 }
 
 interface FieldDescriptor {
@@ -53,16 +54,61 @@ function buildArgTemplate(fields: FieldDescriptor[]): Record<string, unknown> {
   return args;
 }
 
-/** Minimal JSON syntax highlighting for pre blocks. */
-function highlightJson(json: string): string {
-  return json
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/("(?:\\.|[^"\\])*")\s*:/g, '<span style="color:var(--accent,#6d9eff)">$1</span>:')
-    .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span style="color:#98c379">$1</span>')
-    .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color:#d19a66">$1</span>')
-    .replace(/:\s*(true|false|null)\b/g, ': <span style="color:#c678dd">$1</span>');
+/** Safe React-rendered JSON with syntax highlighting (no innerHTML). */
+function JsonView({ data }: { data: unknown }): React.ReactElement {
+  return <>{renderValue(data, 0)}</>;
+}
+
+function renderValue(value: unknown, depth: number): React.ReactNode {
+  if (value === null) return <span style={{ color: "#c678dd" }}>null</span>;
+  if (typeof value === "boolean") return <span style={{ color: "#c678dd" }}>{String(value)}</span>;
+  if (typeof value === "number") return <span style={{ color: "#d19a66" }}>{String(value)}</span>;
+  if (typeof value === "string")
+    return <span style={{ color: "#98c379" }}>&quot;{value}&quot;</span>;
+
+  const indent = "  ".repeat(depth);
+  const innerIndent = "  ".repeat(depth + 1);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <>{"[]"}</>;
+    return (
+      <>
+        {"[\n"}
+        {value.map((item, i) => (
+          <span key={i}>
+            {innerIndent}
+            {renderValue(item, depth + 1)}
+            {i < value.length - 1 ? ",\n" : "\n"}
+          </span>
+        ))}
+        {indent}
+        {"]"}
+      </>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return <>{"{}"}</>;
+    return (
+      <>
+        {"{\n"}
+        {entries.map(([key, val], i) => (
+          <span key={key}>
+            {innerIndent}
+            <span style={{ color: "var(--accent, #6d9eff)" }}>&quot;{key}&quot;</span>
+            {": "}
+            {renderValue(val, depth + 1)}
+            {i < entries.length - 1 ? ",\n" : "\n"}
+          </span>
+        ))}
+        {indent}
+        {"}"}
+      </>
+    );
+  }
+
+  return <>{String(value)}</>;
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -166,6 +212,14 @@ export function PlaygroundTab() {
       return;
     }
 
+    // Check if the selected tool is destructive and prompt the user
+    const toolInfo = tools.find((t) => t.name === selectedTool);
+    if (toolInfo?.destructive) {
+      if (!window.confirm("This tool modifies external data. Continue?")) {
+        return;
+      }
+    }
+
     const userMsg: Message = {
       id: nextId.current++,
       role: "user",
@@ -181,7 +235,7 @@ export function PlaygroundTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ toolName: selectedTool, args, confirm: true }),
+        body: JSON.stringify({ toolName: selectedTool, args, confirm: !!toolInfo?.destructive }),
       });
       const data = await res.json();
       const assistantMsg: Message = {
@@ -210,7 +264,7 @@ export function PlaygroundTab() {
     }
 
     setSending(false);
-  }, [selectedTool, argsJson, sending]);
+  }, [selectedTool, argsJson, sending, tools]);
 
   // Auto-scroll to newest message
   useEffect(() => {
@@ -338,12 +392,9 @@ export function PlaygroundTab() {
               ) : msg.error ? (
                 <p className="text-red">{msg.error}</p>
               ) : (
-                <pre
-                  className="font-mono text-[11px] whitespace-pre-wrap break-all max-h-96 overflow-auto"
-                  dangerouslySetInnerHTML={{
-                    __html: highlightJson(JSON.stringify(msg.response, null, 2)),
-                  }}
-                />
+                <pre className="font-mono text-[11px] whitespace-pre-wrap break-all max-h-96 overflow-auto">
+                  <JsonView data={msg.response} />
+                </pre>
               )}
             </div>
           ))}
