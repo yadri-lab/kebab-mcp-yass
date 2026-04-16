@@ -15,7 +15,7 @@
  * Only KV data is exported — no env vars or secrets.
  */
 
-import { getKVStore, type KVStore } from "./kv-store";
+import { getKVStore, kvScanAll, type KVStore } from "./kv-store";
 
 export const BACKUP_VERSION = 1;
 
@@ -37,21 +37,36 @@ export interface ImportOptions {
  * Export all KV entries as a BackupData object.
  * Accepts an optional KV store for tenant-scoped exports.
  *
- * MEDIUM-1: Parallelizes KV gets in batches of 10 to avoid N+1.
+ * MEDIUM-1: Uses mget() for single-roundtrip batch reads when available,
+ * falls back to batched parallel gets in groups of 50.
  */
 export async function exportBackup(kvOverride?: KVStore): Promise<BackupData> {
   const kv = kvOverride ?? getKVStore();
-  const keys = await kv.list();
+  const keys = await kvScanAll(kv, "*");
   const entries: Record<string, string> = {};
 
-  // Batch parallel reads in groups of 10
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
-    const batch = keys.slice(i, i + BATCH_SIZE);
-    const values = await Promise.all(batch.map((key) => kv.get(key)));
-    for (let j = 0; j < batch.length; j++) {
-      if (values[j] !== null) {
-        entries[batch[j]] = values[j]!;
+  if (typeof kv.mget === "function") {
+    // Single-roundtrip batch read via MGET
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+      const batch = keys.slice(i, i + BATCH_SIZE);
+      const values = await kv.mget(batch);
+      for (let j = 0; j < batch.length; j++) {
+        if (values[j] !== null) {
+          entries[batch[j]] = values[j]!;
+        }
+      }
+    }
+  } else {
+    // Fallback: batched parallel gets
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+      const batch = keys.slice(i, i + BATCH_SIZE);
+      const values = await Promise.all(batch.map((key) => kv.get(key)));
+      for (let j = 0; j < batch.length; j++) {
+        if (values[j] !== null) {
+          entries[batch[j]] = values[j]!;
+        }
       }
     }
   }

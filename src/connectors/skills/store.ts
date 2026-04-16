@@ -2,7 +2,7 @@ import { promises as fs, readFileSync, existsSync } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { getKVStore } from "@/core/kv-store";
+import { getKVStore, kvScanAll } from "@/core/kv-store";
 
 /**
  * Skills store — persists user-authored skills.
@@ -257,8 +257,7 @@ export function deleteSkill(id: string): Promise<boolean> {
 
     // Clean up all versioning keys for this skill
     const kv = getKVStore();
-    const prefix = `skill:${id}:`;
-    const keys = await kv.list(prefix);
+    const keys = await kvScanAll(kv, `skill:${id}:*`);
     await Promise.all(keys.map((k) => kv.delete(k)));
 
     return true;
@@ -341,7 +340,7 @@ async function saveVersion(skill: Skill): Promise<number> {
 export async function listSkillVersions(skillId: string): Promise<number[]> {
   const kv = getKVStore();
   const prefix = `skill:${skillId}:v`;
-  const keys = await kv.list(prefix);
+  const keys = await kvScanAll(kv, `${prefix}*`);
   const versions: number[] = [];
   for (const k of keys) {
     const suffix = k.slice(prefix.length);

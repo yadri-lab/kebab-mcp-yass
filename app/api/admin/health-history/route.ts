@@ -1,5 +1,5 @@
 import { checkAdminAuth } from "@/core/auth";
-import { getKVStore } from "@/core/kv-store";
+import { getKVStore, kvScanAll } from "@/core/kv-store";
 
 /**
  * GET /api/admin/health-history — admin-gated.
@@ -27,10 +27,10 @@ export async function GET(request: Request) {
   const cutoff = Date.now() - days * 86_400_000;
 
   const kv = getKVStore();
-  const keys = await kv.list("health:sample:");
+  const keys = await kvScanAll(kv, "health:sample:*");
 
-  // Batch-read values in parallel (groups of 10)
-  const BATCH_SIZE = 10;
+  // Batch-read values via mget when available, else parallel gets
+  const BATCH_SIZE = 50;
   interface HealthSample {
     ts: number;
     overall: string;
@@ -40,7 +40,10 @@ export async function GET(request: Request) {
 
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
     const batch = keys.slice(i, i + BATCH_SIZE);
-    const values = await Promise.all(batch.map((k) => kv.get(k)));
+    const values =
+      typeof kv.mget === "function"
+        ? await kv.mget(batch)
+        : await Promise.all(batch.map((k) => kv.get(k)));
     for (const raw of values) {
       if (!raw) continue;
       try {

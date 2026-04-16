@@ -20,10 +20,14 @@ const mockKVInstance = {
   }),
 };
 
-vi.mock("@/core/kv-store", () => ({
-  getKVStore: () => mockKVInstance,
-  getTenantKVStore: () => mockKVInstance,
-}));
+vi.mock("@/core/kv-store", async () => {
+  const actual = await vi.importActual<typeof import("@/core/kv-store")>("@/core/kv-store");
+  return {
+    ...actual,
+    getKVStore: () => mockKVInstance,
+    getTenantKVStore: () => mockKVInstance,
+  };
+});
 
 import { exportBackup, importBackup, BACKUP_VERSION } from "@/core/backup";
 

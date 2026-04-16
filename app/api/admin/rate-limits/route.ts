@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkAdminAuth } from "@/core/auth";
-import { getKVStore } from "@/core/kv-store";
+import { getKVStore, kvScanAll } from "@/core/kv-store";
 
 interface RateLimitScope {
   scope: string;
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
   try {
     const kv = getKVStore();
-    const keys = await kv.list("ratelimit:");
+    const keys = await kvScanAll(kv, "ratelimit:*");
 
     if (keys.length === 0) {
       return NextResponse.json({ scopes: [] });
@@ -37,35 +37,36 @@ export async function GET(request: Request) {
     const windowMs = 60_000;
     const currentBucket = Math.floor(now / windowMs);
 
-    // Group by tenantId + scope
+    // Filter to current-bucket keys only, then batch-read values
     const groups = new Map<string, { scope: string; tenantId: string; current: number }>();
 
+    // Pre-filter keys to current bucket
+    const activeKeys: { key: string; tenantId: string; scope: string }[] = [];
     for (const key of keys) {
-      // ratelimit:{tenantId}:{scope}:{idHash}:{minuteBucket}
       const parts = key.split(":");
       if (parts.length < 5) continue;
-
-      const tenantId = parts[1];
-      const scope = parts[2];
       const bucketStr = parts[parts.length - 1];
       const bucket = parseInt(bucketStr, 10);
-
-      // Only count current bucket
       if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
+      activeKeys.push({ key, tenantId: parts[1], scope: parts[2] });
+    }
+
+    // Batch-read all active key values via mget
+    let values: (string | null)[];
+    if (activeKeys.length > 0 && typeof kv.mget === "function") {
+      values = await kv.mget(activeKeys.map((k) => k.key));
+    } else {
+      values = await Promise.all(activeKeys.map((k) => kv.get(k.key)));
+    }
+
+    for (let i = 0; i < activeKeys.length; i++) {
+      const { tenantId, scope } = activeKeys[i];
+      const raw = values[i];
+      const count = raw ? parseInt(raw, 10) || 0 : 0;
+      if (count === 0) continue;
 
       const groupKey = `${tenantId}:${scope}`;
       const existing = groups.get(groupKey);
-
-      // Read count from KV
-      let count = 0;
-      try {
-        const raw = await kv.get(key);
-        count = raw ? parseInt(raw, 10) || 0 : 0;
-      } catch {
-        // Skip keys we can't read
-        continue;
-      }
-
       if (existing) {
         existing.current += count;
       } else {

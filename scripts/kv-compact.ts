@@ -10,7 +10,7 @@
  *     or: npm run kv:compact
  */
 
-import { getKVStore } from "../src/core/kv-store";
+import { getKVStore, kvScanAll } from "../src/core/kv-store";
 
 const HEALTH_RETENTION_DAYS = Math.max(
   1,
@@ -19,7 +19,7 @@ const HEALTH_RETENTION_DAYS = Math.max(
 
 async function main() {
   const kv = getKVStore();
-  const allKeys = await kv.list();
+  const allKeys = await kvScanAll(kv, "*");
   const now = Date.now();
   const currentMinuteBucket = Math.floor(now / 60_000);
   const healthCutoff = now - HEALTH_RETENTION_DAYS * 24 * 60 * 60 * 1000;

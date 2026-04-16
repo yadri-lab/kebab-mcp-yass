@@ -40,6 +40,27 @@ export interface KVStore {
    */
   incr?(key: string, opts?: { ttlSeconds?: number }): Promise<number>;
   /**
+   * Cursor-based key scanning. Safer than `list()` for large key sets
+   * because it avoids the O(N) KEYS command on Redis.
+   *
+   * - `cursor` — pass "0" to start; the returned cursor is "0" when done.
+   * - `opts.match` — glob pattern (e.g. "ratelimit:*").
+   * - `opts.count` — hint for how many keys to return per call (default 100).
+   *
+   * Optional — callers must feature-check (`if (kv.scan)`).
+   */
+  scan?(
+    cursor: string,
+    opts?: { match?: string; count?: number }
+  ): Promise<{ cursor: string; keys: string[] }>;
+  /**
+   * Multi-get: fetch multiple keys in a single round-trip.
+   * Returns values in the same order as `keys`; missing keys yield `null`.
+   *
+   * Optional — callers must feature-check (`if (kv.mget)`).
+   */
+  mget?(keys: string[]): Promise<(string | null)[]>;
+  /**
    * Push a JSON line onto the head of a capped list. The store is
    * responsible for trimming to `maxLength`. Used by the log store.
    * Optional — only Upstash implements it today; callers must feature-check.
@@ -155,6 +176,42 @@ class FilesystemKV implements KVStore {
     return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
   }
 
+  async scan(
+    cursor: string,
+    opts?: { match?: string; count?: number }
+  ): Promise<{ cursor: string; keys: string[] }> {
+    await this.writeQueue;
+    const map = await this.readAll();
+    const allKeys = Object.keys(map);
+
+    // Filter by glob-like match pattern (supports only trailing *)
+    let filtered = allKeys;
+    if (opts?.match) {
+      const pattern = opts.match;
+      if (pattern.endsWith("*")) {
+        const prefix = pattern.slice(0, -1);
+        filtered = allKeys.filter((k) => k.startsWith(prefix));
+      } else {
+        filtered = allKeys.filter((k) => k === pattern);
+      }
+    }
+
+    // Simulate pagination via numeric cursor (offset into filtered list)
+    const offset = cursor === "0" ? 0 : parseInt(cursor, 10) || 0;
+    const count = opts?.count ?? 100;
+    const slice = filtered.slice(offset, offset + count);
+    const nextOffset = offset + count;
+    const nextCursor = nextOffset >= filtered.length ? "0" : String(nextOffset);
+
+    return { cursor: nextCursor, keys: slice };
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    await this.writeQueue;
+    const map = await this.readAll();
+    return keys.map((k) => map[k] ?? null);
+  }
+
   // Read-modify-write under the write queue. TTL is not enforced on the
   // filesystem backend — dev-only path, and the rate limiter treats TTL
   // as a best-effort hint anyway. Callers relying on eviction should
@@ -261,6 +318,34 @@ class UpstashKV implements KVStore {
     const pattern = prefix ? `${prefix}*` : "*";
     const result = await this.call(["KEYS", pattern]);
     return Array.isArray(result) ? (result as string[]) : [];
+  }
+
+  async scan(
+    cursor: string,
+    opts?: { match?: string; count?: number }
+  ): Promise<{ cursor: string; keys: string[] }> {
+    const args: (string | number)[] = ["SCAN", parseInt(cursor, 10) || 0];
+    if (opts?.match) {
+      args.push("MATCH", opts.match);
+    }
+    args.push("COUNT", opts?.count ?? 100);
+    const result = await this.call(args);
+    // Upstash returns [nextCursor, [key1, key2, ...]]
+    if (!Array.isArray(result) || result.length < 2) {
+      return { cursor: "0", keys: [] };
+    }
+    const nextCursor = String(result[0]);
+    const keys = Array.isArray(result[1]) ? (result[1] as string[]) : [];
+    return { cursor: nextCursor, keys };
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (keys.length === 0) return [];
+    const result = await this.call(["MGET", ...keys]);
+    if (!Array.isArray(result)) return keys.map(() => null);
+    return (result as (string | null)[]).map((v) =>
+      typeof v === "string" ? v : v == null ? null : String(v)
+    );
   }
 
   /**
@@ -387,6 +472,32 @@ export function clearKVReadCache(): void {
   }
 }
 
+// ── kvScanAll helper ───────────────────────────────────────────────
+
+/**
+ * Iterate `kv.scan()` until cursor returns "0", collecting all matching keys.
+ * Falls back to `kv.list(prefix)` when `kv.scan` is not available.
+ *
+ * Use this instead of `kv.list(prefix)` for potentially large key sets
+ * (e.g. rate limit buckets, health samples) to avoid the O(N) KEYS command.
+ */
+export async function kvScanAll(kv: KVStore, match?: string): Promise<string[]> {
+  if (typeof kv.scan !== "function") {
+    // Fallback: derive prefix from match glob (strip trailing *)
+    const prefix = match?.endsWith("*") ? match.slice(0, -1) : match;
+    return kv.list(prefix);
+  }
+
+  const all: string[] = [];
+  let cursor = "0";
+  do {
+    const result = await kv.scan(cursor, { match, count: 100 });
+    all.push(...result.keys);
+    cursor = result.cursor;
+  } while (cursor !== "0");
+  return all;
+}
+
 // ── TenantKVStore ──────────────────────────────────────────────────
 //
 // Wraps the underlying singleton KVStore and transparently prefixes
@@ -423,6 +534,32 @@ class TenantKVStore implements KVStore {
 
   list(prefix?: string) {
     return this.inner.list(this.pk(prefix ?? ""));
+  }
+
+  async scan(
+    cursor: string,
+    opts?: { match?: string; count?: number }
+  ): Promise<{ cursor: string; keys: string[] }> {
+    if (!this.inner.scan) {
+      throw new Error("scan not supported");
+    }
+    // Prefix the match pattern for the tenant namespace
+    const prefixedMatch = opts?.match ? this.pk(opts.match) : this.pk("*");
+    const result = await this.inner.scan(cursor, { ...opts, match: prefixedMatch });
+    // Strip tenant prefix from returned keys
+    const tenantPrefix = this.tenantId ? `tenant:${this.tenantId}:` : "";
+    const keys = tenantPrefix
+      ? result.keys.map((k) => (k.startsWith(tenantPrefix) ? k.slice(tenantPrefix.length) : k))
+      : result.keys;
+    return { cursor: result.cursor, keys };
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (this.inner.mget) {
+      return this.inner.mget(keys.map((k) => this.pk(k)));
+    }
+    // Fallback to sequential gets
+    return Promise.all(keys.map((k) => this.inner.get(this.pk(k))));
   }
 
   incr(key: string, opts?: { ttlSeconds?: number }) {

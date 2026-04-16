@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getKVStore } from "./kv-store";
+import { getKVStore, kvScanAll } from "./kv-store";
 import { getCurrentTenantId } from "./request-context";
 
 export interface RateLimitResult {
@@ -105,7 +105,7 @@ async function sweepOldBuckets(
   try {
     const kv = getKVStore();
     const prefix = `ratelimit:${tenantId}:${scope}:${idHash}:`;
-    const keys = await kv.list(prefix);
+    const keys = await kvScanAll(kv, `${prefix}*`);
     for (const key of keys) {
       const bucketStr = key.slice(prefix.length);
       const bucket = parseInt(bucketStr, 10);
