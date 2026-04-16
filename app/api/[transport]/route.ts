@@ -76,6 +76,13 @@ async function buildHandler(callerTokenId?: string | null, tenantId?: string | n
                 // CRITICAL-2: Wrap handler in request context so tool
                 // handlers can access tenantId via getCurrentTenantId()
                 // and get tenant-scoped KV via getContextKVStore().
+                //
+                // INFRA-05: AsyncLocalStorage.run() automatically scopes
+                // the store to the callback lifetime. When the callback's
+                // returned Promise settles (resolve or reject), the async
+                // context is exited. Each request gets its own async
+                // execution context, so there's no cross-contamination
+                // between concurrent requests — no try/finally needed.
                 return requestContext.run({ tenantId: tenantId ?? null }, () =>
                   tool.handler(params)
                 );

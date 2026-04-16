@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { getKVStore } from "./kv-store";
+import { getCurrentTenantId } from "./request-context";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -41,7 +42,8 @@ export async function checkRateLimit(
   const minuteBucket = Math.floor(now / windowMs);
   const resetAt = (minuteBucket + 1) * windowMs;
   const idHash = hashToken(identifier);
-  const key = `ratelimit:${scope}:${idHash}:${minuteBucket}`;
+  const tenantId = getCurrentTenantId() ?? "global";
+  const key = `ratelimit:${tenantId}:${scope}:${idHash}:${minuteBucket}`;
 
   const kv = getKVStore();
 
@@ -57,7 +59,7 @@ export async function checkRateLimit(
       // trigger the sweep on `count === 1` (fresh bucket boundary) to
       // avoid doing it on every request.
       if (kv.kind === "filesystem" && count === 1) {
-        void sweepOldBuckets(scope, idHash, minuteBucket);
+        void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
       }
       if (count > limit) {
         return { allowed: false, remaining: 0, resetAt };
@@ -76,7 +78,7 @@ export async function checkRateLimit(
     await kv.set(key, String(count + 1));
 
     if (count === 0) {
-      void sweepOldBuckets(scope, idHash, minuteBucket);
+      void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
     }
 
     return { allowed: true, remaining: limit - count - 1, resetAt };
@@ -97,11 +99,12 @@ export async function checkRateLimit(
 async function sweepOldBuckets(
   scope: string,
   idHash: string,
-  currentBucket: number
+  currentBucket: number,
+  tenantId: string = "global"
 ): Promise<void> {
   try {
     const kv = getKVStore();
-    const prefix = `ratelimit:${scope}:${idHash}:`;
+    const prefix = `ratelimit:${tenantId}:${scope}:${idHash}:`;
     const keys = await kv.list(prefix);
     for (const key of keys) {
       const bucketStr = key.slice(prefix.length);

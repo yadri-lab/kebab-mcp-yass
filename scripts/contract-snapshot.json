@@ -781,6 +781,15 @@
     "destructive": false
   },
   {
+    "name": "webhook_history",
+    "pack": "webhook",
+    "schemaKeys": [
+      "limit",
+      "name"
+    ],
+    "destructive": false
+  },
+  {
     "name": "webhook_last",
     "pack": "webhook",
     "schemaKeys": [

@@ -2,6 +2,7 @@
 
 import type { ToolLog } from "@/core/logging";
 import type { InstanceConfig } from "@/core/types";
+import { TabErrorBoundary } from "./error-boundary";
 import { OverviewTab } from "./tabs/overview";
 import { ConnectorsTab } from "./tabs/connectors";
 import { ToolsTab } from "./tabs/tools";
@@ -50,19 +51,33 @@ export function ConfigTabs({
   version: string;
   commitSha?: string;
 }) {
+  let tab: React.ReactNode;
+  let section: string;
+
   switch (activeTab) {
     case "connectors":
-      return <ConnectorsTab connectors={connectors} />;
+      section = "Connectors";
+      tab = <ConnectorsTab connectors={connectors} />;
+      break;
     case "tools":
-      return <ToolsTab connectors={connectors} />;
+      section = "Tools";
+      tab = <ToolsTab connectors={connectors} />;
+      break;
     case "skills":
-      return <SkillsTab />;
+      section = "Skills";
+      tab = <SkillsTab />;
+      break;
     case "logs":
-      return <LogsTab initialLogs={logs} />;
+      section = "Logs";
+      tab = <LogsTab initialLogs={logs} />;
+      break;
     case "documentation":
-      return <DocumentationTab docs={docs} />;
+      section = "Documentation";
+      tab = <DocumentationTab docs={docs} />;
+      break;
     case "settings":
-      return (
+      section = "Settings";
+      tab = (
         <SettingsTab
           config={config}
           vaultEnabled={vaultEnabled}
@@ -70,9 +85,11 @@ export function ConfigTabs({
           hasAuthToken={hasAuthToken}
         />
       );
+      break;
     case "overview":
     default:
-      return (
+      section = "Overview";
+      tab = (
         <OverviewTab
           baseUrl={baseUrl}
           totalTools={totalTools}
@@ -84,5 +101,8 @@ export function ConfigTabs({
           commitSha={commitSha}
         />
       );
+      break;
   }
+
+  return <TabErrorBoundary section={section}>{tab}</TabErrorBoundary>;
 }

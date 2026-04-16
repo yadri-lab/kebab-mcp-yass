@@ -1,8 +1,5 @@
 import { defineTool, type ConnectorManifest } from "@/core/types";
-import { webBrowseSchema, handleWebBrowse } from "./tools/web-browse";
-import { webExtractSchema, handleWebExtract } from "./tools/web-extract";
-import { webActSchema, handleWebAct } from "./tools/web-act";
-import { linkedinFeedSchema, handleLinkedinFeed } from "./tools/linkedin-feed";
+import { webBrowseSchema, webExtractSchema, webActSchema, linkedinFeedSchema } from "./schemas";
 
 export const browserConnector: ConnectorManifest = {
   id: "browser",
@@ -37,7 +34,10 @@ Two accounts:
       description:
         "Open a URL in a cloud browser and return the visible text content. Handles JavaScript-rendered pages, login-protected pages (if session exists), and dynamic content. Use scroll_count to load more content.",
       schema: webBrowseSchema,
-      handler: async (args) => handleWebBrowse(args),
+      handler: async (args) => {
+        const { handleWebBrowse } = await import("./tools/web-browse");
+        return handleWebBrowse(args);
+      },
       destructive: false,
     }),
     defineTool({
@@ -45,7 +45,10 @@ Two accounts:
       description:
         "Open a URL and extract structured data using AI. Provide a natural language instruction describing what to extract. Returns JSON data. Great for: feed posts, competitor pricing, changelogs, news headlines, product features, job listings.",
       schema: webExtractSchema,
-      handler: async (args) => handleWebExtract(args),
+      handler: async (args) => {
+        const { handleWebExtract } = await import("./tools/web-extract");
+        return handleWebExtract(args);
+      },
       destructive: false,
     }),
     defineTool({
@@ -53,7 +56,10 @@ Two accounts:
       description:
         "Open a URL and perform actions in the browser using natural language commands. Each action is executed sequentially. DANGEROUS: can click buttons, fill forms, submit data. The calling agent should always ask user confirmation before invoking this tool.",
       schema: webActSchema,
-      handler: async (args) => handleWebAct(args),
+      handler: async (args) => {
+        const { handleWebAct } = await import("./tools/web-act");
+        return handleWebAct(args);
+      },
       destructive: true,
     }),
     defineTool({
@@ -61,7 +67,10 @@ Two accounts:
       description:
         "Read your LinkedIn feed. Returns recent posts with author, content text, engagement metrics (likes, comments), and relative date. Automatically uses saved LinkedIn session. Rate limited to 3 calls per day.",
       schema: linkedinFeedSchema,
-      handler: async (args) => handleLinkedinFeed(args),
+      handler: async (args) => {
+        const { handleLinkedinFeed } = await import("./tools/linkedin-feed");
+        return handleLinkedinFeed(args);
+      },
       destructive: false,
     }),
   ],

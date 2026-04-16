@@ -1,6 +1,5 @@
 import { defineTool, type ConnectorManifest } from "@/core/types";
-import { composioActionSchema, handleComposioAction } from "./tools/composio-action";
-import { composioListSchema, handleComposioList } from "./tools/composio-list";
+import { composioActionSchema, composioListSchema } from "./schemas";
 
 export const composioConnector: ConnectorManifest = {
   id: "composio",
@@ -49,7 +48,10 @@ A Composio account. You'll connect each target app _inside_ the Composio dashboa
       description:
         "Execute any Composio action on a connected app. Supports 1000+ apps: GitHub, Jira, HubSpot, Salesforce, Airtable, Linear, Figma, Trello, and more. Use composio_list to discover available actions for an app.",
       schema: composioActionSchema,
-      handler: async (args) => handleComposioAction(args),
+      handler: async (args) => {
+        const { handleComposioAction } = await import("./tools/composio-action");
+        return handleComposioAction(args);
+      },
       destructive: true,
     }),
     defineTool({
@@ -57,7 +59,10 @@ A Composio account. You'll connect each target app _inside_ the Composio dashboa
       description:
         "List available Composio actions for a specific app. Use this to discover what actions you can perform.",
       schema: composioListSchema,
-      handler: async (args) => handleComposioList(args),
+      handler: async (args) => {
+        const { handleComposioList } = await import("./tools/composio-list");
+        return handleComposioList(args);
+      },
       destructive: false,
     }),
   ],

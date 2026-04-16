@@ -119,15 +119,39 @@ export async function POST(
   }
 
   const contentType = request.headers.get("content-type") || "application/octet-stream";
+  const receivedAt = new Date().toISOString();
   const entry = {
     payload,
-    receivedAt: new Date().toISOString(),
+    receivedAt,
     contentType,
   };
 
-  // Store in KV
+  // Store in KV — both `last` pointer and history ring buffer
   const kv = getKVStore();
-  await kv.set(`webhook:last:${normalizedName}`, JSON.stringify(entry));
+  const entryJson = JSON.stringify(entry);
+  await kv.set(`webhook:last:${normalizedName}`, entryJson);
+
+  // History: store timestamped entry + prune beyond limit
+  const historyLimit = Math.max(
+    1,
+    parseInt(process.env.MYMCP_WEBHOOK_HISTORY_SIZE ?? "10", 10) || 10
+  );
+  const ts = Date.now();
+  await kv.set(`webhook:history:${normalizedName}:${ts}`, entryJson);
+
+  // Prune: list all history keys for this webhook and remove oldest beyond limit
+  const historyPrefix = `webhook:history:${normalizedName}:`;
+  const historyKeys = await kv.list(historyPrefix);
+  if (historyKeys.length > historyLimit) {
+    // Sort by timestamp (ascending) and delete the oldest
+    const sorted = historyKeys
+      .map((k) => ({ key: k, ts: parseInt(k.slice(historyPrefix.length), 10) }))
+      .sort((a, b) => a.ts - b.ts);
+    const toDelete = sorted.slice(0, sorted.length - historyLimit);
+    for (const { key } of toDelete) {
+      await kv.delete(key);
+    }
+  }
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

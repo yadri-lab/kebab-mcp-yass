@@ -1,6 +1,7 @@
 import { defineTool, type ConnectorManifest } from "@/core/types";
 import { webhookLastSchema, handleWebhookLast } from "./tools/webhook-last";
 import { webhookListSchema, handleWebhookList } from "./tools/webhook-list";
+import { webhookHistorySchema, handleWebhookHistory } from "./tools/webhook-history";
 
 export const webhookConnector: ConnectorManifest = {
   id: "webhook",
@@ -29,6 +30,14 @@ export const webhookConnector: ConnectorManifest = {
         "List all named webhooks that have received at least one payload. Returns webhook names and last-received timestamps.",
       schema: webhookListSchema,
       handler: async () => handleWebhookList(),
+      destructive: false,
+    }),
+    defineTool({
+      name: "webhook_history",
+      description:
+        "Retrieve the last N payloads received for a named webhook, newest first. Useful for replaying or auditing webhook deliveries.",
+      schema: webhookHistorySchema,
+      handler: async (args) => handleWebhookHistory(args as { name: string; limit: number }),
       destructive: false,
     }),
   ],

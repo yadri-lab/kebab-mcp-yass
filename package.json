@@ -37,6 +37,7 @@
     "test:csp-e2e": "npx tsx scripts/csp-e2e-check.ts",
     "test:stress": "vitest run tests/stress/",
     "test:integration": "vitest run tests/integration/ --config vitest.integration.config.ts",
+    "kv:compact": "npx tsx scripts/kv-compact.ts",
     "backup:export": "npx tsx scripts/backup.ts export",
     "backup:import": "npx tsx scripts/backup.ts import",
     "test": "vitest run && npm run test:registry && npm run test:contract",

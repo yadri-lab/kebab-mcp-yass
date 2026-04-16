@@ -29,6 +29,7 @@ vi.mock("@/core/kv-store", () => ({
 
 import { handleWebhookLast } from "@/connectors/webhook/tools/webhook-last";
 import { handleWebhookList } from "@/connectors/webhook/tools/webhook-list";
+import { handleWebhookHistory } from "@/connectors/webhook/tools/webhook-history";
 
 describe("webhook_last tool", () => {
   beforeEach(() => {
@@ -77,6 +78,50 @@ describe("webhook_list tool", () => {
     expect(parsed.count).toBe(2);
     const names = parsed.webhooks.map((w: { name: string }) => w.name).sort();
     expect(names).toEqual(["github", "stripe"]);
+  });
+});
+
+describe("webhook_history tool", () => {
+  beforeEach(() => {
+    for (const key of Object.keys(mockKV)) delete mockKV[key];
+  });
+
+  it("returns error when no history exists", async () => {
+    const result = await handleWebhookHistory({ name: "nonexistent", limit: 10 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("No webhook history found");
+  });
+
+  it("returns history entries newest first", async () => {
+    const entry1 = {
+      payload: { event: "first" },
+      receivedAt: "2026-04-15T01:00:00Z",
+      contentType: "application/json",
+    };
+    const entry2 = {
+      payload: { event: "second" },
+      receivedAt: "2026-04-15T02:00:00Z",
+      contentType: "application/json",
+    };
+    mockKV["webhook:history:stripe:1000"] = JSON.stringify(entry1);
+    mockKV["webhook:history:stripe:2000"] = JSON.stringify(entry2);
+
+    const result = await handleWebhookHistory({ name: "stripe", limit: 10 });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.count).toBe(2);
+    // Newest first
+    expect(parsed.entries[0].payload.event).toBe("second");
+    expect(parsed.entries[1].payload.event).toBe("first");
+  });
+
+  it("respects limit parameter", async () => {
+    mockKV["webhook:history:stripe:1000"] = JSON.stringify({ payload: "a" });
+    mockKV["webhook:history:stripe:2000"] = JSON.stringify({ payload: "b" });
+    mockKV["webhook:history:stripe:3000"] = JSON.stringify({ payload: "c" });
+
+    const result = await handleWebhookHistory({ name: "stripe", limit: 2 });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.count).toBe(2);
   });
 });
 
@@ -140,10 +185,16 @@ describe("webhook API route", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
 
-    // Verify KV storage
+    // Verify KV storage — last pointer
     const stored = JSON.parse(mockKV["webhook:last:stripe"]);
     expect(stored.payload.event).toBe("payment.completed");
     expect(stored.contentType).toBe("application/json");
+
+    // Verify history entry was also stored
+    const historyKeys = Object.keys(mockKV).filter((k) => k.startsWith("webhook:history:stripe:"));
+    expect(historyKeys.length).toBe(1);
+    const historyEntry = JSON.parse(mockKV[historyKeys[0]]);
+    expect(historyEntry.payload.event).toBe("payment.completed");
   });
 
   it("validates HMAC signature when secret is set", async () => {
