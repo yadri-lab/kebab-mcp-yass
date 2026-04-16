@@ -1,6 +1,8 @@
 import { defineTool, type ConnectorManifest } from "@/core/types";
 import { mcpLogsSchema, handleMcpLogs } from "./tools/mcp-logs";
 import { cacheEvictSchema, handleCacheEvict } from "./tools/cache-evict";
+import { backupExportSchema, handleBackupExport } from "./tools/backup-export";
+import { backupImportSchema, handleBackupImport } from "./tools/backup-import";
 
 export const adminConnector: ConnectorManifest = {
   id: "admin",
@@ -27,6 +29,22 @@ export const adminConnector: ConnectorManifest = {
         "Clear server-side caches. Scope: registry (connector resolution cache), kv (KV store read cache), logs (in-memory log buffer), or all. Useful after manual env changes or to free memory.",
       schema: cacheEvictSchema,
       handler: async (args) => handleCacheEvict(args),
+      destructive: true,
+    }),
+    defineTool({
+      name: "mcp_backup_export",
+      description:
+        "Export all KV store data as a JSON backup. Returns version, timestamp, and all key-value entries. Does not include env vars or secrets.",
+      schema: backupExportSchema,
+      handler: async () => handleBackupExport(),
+      destructive: false,
+    }),
+    defineTool({
+      name: "mcp_backup_import",
+      description:
+        "Import a JSON backup into the KV store. Accepts the same format produced by mcp_backup_export. Validates version before writing.",
+      schema: backupImportSchema,
+      handler: async (args) => handleBackupImport(args),
       destructive: true,
     }),
   ],

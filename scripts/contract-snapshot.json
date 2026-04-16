@@ -480,6 +480,20 @@
     "destructive": false
   },
   {
+    "name": "mcp_backup_export",
+    "pack": "admin",
+    "schemaKeys": [],
+    "destructive": false
+  },
+  {
+    "name": "mcp_backup_import",
+    "pack": "admin",
+    "schemaKeys": [
+      "data"
+    ],
+    "destructive": true
+  },
+  {
     "name": "mcp_cache_evict",
     "pack": "admin",
     "schemaKeys": [
@@ -763,6 +777,20 @@
       "scroll_count",
       "url"
     ],
+    "destructive": false
+  },
+  {
+    "name": "webhook_last",
+    "pack": "webhook",
+    "schemaKeys": [
+      "name"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "webhook_list",
+    "pack": "webhook",
+    "schemaKeys": [],
     "destructive": false
   }
 ]

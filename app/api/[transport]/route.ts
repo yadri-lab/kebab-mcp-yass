@@ -118,7 +118,7 @@ async function handler(request: Request): Promise<Response> {
     );
   }
 
-  const { error: authError, tokenId } = checkMcpAuth(request);
+  const { error: authError, tokenId, tenantId: _tenantId } = checkMcpAuth(request);
   if (authError) return authError;
 
   if (process.env.MYMCP_RATE_LIMIT_ENABLED === "true") {

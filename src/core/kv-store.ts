@@ -18,6 +18,7 @@
 import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import { withTenantPrefix } from "./tenant";
 
 export interface KVStore {
   kind: "filesystem" | "upstash";
@@ -377,4 +378,68 @@ export function clearKVReadCache(): void {
   if ("cache" in fs) {
     fs.cache = null;
   }
+}
+
+// ── TenantKVStore ──────────────────────────────────────────────────
+//
+// Wraps the underlying singleton KVStore and transparently prefixes
+// all keys with `tenant:<id>:` when a non-null tenantId is provided.
+// For the default tenant (null), keys pass through unchanged.
+
+class TenantKVStore implements KVStore {
+  get kind() {
+    return this.inner.kind;
+  }
+  private inner: KVStore;
+  private tenantId: string | null;
+
+  constructor(inner: KVStore, tenantId: string | null) {
+    this.inner = inner;
+    this.tenantId = tenantId;
+  }
+
+  private pk(key: string): string {
+    return withTenantPrefix(key, this.tenantId);
+  }
+
+  get(key: string) {
+    return this.inner.get(this.pk(key));
+  }
+
+  set(key: string, value: string) {
+    return this.inner.set(this.pk(key), value);
+  }
+
+  delete(key: string) {
+    return this.inner.delete(this.pk(key));
+  }
+
+  list(prefix?: string) {
+    return this.inner.list(this.pk(prefix ?? ""));
+  }
+
+  incr(key: string, opts?: { ttlSeconds?: number }) {
+    return this.inner.incr?.(this.pk(key), opts) ?? Promise.reject(new Error("incr not supported"));
+  }
+
+  lpushCapped(key: string, value: string, maxLength: number, opts?: { ttlSeconds?: number }) {
+    return (
+      this.inner.lpushCapped?.(this.pk(key), value, maxLength, opts) ??
+      Promise.reject(new Error("lpushCapped not supported"))
+    );
+  }
+
+  lrange(key: string, start: number, stop: number) {
+    return this.inner.lrange?.(this.pk(key), start, stop) ?? Promise.resolve([]);
+  }
+}
+
+/**
+ * Get a KVStore scoped to a tenant. For null tenantId (default tenant),
+ * keys pass through unchanged — identical to `getKVStore()`.
+ */
+export function getTenantKVStore(tenantId: string | null): KVStore {
+  const inner = getKVStore();
+  if (tenantId === null) return inner;
+  return new TenantKVStore(inner, tenantId);
 }

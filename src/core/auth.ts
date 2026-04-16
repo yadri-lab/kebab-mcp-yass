@@ -1,6 +1,7 @@
 import { timingSafeEqual, createHash } from "crypto";
 import { isLoopbackRequest } from "./request-utils";
 import { isClaimer } from "./first-run";
+import { getTenantId } from "./tenant";
 
 /**
  * Auth utilities for MyMCP.
@@ -94,18 +95,41 @@ export function extractToken(request: Request): string | null {
  *   drive the operator's Gmail, GitHub, Calendar, Slack, etc. using the
  *   connector credentials the server already has.
  */
-export function checkMcpAuth(request: Request): { error: Response | null; tokenId: string | null } {
-  const tokens = parseTokens(process.env.MCP_AUTH_TOKEN);
+export function checkMcpAuth(request: Request): {
+  error: Response | null;
+  tokenId: string | null;
+  tenantId: string | null;
+} {
+  // Extract tenant from header (null = default tenant, same as before).
+  let tenantIdValue: string | null;
+  try {
+    tenantIdValue = getTenantId(request);
+  } catch (err) {
+    return {
+      error: new Response(err instanceof Error ? err.message : "Bad tenant header", {
+        status: 400,
+      }),
+      tokenId: null,
+      tenantId: null,
+    };
+  }
+
+  // Resolve token list: tenant-specific env var first, then global fallback.
+  const tenantTokenEnv = tenantIdValue
+    ? process.env[`MCP_AUTH_TOKEN_${tenantIdValue.toUpperCase().replace(/-/g, "_")}`]
+    : undefined;
+  const tokens = parseTokens(tenantTokenEnv || process.env.MCP_AUTH_TOKEN);
 
   if (tokens.length === 0) {
     // First-run / dev: only loopback may skip auth.
-    if (isLoopbackRequest(request)) return { error: null, tokenId: null };
+    if (isLoopbackRequest(request)) return { error: null, tokenId: null, tenantId: tenantIdValue };
     return {
       error: new Response(
         "MCP_AUTH_TOKEN not configured on this server. Set it to enable the MCP endpoint.",
         { status: 503 }
       ),
       tokenId: null,
+      tenantId: tenantIdValue,
     };
   }
 
@@ -113,12 +137,12 @@ export function checkMcpAuth(request: Request): { error: Response | null; tokenI
   if (provided) {
     for (const t of tokens) {
       if (safeCompare(provided, t)) {
-        return { error: null, tokenId: tokenId(t) };
+        return { error: null, tokenId: tokenId(t), tenantId: tenantIdValue };
       }
     }
   }
 
-  return { error: new Response("Unauthorized", { status: 401 }), tokenId: null };
+  return { error: new Response("Unauthorized", { status: 401 }), tokenId: null, tenantId: null };
 }
 
 /**

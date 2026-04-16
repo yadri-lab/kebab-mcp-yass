@@ -16,6 +16,7 @@ import { apifyConnector } from "@/connectors/apify/manifest";
 import { githubConnector } from "@/connectors/github/manifest";
 import { linearConnector } from "@/connectors/linear/manifest";
 import { airtableConnector } from "@/connectors/airtable/manifest";
+import { webhookConnector } from "@/connectors/webhook/manifest";
 
 export const ALL_CONNECTORS: ConnectorManifest[] = [
   googleConnector,
@@ -30,6 +31,7 @@ export const ALL_CONNECTORS: ConnectorManifest[] = [
   githubConnector,
   linearConnector,
   airtableConnector,
+  webhookConnector,
   adminConnector,
 ];
 

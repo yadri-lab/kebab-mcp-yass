@@ -1,5 +1,6 @@
 import type { InstanceConfig } from "./types";
 import { getKVStore } from "./kv-store";
+import { getTenantKVStore } from "./kv-store";
 import { emit } from "./events";
 
 /**
@@ -70,11 +71,11 @@ export function resetInstanceConfigCache(): void {
  * One-time migration: if KV is empty for a key but env has a value, copy
  * env → KV so the dashboard can start managing it without losing state.
  */
-export async function getInstanceConfigAsync(): Promise<InstanceConfig> {
+export async function getInstanceConfigAsync(tenantId?: string | null): Promise<InstanceConfig> {
   const env = envConfig();
   let kv;
   try {
-    kv = getKVStore();
+    kv = tenantId ? getTenantKVStore(tenantId) : getKVStore();
   } catch {
     cached = env;
     return env;
