@@ -17,6 +17,15 @@ export default defineConfig({
     env: {
       MYMCP_TRUST_URL_HOST: "1",
     },
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/test-utils.ts"],
+      thresholds: {
+        lines: 32,
+      },
+    },
   },
   resolve: {
     alias: {

@@ -10,6 +10,9 @@ interface GoogleFetchOpts extends Omit<RequestInit, "headers"> {
 }
 
 /**
+ * Node fetch() (undici) reuses TCP connections via its internal connection
+ * pool. No manual keep-alive or agent configuration is needed.
+ *
  * Fetch wrapper for Google APIs with:
  * - Auto Bearer token injection
  * - Retry with exponential backoff on 429 / 500 / 503

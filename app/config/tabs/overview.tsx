@@ -5,6 +5,7 @@ import type { ToolLog } from "@/core/logging";
 import type { InstanceConfig } from "@/core/types";
 import { HealthWidget } from "./health-widget";
 import { ConnectorHealthWidget } from "./connector-health";
+import { RateLimitsWidget } from "./rate-limits-widget";
 
 type UpdateStatus =
   | { state: "loading" }
@@ -145,6 +146,9 @@ export function OverviewTab({
 
       {/* Connector health — SLA sparklines */}
       <ConnectorHealthWidget />
+
+      {/* Rate limits */}
+      <RateLimitsWidget />
 
       {/* Cache management */}
       <div className="flex items-center gap-3">

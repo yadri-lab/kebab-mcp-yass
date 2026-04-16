@@ -212,6 +212,10 @@ function sanitizeUpstashError(text: string): string {
   return scrubbed.slice(0, 80);
 }
 
+/**
+ * Node fetch() (undici) reuses TCP connections via its internal connection
+ * pool. No manual keep-alive or agent configuration is needed.
+ */
 class UpstashKV implements KVStore {
   kind = "upstash" as const;
   private url: string;
