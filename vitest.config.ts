@@ -4,7 +4,8 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    exclude: ["tests/integration/**"],
     // first-run tests share OS /tmp paths; run files sequentially to avoid
     // cross-worker races on BOOTSTRAP_PATH.
     fileParallelism: false,

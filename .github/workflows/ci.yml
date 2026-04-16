@@ -27,3 +27,9 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:registry
       - run: npm run test:contract
+      # Integration test — starts a real Next.js server and hits health + MCP endpoints.
+      # Requires the build step above to have completed (needs .next/ output).
+      - name: Integration test
+        run: npm run test:integration
+        env:
+          MCP_AUTH_TOKEN: test-token-ci

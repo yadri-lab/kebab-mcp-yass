@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import withBundleAnalyzer from "@next/bundle-analyzer";
+
+const analyzeBundle = withBundleAnalyzer({ enabled: process.env.ANALYZE === "true" });
 
 /**
  * Security headers applied to every response via next.config.
@@ -34,4 +37,5 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Heaviest server chunks (Apr 2026): stagehand+browserbase (~2.3 MB), composio (~2.3 MB), zod (~280 KB each x2)
+export default analyzeBundle(nextConfig);
