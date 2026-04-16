@@ -57,7 +57,14 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
         body: JSON.stringify({ pack: packId, credentials: creds }),
       });
       const data = await res.json();
-      setTestResults((p) => ({ ...p, [packId]: data }));
+      setTestResults((p) => ({
+        ...p,
+        [packId]: {
+          ok: data.ok ?? false,
+          message: data.message || data.error || "Unknown error",
+          detail: data.detail,
+        },
+      }));
     } catch {
       setTestResults((p) => ({
         ...p,

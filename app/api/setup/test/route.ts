@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isClaimer } from "@/core/first-run";
+import { checkAdminAuth } from "@/core/auth";
 import { isLoopbackRequest, getClientIP } from "@/core/request-utils";
 import { checkRateLimit } from "@/core/rate-limit";
 import { resolveRegistry } from "@/core/registry";
@@ -13,25 +14,26 @@ import { withTimeout } from "@/core/timeout";
  * they have NOT been persisted yet, so implementations read from the
  * `credentials` argument, never from `process.env`.
  *
- * v0.6 (A3): the giant switch is gone. Each connector owns its test
- * logic in its manifest.
+ * Auth: either admin auth (post-setup, from dashboard) or first-run
+ * claimer (during /welcome setup). Both are valid callers.
  */
 
 const TEST_TIMEOUT_MS = 8_000;
 
 export async function POST(request: Request) {
-  // v0.6 NIT-01: collapsed from 403 to 401 — both "instance already
-  // claimed" and "no first-run claim" return 401 so an unauthenticated
-  // caller cannot distinguish setup state via status code.
+  // Post-setup: accept admin auth (cookie or token) so the Connectors
+  // tab can test credentials from the dashboard.
   if (process.env.MCP_AUTH_TOKEN) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!isLoopbackRequest(request) && !isClaimer(request)) {
-    return NextResponse.json(
-      { error: "Unauthorized — claim this instance via /welcome first" },
-      { status: 401 }
-    );
+    const authError = checkAdminAuth(request);
+    if (authError) return authError;
+  } else {
+    // First-run mode: accept loopback or claimer cookie
+    if (!isLoopbackRequest(request) && !isClaimer(request)) {
+      return NextResponse.json(
+        { error: "Unauthorized — claim this instance via /welcome first" },
+        { status: 401 }
+      );
+    }
   }
 
   const ip = getClientIP(request);

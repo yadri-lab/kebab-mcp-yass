@@ -146,7 +146,7 @@ export function Sidebar({
       <aside
         className={`
         ${mobileOpen ? "flex" : "hidden"} sm:flex
-        w-full sm:w-60 sm:min-h-screen sm:shrink-0
+        w-full sm:w-60 sm:h-screen sm:sticky sm:top-0 sm:shrink-0
         border-b sm:border-b-0 sm:border-r border-border
         bg-bg-sidebar flex-col
       `}
