@@ -1,6 +1,7 @@
 import { getLogStore, type LogEntry } from "./log-store";
 import { McpToolError } from "./errors";
 import type { ToolResult } from "./types";
+import { startToolSpan, endToolSpan } from "./tracing";
 
 export interface ToolLog {
   tool: string;
@@ -174,15 +175,20 @@ export async function getDurableLogs(
 export function withLogging<TParams>(
   toolName: string,
   handler: (params: TParams) => Promise<ToolResult>,
-  callerTokenId?: string | null
+  callerTokenId?: string | null,
+  connectorId?: string
 ): (params: TParams) => Promise<ToolResult> {
   return async (params: TParams) => {
+    const argKeys = params && typeof params === "object" ? Object.keys(params as object) : [];
+    const span = startToolSpan(toolName, connectorId ?? "unknown", argKeys);
     const start = Date.now();
     try {
       const result = await handler(params);
+      const durationMs = Date.now() - start;
+      endToolSpan(span, "ok", durationMs);
       logToolCall({
         tool: toolName,
-        durationMs: Date.now() - start,
+        durationMs,
         status: "success",
         timestamp: new Date().toISOString(),
         ...(callerTokenId ? { tokenId: callerTokenId } : {}),
@@ -191,6 +197,7 @@ export function withLogging<TParams>(
     } catch (error) {
       const durationMs = Date.now() - start;
       const timestamp = new Date().toISOString();
+      endToolSpan(span, "error", durationMs);
 
       if (error instanceof McpToolError) {
         logToolCall({

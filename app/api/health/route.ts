@@ -2,6 +2,7 @@ import { VERSION } from "@/core/version";
 import { resolveRegistry } from "@/core/registry";
 import { checkAdminAuth } from "@/core/auth";
 import { withTimeout } from "@/core/timeout";
+import { getLogStore, type LogEntry } from "@/core/log-store";
 
 /**
  * Public health endpoint.
@@ -74,6 +75,27 @@ export async function GET(request: Request) {
   );
 
   const degraded = checks.filter((c) => !c.ok);
+  const allDown = checks.length > 0 && degraded.length === checks.length;
+  const overall = allDown ? "down" : degraded.length > 0 ? "degraded" : "ok";
+
+  // Write health sample to LogStore (fire-and-forget).
+  const connectorMap: Record<string, { ok: boolean; latencyMs: number }> = {};
+  for (const c of checks) {
+    connectorMap[c.connector] = { ok: c.ok, latencyMs: c.durationMs };
+  }
+  const sample: LogEntry = {
+    ts: Date.now(),
+    level: "info",
+    message: "health-check",
+    meta: {
+      type: "health-sample",
+      overall,
+      connectors: connectorMap,
+    },
+  };
+  getLogStore()
+    .append(sample)
+    .catch((err: Error) => console.error("[MyMCP] Health sample write failed:", err.message));
 
   return Response.json({
     ok: degraded.length === 0,

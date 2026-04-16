@@ -51,7 +51,12 @@ function buildHandler(callerTokenId?: string | null) {
             tool.name,
             desc,
             tool.schema,
-            withLogging(tool.name, async (params) => tool.handler(params), callerTokenId)
+            withLogging(
+              tool.name,
+              async (params) => tool.handler(params),
+              callerTokenId,
+              pack.manifest.id
+            )
           );
         }
 

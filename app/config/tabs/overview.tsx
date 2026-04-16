@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { ToolLog } from "@/core/logging";
 import type { InstanceConfig } from "@/core/types";
 import { HealthWidget } from "./health-widget";
+import { ConnectorHealthWidget } from "./connector-health";
 
 type UpdateStatus =
   | { state: "loading" }
@@ -98,6 +99,9 @@ export function OverviewTab({
     <div className="space-y-6">
       {/* Instance health widget */}
       <HealthWidget />
+
+      {/* Connector health — SLA sparklines */}
+      <ConnectorHealthWidget />
 
       {/* Update banner */}
       {update.state === "ready" && update.available && result.state !== "done" && (
