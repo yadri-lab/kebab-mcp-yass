@@ -1,9 +1,9 @@
-import { getKVStore } from "@/core/kv-store";
+import { getContextKVStore } from "@/core/request-context";
 
 export const webhookListSchema = {};
 
 export async function handleWebhookList() {
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const keys = await kv.list("webhook:last:");
 
   const entries: Array<{ name: string; receivedAt?: string }> = [];

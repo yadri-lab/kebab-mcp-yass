@@ -7,6 +7,7 @@ import { getEnabledPacks, logRegistryState } from "@/core/registry";
 import { on } from "@/core/events";
 import { VERSION } from "@/core/version";
 import { getDisabledTools } from "@/core/tool-toggles";
+import { requestContext } from "@/core/request-context";
 
 // NIT-03: Log the registry state once at module load, then re-log only
 // when env.changed fires. Previous behavior logged on every MCP request,
@@ -38,19 +39,13 @@ type GlobalWithFlag = typeof globalThis & { [TRANSPORT_SUBSCRIBED]?: boolean };
  *
  * Cost: a few ms to re-scan process.env + rebuild the tool list.
  */
-async function buildHandler(callerTokenId?: string | null) {
-  const disabledTools = await getDisabledTools();
-
+async function buildHandler(callerTokenId?: string | null, tenantId?: string | null) {
   return createMcpHandler(
     (server) => {
       const enabledPacks = getEnabledPacks();
 
       for (const pack of enabledPacks) {
         for (const tool of pack.manifest.tools) {
-          // Per-tool disable via KV. Connector-level disable is already
-          // handled by getEnabledPacks() — this is the per-tool layer.
-          if (disabledTools.has(tool.name)) continue;
-
           const desc = tool.deprecated
             ? `[DEPRECATED: ${tool.deprecated}] ${tool.description}`
             : tool.description;
@@ -60,7 +55,31 @@ async function buildHandler(callerTokenId?: string | null) {
             tool.schema,
             withLogging(
               tool.name,
-              async (params) => tool.handler(params),
+              async (params) => {
+                // HIGH-2: Check per-tool disable at invocation time (not
+                // registration time) so toggles take effect immediately
+                // even on long-lived sessions.
+                const currentDisabled = await getDisabledTools();
+                if (currentDisabled.has(tool.name)) {
+                  return {
+                    content: [
+                      {
+                        type: "text" as const,
+                        text: JSON.stringify({
+                          error: `Tool "${tool.name}" is currently disabled`,
+                        }),
+                      },
+                    ],
+                    isError: true,
+                  };
+                }
+                // CRITICAL-2: Wrap handler in request context so tool
+                // handlers can access tenantId via getCurrentTenantId()
+                // and get tenant-scoped KV via getContextKVStore().
+                return requestContext.run({ tenantId: tenantId ?? null }, () =>
+                  tool.handler(params)
+                );
+              },
               callerTokenId,
               pack.manifest.id
             )
@@ -118,7 +137,7 @@ async function handler(request: Request): Promise<Response> {
     );
   }
 
-  const { error: authError, tokenId, tenantId: _tenantId } = checkMcpAuth(request);
+  const { error: authError, tokenId, tenantId } = checkMcpAuth(request);
   if (authError) return authError;
 
   if (process.env.MYMCP_RATE_LIMIT_ENABLED === "true") {
@@ -138,7 +157,7 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
-  const mcpHandler = await buildHandler(tokenId);
+  const mcpHandler = await buildHandler(tokenId, tenantId);
   return mcpHandler(request);
 }
 
