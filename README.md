@@ -52,109 +52,77 @@
 
 I built MyMCP because I wanted a single MCP server that works everywhere (Claude, ChatGPT, Cursor, Windsurf, OpenClaw, ..). It started as a simple bridge to my Obsidian vault with a few tools, and kept growing as I added Google Workspace, browser automation, Slack, Notion, and LinkedIn via Apify. At some point I realized: if it's useful to me, it might be useful to others, so I open-sourced it.
 
+A live demo lives at **[mymcp-home.vercel.app](https://mymcp-home.vercel.app)** (read-only showcase deploy). Click around to see the dashboard before committing to a deploy of your own.
+
 ## Why MyMCP?
 
 Most MCP setups require running 5 separate servers, each with their own config. Or paying for a hosted platform that controls your data.
 
 MyMCP gives you **one server, one endpoint, 86+ tools** — deployed on Vercel's free tier (or Docker). You own everything.
 
-| | MyMCP | Separate MCP servers | Hosted platforms |
-|---|---|---|---|
-| **Setup** | Fork + env vars + deploy | 5 repos, 5 configs | Sign up + monthly fee |
-| **Tools** | 84+ pre-built | Build your own | 1000s (but vendor lock-in) |
-| **Endpoint** | 1 | 5+ | 1 (their server) |
-| **Cost** | Free (Vercel free tier) | Free but complex | $0-80/month |
-| **Data** | Your Vercel, your keys | Your machines | Their servers |
-| **Docker** | Yes | Usually yes | N/A |
+|              | MyMCP                    | Separate MCP servers | Hosted platforms           |
+| ------------ | ------------------------ | -------------------- | -------------------------- |
+| **Setup**    | Fork + env vars + deploy | 5 repos, 5 configs   | Sign up + monthly fee      |
+| **Tools**    | 86+ pre-built            | Build your own       | 1000s (but vendor lock-in) |
+| **Endpoint** | 1                        | 5+                   | 1 (their server)           |
+| **Cost**     | Free (Vercel free tier)  | Free but complex     | $0-80/month                |
+| **Data**     | Your Vercel, your keys   | Your machines        | Their servers              |
+| **Docker**   | Yes                      | Usually yes          | N/A                        |
 
 ## Quick Start
 
-> **Which option should I pick?**
->
-> | You are... | Best option |
-> |---|---|
-> | Using Claude Code (CLI or Desktop) | [Option 1](#option-1-from-claude-code-recommended) — ask Claude to do it for you |
-> | Comfortable with the terminal | [Option 2](#option-2-interactive-installer) — `npx @yassinello/create-mymcp` |
-> | Prefer clicking buttons | [Option 3](#option-3-deploy-to-vercel) — one-click Vercel deploy |
-> | Want to self-host | [Option 4](#option-4-docker) |
+Two paths cover ~95% of users — Vercel for click-and-go, self-hosted for full control. The other installers are tucked away below.
+
+### Option A — Deploy on Vercel (recommended)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fmymcp&project-name=mymcp-me&repository-name=mymcp-me)
+
+1. Click **Deploy** above — no env vars to fill in
+2. When Vercel finishes (~60s), open the deployed URL → you land on `/welcome`, mint your token, and the dashboard auto-redeploys with it pinned
+3. Add the [Upstash integration](https://vercel.com/integrations/upstash) (free tier) so saved credentials survive cold starts — see [Storage modes](content/docs/storage.md)
+
+That's it. The Welcome wizard walks you through connectors and shows the token paste-into-client snippet.
 
 ---
 
-### Option 1: From Claude Code (recommended)
-
-If you're using Claude Code (Desktop, CLI, or Web), just run the installer from the conversation. No need to create a folder first — the installer will ask you where to set up.
+### Option B — Self-hosted (Docker or local dev)
 
 ```bash
-npx @yassinello/create-mymcp@latest
+git clone https://github.com/Yassinello/mymcp.git
+cd mymcp
+cp .env.example .env    # Fill MCP_AUTH_TOKEN at minimum
+
+# Docker
+docker compose up
+
+# Or local dev
+npm install && npm run dev
 ```
 
-Or ask Claude to run it for you:
+Dashboard at `http://localhost:3000/config?token=<your-token>`, MCP endpoint at `http://localhost:3000/api/mcp`.
+
+---
+
+<details>
+<summary><strong>More install methods</strong></summary>
+
+### From a Claude Code conversation
+
+Just ask Claude to run the installer:
 
 > "Run `npx @yassinello/create-mymcp@latest` and help me set up MyMCP."
 
-The installer will:
-1. Clone the repo to your machine
-2. Walk you through which connectors to enable (Google, Obsidian, Slack...)
-3. Generate your `MCP_AUTH_TOKEN` securely
-4. Collect your API credentials (with links to get them)
-5. Create your `.env` file
-6. Install dependencies
-7. Optionally deploy to Vercel
+The installer clones the repo, picks connectors, generates your token, collects credentials, and optionally deploys to Vercel. Claude can then wire the resulting endpoint into your client config.
 
-Claude can then help you add the MCP server to your config and verify everything works.
-
----
-
-### Option 2: Interactive installer
+### Interactive npx installer
 
 ```bash
 npx @yassinello/create-mymcp@latest
 ```
 
-The CLI walks you through everything step by step:
+Five-step CLI: project setup → clone → pick connectors → paste credentials → install & deploy. Leaves you with a working `.env`, installed deps, and an `upstream` remote for future `npm run update`.
 
-```
-[1/5] Project setup        → Pick a directory name
-[2/5] Cloning MyMCP        → Downloads the code + sets up update tracking
-[3/5] Choose your connectors    → Google Workspace? Obsidian? Slack? (Y/n for each)
-[4/5] Configure credentials → Paste your API keys (with links to get them)
-[5/5] Install & deploy     → npm install + optional Vercel deploy
-```
-
-At the end you get a working `.env`, installed dependencies, and an `upstream` remote for future updates.
-
----
-
-### Option 3: Deploy to Vercel
-
-1. Click the **Deploy with Vercel** button at the top of this page
-2. Pick a name (default: `mymcp-me`) and click **Deploy** — no env vars to fill in
-3. Once Vercel finishes (~60s), open the deployed URL — you'll land on `/welcome`
-4. Click **Initialize this instance** to mint your permanent `MCP_AUTH_TOKEN`, copy it, then paste it into Vercel's env vars and trigger a redeploy
-5. Add connector credentials at `/config/connectors` once the dashboard is reachable
-
----
-
-### Option 4: Docker
-
-```bash
-git clone https://github.com/Yassinello/mymcp.git
-cd mymcp
-cp .env.example .env    # Fill in your API keys
-docker compose up       # or: docker build -t mymcp . && docker run -p 3000:3000 --env-file .env mymcp
-```
-
----
-
-### Option 5: Run locally (development)
-
-```bash
-git clone https://github.com/Yassinello/mymcp.git
-cd mymcp
-cp .env.example .env    # Fill in your values
-npm install
-npm run dev             # http://localhost:3000
-```
+</details>
 
 ---
 
@@ -179,6 +147,7 @@ File: `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac) or
   }
 }
 ```
+
 </details>
 
 <details>
@@ -199,6 +168,7 @@ File: `~/.claude.json` (global) or `.mcp.json` (per-project)
   }
 }
 ```
+
 </details>
 
 <details>
@@ -218,6 +188,7 @@ File: `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per-project)
   }
 }
 ```
+
 </details>
 
 <details>
@@ -237,12 +208,14 @@ File: `~/.codeium/windsurf/mcp_config.json`
   }
 }
 ```
+
 </details>
 
 <details>
 <summary><strong>ChatGPT / Other MCP clients</strong></summary>
 
 Use the Streamable HTTP endpoint:
+
 - **URL**: `https://your-app.vercel.app/api/mcp`
 - **Auth**: Bearer token (your `MCP_AUTH_TOKEN`)
 - **Method**: POST
@@ -306,60 +279,60 @@ MyMCP ships **86+ production-ready tools** organized in 14 connectors. Each conn
 
 ### Google Workspace — 18 tools
 
-| Category | Tools |
-|----------|-------|
-| **Gmail** | `gmail_inbox` `gmail_read` `gmail_send` `gmail_reply` `gmail_trash` `gmail_label` `gmail_search` `gmail_draft` `gmail_attachment` |
-| **Calendar** | `calendar_events` `calendar_create` `calendar_update` `calendar_delete` `calendar_find_free` `calendar_rsvp` |
-| **Contacts** | `contacts_search` |
-| **Drive** | `drive_search` `drive_read` |
+| Category     | Tools                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Gmail**    | `gmail_inbox` `gmail_read` `gmail_send` `gmail_reply` `gmail_trash` `gmail_label` `gmail_search` `gmail_draft` `gmail_attachment` |
+| **Calendar** | `calendar_events` `calendar_create` `calendar_update` `calendar_delete` `calendar_find_free` `calendar_rsvp`                      |
+| **Contacts** | `contacts_search`                                                                                                                 |
+| **Drive**    | `drive_search` `drive_read`                                                                                                       |
 
 **Requires:** `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` + `GOOGLE_REFRESH_TOKEN`
 
 ### Obsidian Vault — 14 tools
 
-| Category | Tools |
-|----------|-------|
-| **CRUD** | `vault_read` `vault_write` `vault_delete` `vault_move` `vault_append` `vault_list` |
-| **Batch & Search** | `vault_batch_read` `vault_search` `vault_recent` `vault_stats` |
-| **Knowledge Graph** | `vault_backlinks` `vault_due` |
-| **Web → Vault** | `save_article` |
-| **Context** | `my_context` |
+| Category            | Tools                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| **CRUD**            | `vault_read` `vault_write` `vault_delete` `vault_move` `vault_append` `vault_list` |
+| **Batch & Search**  | `vault_batch_read` `vault_search` `vault_recent` `vault_stats`                     |
+| **Knowledge Graph** | `vault_backlinks` `vault_due`                                                      |
+| **Web → Vault**     | `save_article`                                                                     |
+| **Context**         | `my_context`                                                                       |
 
 **Requires:** `GITHUB_PAT` + `GITHUB_REPO`
 
 ### Browser Automation — 4 tools
 
-| Tool | What it does |
-|------|-------------|
-| `web_browse` | Open URL, return visible text (handles JS-rendered pages) |
-| `web_extract` | Extract structured data with AI (e.g., "get all prices from this page") |
-| `web_act` | Execute actions: click, type, fill forms (natural language) |
-| `linkedin_feed` | Read LinkedIn feed (rate-limited, persistent session) |
+| Tool            | What it does                                                            |
+| --------------- | ----------------------------------------------------------------------- |
+| `web_browse`    | Open URL, return visible text (handles JS-rendered pages)               |
+| `web_extract`   | Extract structured data with AI (e.g., "get all prices from this page") |
+| `web_act`       | Execute actions: click, type, fill forms (natural language)             |
+| `linkedin_feed` | Read LinkedIn feed (rate-limited, persistent session)                   |
 
 **Requires:** `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` + `OPENROUTER_API_KEY`
 
 ### Slack — 6 tools
 
-| Tool | What it does |
-|------|-------------|
-| `slack_channels` | List channels with topic, member count |
-| `slack_read` | Read recent messages from a channel |
-| `slack_send` | Send a message or threaded reply |
-| `slack_search` | Search messages (supports Slack operators: from:, in:, has:) |
-| `slack_thread` | Read all replies in a thread |
-| `slack_profile` | Get user profile: name, title, email, timezone, status |
+| Tool             | What it does                                                 |
+| ---------------- | ------------------------------------------------------------ |
+| `slack_channels` | List channels with topic, member count                       |
+| `slack_read`     | Read recent messages from a channel                          |
+| `slack_send`     | Send a message or threaded reply                             |
+| `slack_search`   | Search messages (supports Slack operators: from:, in:, has:) |
+| `slack_thread`   | Read all replies in a thread                                 |
+| `slack_profile`  | Get user profile: name, title, email, timezone, status       |
 
 **Requires:** `SLACK_BOT_TOKEN`
 
 ### Notion — 5 tools
 
-| Tool | What it does |
-|------|-------------|
-| `notion_search` | Search pages by title or content |
-| `notion_read` | Read full page content as markdown |
-| `notion_create` | Create a page in a database |
+| Tool            | What it does                                 |
+| --------------- | -------------------------------------------- |
+| `notion_search` | Search pages by title or content             |
+| `notion_read`   | Read full page content as markdown           |
+| `notion_create` | Create a page in a database                  |
 | `notion_update` | Update page properties and/or append content |
-| `notion_query` | Query a database with filters and sorting |
+| `notion_query`  | Query a database with filters and sorting    |
 
 **Requires:** `NOTION_API_KEY`
 
@@ -367,61 +340,61 @@ MyMCP ships **86+ production-ready tools** organized in 14 connectors. Each conn
 
 LinkedIn scraping and general actor execution via the Apify platform.
 
-| Tool | What it does |
-|------|-------------|
-| `apify_linkedin_profile` | Fetch a LinkedIn person profile |
-| `apify_linkedin_company` | Fetch a LinkedIn company profile |
-| `apify_linkedin_profile_posts` | Get recent posts from a LinkedIn profile |
-| `apify_linkedin_company_posts` | Get recent posts from a LinkedIn company page |
-| `apify_linkedin_post` | Fetch a specific LinkedIn post |
-| `apify_linkedin_company_insights` | Get company follower/employee insights |
-| `apify_search_actors` | Search Apify's actor marketplace |
-| `apify_run_actor` | Run any Apify actor with custom input |
+| Tool                              | What it does                                  |
+| --------------------------------- | --------------------------------------------- |
+| `apify_linkedin_profile`          | Fetch a LinkedIn person profile               |
+| `apify_linkedin_company`          | Fetch a LinkedIn company profile              |
+| `apify_linkedin_profile_posts`    | Get recent posts from a LinkedIn profile      |
+| `apify_linkedin_company_posts`    | Get recent posts from a LinkedIn company page |
+| `apify_linkedin_post`             | Fetch a specific LinkedIn post                |
+| `apify_linkedin_company_insights` | Get company follower/employee insights        |
+| `apify_search_actors`             | Search Apify's actor marketplace              |
+| `apify_run_actor`                 | Run any Apify actor with custom input         |
 
 **Requires:** `APIFY_TOKEN`
 
 ### Paywall — 2 tools
 
-| Tool | What it does |
-|------|-------------|
-| `read_paywalled` | Read paywalled articles via a reader service |
-| `read_paywalled_hard` | Hard-bypass fallback for stubborn paywalls |
+| Tool                  | What it does                                 |
+| --------------------- | -------------------------------------------- |
+| `read_paywalled`      | Read paywalled articles via a reader service |
+| `read_paywalled_hard` | Hard-bypass fallback for stubborn paywalls   |
 
 No credentials required — always active.
 
 ### Linear — 6 tools
 
-| Tool | What it does |
-|------|-------------|
-| `linear_list_issues` | List issues with team, project, state, and assignee filters |
-| `linear_get_issue` | Get full issue details by identifier (e.g. ENG-123), including comments |
-| `linear_search_issues` | Full-text search across all issues |
-| `linear_list_projects` | List projects with team filter, progress, and dates |
-| `linear_create_issue` | Create an issue with name resolution for team, state, assignee, and labels |
-| `linear_update_issue` | Update an issue with same name resolution layer |
+| Tool                   | What it does                                                               |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `linear_list_issues`   | List issues with team, project, state, and assignee filters                |
+| `linear_get_issue`     | Get full issue details by identifier (e.g. ENG-123), including comments    |
+| `linear_search_issues` | Full-text search across all issues                                         |
+| `linear_list_projects` | List projects with team filter, progress, and dates                        |
+| `linear_create_issue`  | Create an issue with name resolution for team, state, assignee, and labels |
+| `linear_update_issue`  | Update an issue with same name resolution layer                            |
 
 **Requires:** `LINEAR_API_KEY` (Settings → API → Personal API keys in Linear)
 
 ### Airtable — 7 tools
 
-| Tool | What it does |
-|------|-------------|
-| `airtable_list_bases` | List all accessible Airtable bases with IDs and permission levels |
-| `airtable_list_tables` | List tables in a base with fields and views |
-| `airtable_list_records` | List records with optional view, filter formula, sort, and limit |
-| `airtable_get_record` | Get a single record by ID with all field values |
-| `airtable_create_record` | Create a new record with specified field values |
-| `airtable_update_record` | Partially update a record (untouched fields are preserved) |
-| `airtable_search_records` | Case-insensitive text search on a specified field |
+| Tool                      | What it does                                                      |
+| ------------------------- | ----------------------------------------------------------------- |
+| `airtable_list_bases`     | List all accessible Airtable bases with IDs and permission levels |
+| `airtable_list_tables`    | List tables in a base with fields and views                       |
+| `airtable_list_records`   | List records with optional view, filter formula, sort, and limit  |
+| `airtable_get_record`     | Get a single record by ID with all field values                   |
+| `airtable_create_record`  | Create a new record with specified field values                   |
+| `airtable_update_record`  | Partially update a record (untouched fields are preserved)        |
+| `airtable_search_records` | Case-insensitive text search on a specified field                 |
 
 **Requires:** `AIRTABLE_API_KEY` (Personal access token from https://airtable.com/create/tokens)
 
 ### Composio — 2 tools + 1000s of integrations
 
-| Tool | What it does |
-|------|-------------|
+| Tool              | What it does                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
 | `composio_action` | Execute any action on a connected app (GitHub, Jira, HubSpot, Salesforce, Airtable, Linear, Figma...) |
-| `composio_list` | Discover available actions for a specific app |
+| `composio_list`   | Discover available actions for a specific app                                                         |
 
 Connect your apps in the [Composio dashboard](https://composio.dev), then use `composio_list` to discover actions and `composio_action` to execute them.
 
@@ -429,11 +402,11 @@ Connect your apps in the [Composio dashboard](https://composio.dev), then use `c
 
 ### Webhook Receiver — 3 tools
 
-| Tool | What it does |
-|------|-------------|
-| `webhook_last` | Retrieve the most recent payload for a named webhook |
-| `webhook_list` | List all webhooks that have received at least one payload |
-| `webhook_history` | Retrieve the last N payloads for a named webhook |
+| Tool              | What it does                                              |
+| ----------------- | --------------------------------------------------------- |
+| `webhook_last`    | Retrieve the most recent payload for a named webhook      |
+| `webhook_list`    | List all webhooks that have received at least one payload |
+| `webhook_history` | Retrieve the last N payloads for a named webhook          |
 
 **Requires:** `MYMCP_WEBHOOKS` (comma-separated list of webhook names, e.g. `stripe,github`)
 
@@ -445,12 +418,12 @@ User-defined prompt templates exposed as MCP tools and prompts. Create skills vi
 
 ### Admin — 5 tools
 
-| Tool | What it does |
-|------|-------------|
-| `mcp_logs` | View recent tool calls, errors, latency |
-| `mcp_cache_evict` | Clear internal caches (KV, API response, etc.) |
-| `mcp_backup_export` | Export skills and settings as a JSON backup |
-| `mcp_backup_import` | Restore skills and settings from a backup |
+| Tool                | What it does                                                                |
+| ------------------- | --------------------------------------------------------------------------- |
+| `mcp_logs`          | View recent tool calls, errors, latency                                     |
+| `mcp_cache_evict`   | Clear internal caches (KV, API response, etc.)                              |
+| `mcp_backup_export` | Export skills and settings as a JSON backup                                 |
+| `mcp_backup_import` | Restore skills and settings from a backup                                   |
 | `admin_stream_test` | Streaming transport diagnostic (verifies chunked transfer works end-to-end) |
 
 Always active, no credentials needed.
@@ -510,10 +483,10 @@ All configuration is via environment variables. See [`.env.example`](.env.exampl
 
 ### Auth
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MCP_AUTH_TOKEN` | Yes | Bearer token(s) for MCP endpoint — supports comma-separated list |
-| `ADMIN_AUTH_TOKEN` | No | Separate token for dashboard (falls back to MCP_AUTH_TOKEN) |
+| Variable           | Required | Description                                                      |
+| ------------------ | -------- | ---------------------------------------------------------------- |
+| `MCP_AUTH_TOKEN`   | Yes      | Bearer token(s) for MCP endpoint — supports comma-separated list |
+| `ADMIN_AUTH_TOKEN` | No       | Separate token for dashboard (falls back to MCP_AUTH_TOKEN)      |
 
 #### Multi-token authentication
 
@@ -527,15 +500,15 @@ Each token must be at least 16 characters. An 8-character SHA-256 hash prefix of
 
 ### Instance Settings
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MYMCP_TIMEZONE` | `UTC` | Timezone for date formatting |
-| `MYMCP_LOCALE` | `en-US` | Locale for date/number formatting |
-| `MYMCP_DISPLAY_NAME` | `User` | Display name in dashboard |
-| `MYMCP_CONTEXT_PATH` | `System/context.md` | Path to context file in vault |
-| `GITHUB_BRANCH` | `main` | Default branch for vault repo |
-| `MYMCP_TOOL_TIMEOUT` | `30000` | Tool timeout in ms |
-| `MYMCP_ERROR_WEBHOOK_URL` | — | Webhook for error alerts (Slack-compatible) |
+| Variable                  | Default             | Description                                 |
+| ------------------------- | ------------------- | ------------------------------------------- |
+| `MYMCP_TIMEZONE`          | `UTC`               | Timezone for date formatting                |
+| `MYMCP_LOCALE`            | `en-US`             | Locale for date/number formatting           |
+| `MYMCP_DISPLAY_NAME`      | `User`              | Display name in dashboard                   |
+| `MYMCP_CONTEXT_PATH`      | `System/context.md` | Path to context file in vault               |
+| `GITHUB_BRANCH`           | `main`              | Default branch for vault repo               |
+| `MYMCP_TOOL_TIMEOUT`      | `30000`             | Tool timeout in ms                          |
+| `MYMCP_ERROR_WEBHOOK_URL` | —                   | Webhook for error alerts (Slack-compatible) |
 
 ### Connector Control
 
@@ -548,72 +521,69 @@ MYMCP_ENABLED_PACKS=vault,admin    # Only listed connectors are considered
 
 ## What's New
 
-### v0.1.0 (Stabilization)
+### v0.2 — Storage UX v3 (Phase 32)
+
+- **Ephemeral `/tmp` detection** — Vercel deploys without Upstash now flip the storage badge to `Filesystem (temporary) ⚠` instead of silently writing to disposable storage
+- **Three-card Welcome wizard** — explicit choice between Upstash setup, env-vars-only mode, or proceeding with the warning, instead of a hidden silent fallback
+- **Storage mode badge** — sidebar + Storage tab show `Upstash Redis ✓`, `Filesystem ✓`, `Filesystem (temporary) ⚠`, `Static ⚠`, or `KV unreachable ✗` at a glance
+- **KV-degraded recovery** — unreachable Upstash refuses to save (no silent fallback) and surfaces a one-click recheck flow
+
+### v0.1.x — Stabilization
 
 - **OTel auto-bootstrap** — set `OTEL_SERVICE_NAME=mymcp` and spans flow to your collector, zero config
 - **API Playground** — test any tool from the dashboard with a mini-chat UI
 - **Skill Composer** — visual tool-wrapping wizard: pick tool, configure args, preview YAML, save
 - **Skill versioning** — edits create new versions, rollback supported from dashboard
 - **Health dashboard** — connector SLA sparklines, instance health widget, version display
-- **Per-tool toggle** — disable individual tools from the dashboard without removing connectors
+- **Per-tool toggle** — disable individual tools without removing connectors
 - **Multi-tenant auth** — per-tenant tokens with `x-mymcp-tenant` header routing
 - **Webhook connector** — receive and query external payloads (Stripe, GitHub, etc.)
-- **Request ID propagation** — `x-request-id` on every response, propagated to logs and OTel spans
-
-### v0.7
-
-- **Webhook connector** — receive and query external webhook payloads (Stripe, GitHub, etc.) via MCP tools
-- **Multi-tenant auth** — per-tenant `MCP_AUTH_TOKEN_<TENANTID>` with `x-mymcp-tenant` header routing
-- **Per-tool toggle** — disable individual tools from the dashboard without removing connectors
-- **Skill Composer** — visual wizard to create skills by wrapping existing tools (pick tool, configure args, preview, save)
 - **Backup/restore** — export and import skills + settings as JSON via `mcp_backup_export` / `mcp_backup_import`
 - **Deep health checks** — `GET /api/health?deep=1` runs connector `diagnose()`, with history tracked over time
-- **Health dashboard** — connector SLA sparklines, instance health widget, version display in Overview tab
-- **Durable observability** — opt-in persistent tool logs via KV store, with configurable retention and rotation
+- **Durable observability** — opt-in persistent tool logs via KV store
 - **Per-token rate limiting** — configurable RPM cap per auth token
-- **Event bus** — internal pub/sub for cache invalidation and connector state changes
-- **KV cache layer** — shared key-value store (filesystem locally, Upstash on Vercel)
-- **GitHub Issues connector** — 6 tools for listing, creating, updating, commenting, and searching issues
-- **Linear connector** — 6 tools for issue management with name resolution
-- **Airtable connector** — 7 tools for bases, tables, records, and search
+- **GitHub Issues / Linear / Airtable connectors** — 6 / 6 / 7 tools respectively
+- **Request ID propagation** — `x-request-id` on every response, propagated to logs and OTel spans
+
+See [CHANGELOG.md](CHANGELOG.md) for the per-patch detail.
 
 ## Dashboard & Tools
 
-| Page | Auth | Description |
-|------|------|-------------|
-| `/` | Admin | Redirects to `/config` |
-| `/welcome` | Public* | Guided onboarding — first-run token minting, OAuth, credential checks |
-| `/config` | Admin | Unified dashboard — connectors, tools, skills, logs, docs, settings |
+| Page       | Auth     | Description                                                           |
+| ---------- | -------- | --------------------------------------------------------------------- |
+| `/`        | Admin    | Redirects to `/config`                                                |
+| `/welcome` | Public\* | Guided onboarding — first-run token minting, OAuth, credential checks |
+| `/config`  | Admin    | Unified dashboard — connectors, tools, skills, logs, docs, settings   |
 
 \* `/welcome` is only accessible during first-run mode before a token is minted.
 
 ## API Endpoints
 
-| Endpoint | Auth | Description |
-|----------|------|-------------|
-| `POST /api/mcp` | MCP_AUTH_TOKEN | MCP Streamable HTTP |
-| `GET /api/health` | Public | `{ ok, version }` — add `?deep=1` for connector diagnostics |
-| `GET /api/admin/status` | Admin | Connector diagnostics + diagnose() results |
-| `GET /api/admin/stats` | Admin | Tool usage analytics (ephemeral) |
-| `GET /api/admin/verify` | Admin | Live credential verification |
-| `POST /api/admin/call` | Admin | Invoke any tool (playground API) |
-| `GET /api/admin/health-history` | Admin | Historical deep health check results |
-| `POST /api/webhook/:name` | Webhook secret | Inbound webhook receiver |
-| `GET /api/auth/google` | Admin | Google OAuth redirect |
-| `GET /api/cron/health` | Cron | Scheduled health check + webhook alert |
+| Endpoint                        | Auth           | Description                                                 |
+| ------------------------------- | -------------- | ----------------------------------------------------------- |
+| `POST /api/mcp`                 | MCP_AUTH_TOKEN | MCP Streamable HTTP                                         |
+| `GET /api/health`               | Public         | `{ ok, version }` — add `?deep=1` for connector diagnostics |
+| `GET /api/admin/status`         | Admin          | Connector diagnostics + diagnose() results                  |
+| `GET /api/admin/stats`          | Admin          | Tool usage analytics (ephemeral)                            |
+| `GET /api/admin/verify`         | Admin          | Live credential verification                                |
+| `POST /api/admin/call`          | Admin          | Invoke any tool (playground API)                            |
+| `GET /api/admin/health-history` | Admin          | Historical deep health check results                        |
+| `POST /api/webhook/:name`       | Webhook secret | Inbound webhook receiver                                    |
+| `GET /api/auth/google`          | Admin          | Google OAuth redirect                                       |
+| `GET /api/cron/health`          | Cron           | Scheduled health check + webhook alert                      |
 
 ## Security
 
-| Layer | Protection |
-|-------|-----------|
-| **Auth** | Timing-safe token comparison (MCP + Admin), multi-tenant support |
-| **SSRF** | Browser tools block localhost, private IPs (v4+v6), cloud metadata |
-| **Errors** | API keys stripped from error messages |
-| **Rate limiting** | Per-token RPM cap (configurable), LinkedIn feed: 3 calls/day |
-| **OAuth** | State parameter validation, PKCE, HttpOnly cookies |
-| **Dashboard** | Private by default — all admin routes require auth |
-| **Webhooks** | HMAC-SHA256 signature validation (opt-in per webhook) |
-| **CI** | ESLint (no-any enforced), Prettier, Vitest, contract tests, build checks |
+| Layer             | Protection                                                               |
+| ----------------- | ------------------------------------------------------------------------ |
+| **Auth**          | Timing-safe token comparison (MCP + Admin), multi-tenant support         |
+| **SSRF**          | Browser tools block localhost, private IPs (v4+v6), cloud metadata       |
+| **Errors**        | API keys stripped from error messages                                    |
+| **Rate limiting** | Per-token RPM cap (configurable), LinkedIn feed: 3 calls/day             |
+| **OAuth**         | State parameter validation, PKCE, HttpOnly cookies                       |
+| **Dashboard**     | Private by default — all admin routes require auth                       |
+| **Webhooks**      | HMAC-SHA256 signature validation (opt-in per webhook)                    |
+| **CI**            | ESLint (no-any enforced), Prettier, Vitest, contract tests, build checks |
 
 ## Development
 
