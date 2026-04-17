@@ -4,6 +4,32 @@ summary: Fix the things that break most often
 order: 40
 ---
 
+## My saved credentials disappeared after a few minutes
+
+You're in **Filesystem (temporary)** mode — Vercel's `/tmp` got recycled on a cold start and took your saves with it. Open `/config → Storage` and look for the orange `Filesystem (temporary) ⚠` badge to confirm.
+
+Fix: add the [Upstash integration](https://vercel.com/integrations/upstash) (free tier covers a personal instance), let Vercel auto-redeploy, then re-paste your credentials in `/config → Connectors`. They will persist this time. Full walkthrough in the [Storage doc](#storage).
+
+## Storage badge shows "KV unreachable ✗"
+
+The runtime sees `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` but the ping check failed. MyMCP refuses to save in this state by design — silent fallback to `/tmp` would re-introduce the disappearing-data bug. Common causes:
+
+- Upstash database paused (free tier auto-pauses after long idle — open the [Upstash console](https://console.upstash.com) and resume)
+- Token rotated in Upstash but not pushed to Vercel
+- Outbound network blocked from your Docker host
+
+Fix the connectivity, click **Recheck** on the Storage tab, badge flips back to `Upstash Redis ✓`. No restart needed.
+
+## Welcome wizard shows an orange storage warning
+
+The Welcome flow now detects the `/tmp` ephemeral trap before you finish setup. The orange step gives you three explicit choices:
+
+1. **Set up Upstash now** (recommended) — link to the integration, ~2 min
+2. **Use env-vars-only mode** — accept that every credential change requires a Vercel redeploy
+3. **Continue anyway** — proceed with the warning, knowing saves are temporary
+
+Pick option 1 unless you're explicitly building a static showcase. See the [Storage doc](#storage) for which mode fits which deploy.
+
 ## "Unauthorized" on /config or /api/mcp
 
 Cause: the request didn't carry a valid token. Fix:
@@ -17,7 +43,7 @@ Cause: `MCP_AUTH_TOKEN` is unset in your Vercel project. Each redeploy starts in
 
 ## Skills disappear after a Vercel redeploy
 
-Cause: your KV backend is the ephemeral filesystem fallback (`/tmp` on Vercel). Vercel wipes `/tmp` on cold start. Fix: provision Upstash Redis (free tier is enough), set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in Vercel, redeploy. Skills will then persist across cold starts.
+Same root cause as the disappearing-credentials entry above: you're in `Filesystem (temporary)` mode and Vercel wiped `/tmp`. Open `/config → Storage` to confirm the badge state, then follow the Upstash setup in that tab (or in the [Storage doc](#storage)). Once the badge shows `Upstash Redis ✓`, skills persist across cold starts and redeploys.
 
 ## Google connector "Test connection" fails
 
