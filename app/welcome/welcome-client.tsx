@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { McpClientSnippets } from "../components/mcp-client-snippets";
 
 type ClaimStatus = "loading" | "new" | "claimer" | "claimed-by-other" | "already-initialized";
@@ -45,7 +45,11 @@ interface StorageStatus {
   error: string | null;
   /** True only for file mode on Vercel /tmp — saves vanish on cold start. */
   ephemeral?: boolean;
+  /** ISO timestamp from the server — used by the UI to show "last checked X seconds ago". */
+  detectedAt?: string;
 }
+
+type WizardStep = 1 | 2 | 3;
 
 type AckValue = "static" | "ephemeral" | null;
 /**
@@ -158,6 +162,24 @@ export default function WelcomeClient({
   const [storageChecking, setStorageChecking] = useState(false);
   const [ack, setAck] = useState<AckValue>(null);
   const [ackPersisted, setAckPersisted] = useState(true);
+  // Wizard state
+  const [step, setStep] = useState<WizardStep>(1);
+  /**
+   * Active "Upstash setup in progress" mode. Triggered when the user clicks
+   * "I added Upstash — recheck" in step 2. While true, we auto-poll the
+   * detection endpoint every 5s for 120s instead of the ambient 20s rhythm,
+   * showing a visible countdown so the user knows we're actively checking
+   * for Vercel's redeploy to land. Without this, the user clicked "recheck"
+   * once, saw nothing change, and assumed the button was broken.
+   */
+  const [upstashCheckActive, setUpstashCheckActive] = useState(false);
+  const [upstashCheckSecondsLeft, setUpstashCheckSecondsLeft] = useState(0);
+  const [lastCheckOutcome, setLastCheckOutcome] = useState<
+    | { kind: "idle" }
+    | { kind: "no-change"; at: number }
+    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
+    | { kind: "timeout"; at: number }
+  >({ kind: "idle" });
 
   // Hydrate ack flag from cookie/localStorage on mount (avoid SSR mismatch by
   // reading post-mount). Also nuke any leftover v2 cookie — v3 has a
@@ -277,11 +299,11 @@ export default function WelcomeClient({
   }, [loadStorageStatus, token]);
 
   useEffect(() => {
-    // Auto-poll while in transient states where the user is waiting on an
-    // infrastructure change (kv-degraded recovery, ephemeral /tmp awaiting
-    // Upstash setup, static awaiting Upstash setup). Stop once settled
-    // (kv, non-ephemeral file) or once the user has explicitly acked the
-    // non-ideal mode they're on.
+    // Ambient polling — 20s rhythm while in transient (non-settled) modes.
+    // The active "Upstash setup in progress" mode owns its own faster poll
+    // (5s, see effect below) so when both are conditional-true we'd skip
+    // this one to avoid duplicate fetches.
+    if (upstashCheckActive) return;
     if (!storageStatus) return;
     const { mode, ephemeral } = storageStatus;
     if (mode === "kv") return;
@@ -290,7 +312,106 @@ export default function WelcomeClient({
     if (mode === "static" && ack === "static") return;
     const id = setInterval(() => loadStorageStatus(true), 20_000);
     return () => clearInterval(id);
-  }, [storageStatus, ack, loadStorageStatus]);
+  }, [storageStatus, ack, loadStorageStatus, upstashCheckActive]);
+
+  // Active Upstash-setup polling — split across three single-purpose
+  // effects to avoid React setState-in-updater anti-patterns and to keep
+  // each concern testable in isolation.
+  //
+  // Effect 1: 1 Hz countdown decrement. Pure state update, no side effects.
+  // Effect 2: 5 s polling cadence — separate setInterval, fires the fetch.
+  // Effect 3: timeout watcher — when countdown hits 0, close the loop.
+  //
+  // Why three effects: previously a single setInterval(1000ms) tried to do
+  // all three jobs inside a setState updater function (`setSecondsLeft(prev
+  // => { ... fire side-effects ... })`). React updaters must be pure and
+  // can be invoked twice under StrictMode/concurrent rendering, which would
+  // double-fire timeout/poll side-effects. Splitting separates the pure
+  // tick from the side-effect-bearing reactions.
+  useEffect(() => {
+    if (!upstashCheckActive) return;
+    const id = setInterval(() => {
+      setUpstashCheckSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [upstashCheckActive]);
+
+  useEffect(() => {
+    if (!upstashCheckActive) return;
+    // Poll cadence — 5s. The first fetch fires at t=5s, NOT immediately.
+    // Vercel takes 60+ seconds to redeploy after Upstash integration; an
+    // immediate fetch gives no useful information and (combined with the
+    // mode-change effect below) caused a spurious "Upstash not detected
+    // yet" flash at t=~0.5s, making the user think the button was broken.
+    const id = setInterval(() => loadStorageStatus(true), 5000);
+    return () => clearInterval(id);
+  }, [upstashCheckActive, loadStorageStatus]);
+
+  useEffect(() => {
+    if (!upstashCheckActive) return;
+    if (upstashCheckSecondsLeft > 0) return;
+    // Timeout — close the loop. Use a functional setState so a successful
+    // mode-change that landed in the SAME render batch isn't overwritten
+    // by the timeout outcome. Order matters: clear active flag first so
+    // subsequent effects don't keep firing.
+    setUpstashCheckActive(false);
+    setLastCheckOutcome((prev) =>
+      prev.kind === "mode-changed" && prev.to === "kv" ? prev : { kind: "timeout", at: Date.now() }
+    );
+  }, [upstashCheckSecondsLeft, upstashCheckActive]);
+
+  // Detect mode transition (e.g., file-ephemeral → kv after Upstash setup
+  // completes). Depends ONLY on `storageStatus` so the effect fires only
+  // when a fetch actually completed (storageStatus reference changes).
+  // We read `upstashCheckActive` via a ref to avoid spurious re-runs when
+  // the user toggles the active loop — a previous version depended on
+  // both, which caused the no-change branch to fire the instant
+  // startUpstashCheck flipped the flag, even though no fetch had landed.
+  const prevModeRef = useRef<StorageMode | null>(null);
+  const upstashActiveRef = useRef(upstashCheckActive);
+  useEffect(() => {
+    upstashActiveRef.current = upstashCheckActive;
+  }, [upstashCheckActive]);
+  useEffect(() => {
+    if (!storageStatus) return;
+    const prev = prevModeRef.current;
+    const curr = storageStatus.mode;
+    if (prev === null) {
+      // First load — record current mode but don't surface any outcome.
+    } else if (prev !== curr) {
+      setLastCheckOutcome({ kind: "mode-changed", from: prev, to: curr, at: Date.now() });
+      if (upstashActiveRef.current && curr === "kv") {
+        setUpstashCheckActive(false);
+      }
+    } else if (upstashActiveRef.current) {
+      // Same mode after a fetch during active upstash setup — surface
+      // "still waiting" so the user knows we DID just check.
+      setLastCheckOutcome({ kind: "no-change", at: Date.now() });
+    }
+    prevModeRef.current = curr;
+  }, [storageStatus]);
+
+  const startUpstashCheck = useCallback(() => {
+    // Reset outcome so any stale "no-change" or "timeout" from a previous
+    // session disappears. The first poll fires at t=5s — no immediate
+    // fetch, because Vercel takes 60+ seconds to redeploy after Upstash
+    // integration and an immediate fetch was producing a confusing "not
+    // detected yet" flash at t=0.5s.
+    setLastCheckOutcome({ kind: "idle" });
+    setUpstashCheckSecondsLeft(120);
+    setUpstashCheckActive(true);
+  }, []);
+
+  const stopUpstashCheck = useCallback(() => {
+    setUpstashCheckActive(false);
+  }, []);
+
+  // No auto-skip step 1: removed because it could yank the token mid-read
+  // for users on a fast Vercel deploy. Re-entering users who already have
+  // a permanent token are routed to /config via the "already-initialized"
+  // claim branch (line ~507) and never see the wizard at all, so manual
+  // Continue on step 1 is the right behavior for the only path that
+  // reaches it (first-time setup).
 
   const acknowledge = useCallback((value: "static" | "ephemeral") => {
     const { persisted } = writeAck(value);
@@ -317,13 +438,14 @@ export default function WelcomeClient({
   // flipped to file-ephemeral). storageReady will correctly gate them, but
   // we owe them a hint explaining why the "Continue" button is greyed out
   // despite a previous ack.
-  const ackMismatch =
+  const ackMismatch = Boolean(
     ack !== null &&
     storageStatus &&
     !(storageStatus.mode === "kv") &&
     !(storageStatus.mode === "file" && !storageStatus.ephemeral) &&
     !(storageStatus.mode === "file" && storageStatus.ephemeral && ack === "ephemeral") &&
-    !(storageStatus.mode === "static" && ack === "static");
+    !(storageStatus.mode === "static" && ack === "static")
+  );
 
   const initialize = useCallback(async () => {
     setBusy(true);
@@ -458,7 +580,15 @@ export default function WelcomeClient({
     );
   }
 
-  // Token visible: either freshly minted or we re-entered with bootstrap active.
+  // ── Token-visible state: 3-step wizard ─────────────────────────────
+  // Step 1: Auth token (token reveal + Vercel deploy status).
+  // Step 2: Storage (the 3-card chooser, ack, upstash setup with active polling).
+  // Step 3: Connect (snippet, MCP test, optional starter skill).
+  //
+  // We split the historically monolithic post-claim render into three
+  // focused panels so the user has one job per screen. Step 1 auto-skips
+  // when the user re-enters with an already-permanent token (they've
+  // already seen and saved the token; landing them back here is friction).
   return (
     <Shell wide>
       {previewMode && (
@@ -467,190 +597,406 @@ export default function WelcomeClient({
           live instance. No state is mutated. Close this tab when done.
         </div>
       )}
-      {permanent &&
-        !(
-          autoMagicState?.autoMagic &&
-          autoMagicState.envWritten &&
-          autoMagicState.redeployTriggered
-        ) && (
-          <div className="mb-6 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-            Setup complete — your Vercel deployment is now using the permanent token.
-          </div>
-        )}
 
-      <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Your auth token</h1>
-      <p className="text-slate-400 mb-6 leading-relaxed">
-        This is your permanent token.{" "}
-        <span className="text-amber-300 font-medium">
-          Save it now — you won&apos;t see it again.
-        </span>
-      </p>
+      <WizardStepper
+        current={step}
+        permanent={permanent}
+        storageReady={Boolean(storageReady)}
+        testOk={testStatus === "ok"}
+        onGoTo={(target) => {
+          // Forward navigation requires the prior step's gate to be met.
+          // Backward navigation is always allowed (revisit the token,
+          // change storage choice, etc.).
+          if (target < step) {
+            setStep(target);
+            return;
+          }
+          if (target === 2 && permanent) setStep(2);
+          else if (target === 3 && permanent && storageReady) setStep(3);
+        }}
+      />
+
+      <div className="mt-8">
+        {step === 1 &&
+          renderStepToken({
+            token,
+            copied,
+            copyToken,
+            permanent,
+            autoMagicState,
+            vercelEnvUrl,
+            vercelDeployUrl,
+            onContinue: () => setStep(2),
+          })}
+
+        {step === 2 &&
+          renderStepStorage({
+            storageStatus,
+            storageChecking,
+            ack,
+            ackMismatch,
+            ackPersisted,
+            detectionTrapped,
+            upstashCheckActive,
+            upstashCheckSecondsLeft,
+            lastCheckOutcome,
+            startUpstashCheck,
+            stopUpstashCheck,
+            loadStorageStatus,
+            acknowledge,
+            onBack: () => setStep(1),
+            onContinue: () => setStep(3),
+            storageReady: Boolean(storageReady),
+          })}
+
+        {step === 3 &&
+          renderStepConnect({
+            token,
+            instanceUrl,
+            permanent,
+            testStatus,
+            testError,
+            runMcpTest,
+            skipTest,
+            setSkipTest,
+            onBack: () => setStep(2),
+          })}
+      </div>
+
+      <RecoveryFooter />
+    </Shell>
+  );
+}
+
+// ── Step renderers ─────────────────────────────────────────────────────
+// These are plain functions (not React components) called from the main
+// render. Pulling them out keeps the WelcomeClient body focused on state
+// and routing; the visual structure of each step lives in its own block.
+
+function renderStepToken(props: {
+  token: string | null;
+  copied: boolean;
+  copyToken: () => void;
+  permanent: boolean;
+  autoMagicState: AutoMagicState | null;
+  vercelEnvUrl: string;
+  vercelDeployUrl: string;
+  onContinue: () => void;
+}) {
+  const {
+    token,
+    copied,
+    copyToken,
+    permanent,
+    autoMagicState,
+    vercelEnvUrl,
+    vercelDeployUrl,
+    onContinue,
+  } = props;
+  const autoMagicSuccess =
+    autoMagicState?.autoMagic && autoMagicState.envWritten && autoMagicState.redeployTriggered;
+  const autoMagicPartial =
+    autoMagicState?.autoMagic && (!autoMagicState.envWritten || !autoMagicState.redeployTriggered);
+
+  return (
+    <section>
+      <StepHeader
+        title="Save your auth token"
+        subtitle="This token authenticates every request from your AI client. You'll see it once."
+      />
 
       {token && (
-        <div className="mb-8 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">
+            Your permanent token
+          </p>
           <div className="flex items-start gap-3">
             <code className="flex-1 break-all text-sm text-blue-300 font-mono">{token}</code>
             <button
               type="button"
               onClick={copyToken}
-              className="shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs font-semibold"
+              className="shrink-0 bg-blue-500 hover:bg-blue-400 text-white px-4 py-1.5 rounded text-xs font-semibold"
             >
-              {copied ? "Copied!" : "Copy"}
+              {copied ? "Copied ✓" : "Copy"}
             </button>
           </div>
+          <p className="mt-3 text-[11px] text-amber-300">
+            ⚠ Save it in a password manager now — we won&apos;t show it again.
+          </p>
         </div>
       )}
 
-      {(() => {
-        const autoMagicSuccess =
-          autoMagicState?.autoMagic &&
-          autoMagicState.envWritten &&
-          autoMagicState.redeployTriggered;
-        const autoMagicPartial =
-          autoMagicState?.autoMagic &&
-          (!autoMagicState.envWritten || !autoMagicState.redeployTriggered);
-
-        if (autoMagicSuccess) {
-          return (
-            <ol className="space-y-4 mb-8">
-              <li className="flex items-start gap-3">
-                <span className="text-emerald-400 mt-0.5">✓</span>
-                <span className="text-slate-300">Token generated</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="text-emerald-400 mt-0.5">✓</span>
-                <span className="text-slate-300">Written to Vercel env vars</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span
-                  className={permanent ? "text-emerald-400 mt-0.5" : "text-amber-400 mt-0.5"}
-                  aria-hidden
-                >
-                  {permanent ? "✓" : "⏳"}
-                </span>
-                <span className="text-slate-300">
-                  {permanent ? "Redeployed — your instance is permanent." : "Redeploying… (~60s)"}
-                </span>
-              </li>
-              <StorageStepLine status={storageStatus} ack={ack} />
-              <li className="flex items-start gap-3">
-                <span className="text-slate-500 mt-0.5">□</span>
-                <span className="text-slate-300">Configure your MCP client (snippet below)</span>
-              </li>
-            </ol>
-          );
-        }
-
-        return (
-          <>
-            {autoMagicPartial && (
-              <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-300">
-                Auto-deploy partially failed
-                {autoMagicState?.redeployError ? ` (${autoMagicState.redeployError})` : ""} — fall
-                back to manual steps below.
-              </div>
-            )}
-            <ol className="space-y-4 mb-8">
-              <li className="flex items-start gap-3">
-                <span className="text-emerald-400 mt-0.5">✓</span>
-                <span className="text-slate-300">Token generated</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span
-                  className={permanent ? "text-emerald-400 mt-0.5" : "text-slate-500 mt-0.5"}
-                  aria-hidden
-                >
-                  {permanent ? "✓" : "□"}
-                </span>
-                <span className="text-slate-300">
-                  Add token to Vercel as <code className="text-blue-300">MCP_AUTH_TOKEN</code> →{" "}
-                  <a
-                    href={vercelEnvUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 underline"
-                  >
-                    Open Vercel dashboard
-                  </a>
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span
-                  className={permanent ? "text-emerald-400 mt-0.5" : "text-slate-500 mt-0.5"}
-                  aria-hidden
-                >
-                  {permanent ? "✓" : "□"}
-                </span>
-                <span className="text-slate-300">
-                  Redeploy from the Deployments tab →{" "}
-                  <a
-                    href={vercelDeployUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 underline"
-                  >
-                    Open Vercel dashboard
-                  </a>
-                </span>
-              </li>
-              <StorageStepLine status={storageStatus} ack={ack} />
-              <li className="flex items-start gap-3">
-                <span className="text-slate-500 mt-0.5">□</span>
-                <span className="text-slate-300">Configure your MCP client (snippet below)</span>
-              </li>
-            </ol>
-          </>
-        );
-      })()}
-
-      {permanent && storageStatus && (
-        <>
-          {ackMismatch && (
-            <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
-              <strong className="font-semibold">Your previous choice needs re-confirming.</strong>{" "}
-              This instance&apos;s storage changed since you last acked — pick an option from the
-              cards below to continue.
-            </div>
-          )}
-          <WelcomeStorageStep
-            status={storageStatus}
-            checking={storageChecking}
-            ack={ack}
-            onRecheck={() => loadStorageStatus(true)}
-            onAcknowledge={acknowledge}
-          />
-          {ack !== null && !ackPersisted && (
-            <div className="mb-6 rounded-lg border border-orange-900/60 bg-orange-950/30 px-4 py-3 text-xs text-orange-200">
-              <strong className="font-semibold">Your browser blocked our cookie.</strong> Your
-              choice will not persist across reloads — re-confirm if you come back, or unblock
-              cookies for this origin.
-            </div>
-          )}
-        </>
-      )}
-      {permanent && detectionTrapped && (
-        <div className="mb-6 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4 text-xs text-amber-200">
-          <p className="font-semibold mb-1">Storage detection failed</p>
-          <p className="leading-relaxed mb-2">
-            We couldn&apos;t reach <code className="font-mono">/api/storage/status</code> after
-            several tries. Continue is unblocked so a flaky network doesn&apos;t trap you here — but
-            saves from the dashboard may fail until the server responds again. Retry detection:
+      {autoMagicSuccess ? (
+        <div className="mb-6 rounded-lg border border-emerald-800 bg-emerald-950/40 p-4">
+          <p className="text-sm font-semibold text-emerald-300 mb-2">
+            ✓ Token deployed automatically
           </p>
+          <ul className="text-xs text-emerald-200/90 space-y-1">
+            <li>✓ Generated and saved</li>
+            <li>✓ Written to your Vercel env vars</li>
+            <li>
+              {permanent
+                ? "✓ Redeploy complete — instance is live"
+                : "⏳ Vercel is redeploying (~60s)…"}
+            </li>
+          </ul>
+        </div>
+      ) : (
+        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+          {autoMagicPartial && (
+            <div className="rounded-md border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+              Auto-deploy partially failed
+              {autoMagicState?.redeployError ? ` (${autoMagicState.redeployError})` : ""}. Use the
+              manual steps below.
+            </div>
+          )}
+          <p className="text-sm font-semibold text-white">Manual deploy steps</p>
+          <ol className="space-y-2 text-xs text-slate-300 list-decimal list-inside">
+            <li>
+              Add this token to Vercel as <code className="text-blue-300">MCP_AUTH_TOKEN</code> →{" "}
+              <a
+                href={vercelEnvUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Open Vercel
+              </a>
+            </li>
+            <li>
+              Trigger a redeploy from the Deployments tab →{" "}
+              <a
+                href={vercelDeployUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Open Vercel
+              </a>
+            </li>
+            <li>
+              {permanent
+                ? "✓ Redeploy detected — your instance is now live"
+                : "Wait ~60s. We'll detect when it's live."}
+            </li>
+          </ol>
+        </div>
+      )}
+
+      <StepFooter
+        primary={{
+          label: permanent ? "Continue → Storage" : "Waiting for Vercel redeploy…",
+          enabled: permanent,
+          onClick: onContinue,
+        }}
+      />
+    </section>
+  );
+}
+
+function renderStepStorage(props: {
+  storageStatus: StorageStatus | null;
+  storageChecking: boolean;
+  ack: AckValue;
+  ackMismatch: boolean;
+  ackPersisted: boolean;
+  detectionTrapped: boolean;
+  upstashCheckActive: boolean;
+  upstashCheckSecondsLeft: number;
+  lastCheckOutcome:
+    | { kind: "idle" }
+    | { kind: "no-change"; at: number }
+    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
+    | { kind: "timeout"; at: number };
+  startUpstashCheck: () => void;
+  stopUpstashCheck: () => void;
+  loadStorageStatus: (force: boolean) => Promise<void>;
+  acknowledge: (value: "static" | "ephemeral") => void;
+  onBack: () => void;
+  onContinue: () => void;
+  storageReady: boolean;
+}) {
+  const {
+    storageStatus,
+    storageChecking,
+    ack,
+    ackMismatch,
+    ackPersisted,
+    detectionTrapped,
+    upstashCheckActive,
+    upstashCheckSecondsLeft,
+    lastCheckOutcome,
+    startUpstashCheck,
+    stopUpstashCheck,
+    loadStorageStatus,
+    acknowledge,
+    onBack,
+    onContinue,
+    storageReady,
+  } = props;
+
+  return (
+    <section>
+      <StepHeader
+        title="Where your data lives"
+        subtitle="Pick where MyMCP saves your credentials, skills, and context. You can change this later from the dashboard."
+      />
+
+      {/* Mode-change celebration — shows briefly after Upstash setup completes */}
+      {lastCheckOutcome.kind === "mode-changed" && lastCheckOutcome.to === "kv" && (
+        <div className="mb-4 rounded-lg border border-emerald-700 bg-emerald-950/50 px-4 py-3">
+          <p className="text-sm font-semibold text-emerald-200">
+            🎉 Upstash detected — your storage is now persistent
+          </p>
+          <p className="text-[11px] text-emerald-300/80 mt-1">
+            Saves from the dashboard will survive cold starts and redeploys. You can continue.
+          </p>
+        </div>
+      )}
+
+      {/* Active upstash setup — visible countdown so the user knows we're checking */}
+      {upstashCheckActive && (
+        <UpstashCheckPanel
+          secondsLeft={upstashCheckSecondsLeft}
+          onStop={stopUpstashCheck}
+          lastCheckOutcome={lastCheckOutcome}
+        />
+      )}
+
+      {/* Timeout — happens when 120s elapsed without detecting Upstash */}
+      {!upstashCheckActive && lastCheckOutcome.kind === "timeout" && (
+        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4">
+          <p className="text-sm font-semibold text-amber-200 mb-1">
+            Still no Upstash detected after 2 minutes
+          </p>
+          <ul className="text-[11px] text-amber-200/90 list-disc list-inside space-y-0.5 mb-3">
+            <li>
+              Confirm the integration was added to <strong>this specific project</strong> in Vercel
+            </li>
+            <li>
+              Check{" "}
+              <a
+                href="https://vercel.com/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-blue-400"
+              >
+                Vercel → Deployments
+              </a>{" "}
+              — the redeploy may have failed
+            </li>
+            <li>Try a manual recheck below, or pick a different storage option</li>
+          </ul>
           <button
             type="button"
-            onClick={() => loadStorageStatus(true)}
-            disabled={storageChecking}
-            className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
+            onClick={startUpstashCheck}
+            className="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200"
           >
-            {storageChecking ? "Rechecking…" : "Retry"}
+            Retry Upstash check
           </button>
         </div>
       )}
 
+      {/* Ack mismatch — user previously acked a different mode */}
+      {storageStatus && ackMismatch && (
+        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
+          <strong className="font-semibold">Your previous choice needs re-confirming.</strong> This
+          instance&apos;s storage changed since you last acked — pick an option from the cards below
+          to continue.
+        </div>
+      )}
+
+      {storageStatus ? (
+        <WelcomeStorageStep
+          status={storageStatus}
+          checking={storageChecking}
+          ack={ack}
+          onRecheck={() => loadStorageStatus(true)}
+          onAcknowledge={acknowledge}
+          onUpstashSetupStart={startUpstashCheck}
+          upstashCheckActive={upstashCheckActive}
+        />
+      ) : (
+        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-sm text-slate-400">
+          Detecting your storage…
+        </div>
+      )}
+
+      {ack !== null && !ackPersisted && (
+        <div className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/30 px-4 py-3 text-xs text-orange-200">
+          <strong className="font-semibold">Your browser blocked our cookie.</strong> Your choice
+          will not persist across reloads — re-confirm if you come back, or unblock cookies for this
+          origin.
+        </div>
+      )}
+
+      {detectionTrapped && (
+        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4 text-xs text-amber-200">
+          <p className="font-semibold mb-1">Storage detection failed</p>
+          <p className="leading-relaxed mb-2">
+            We couldn&apos;t reach <code className="font-mono">/api/storage/status</code> after
+            several tries. Continue is unblocked so a flaky network doesn&apos;t trap you here.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadStorageStatus(true)}
+            disabled={storageChecking}
+            className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
+          >
+            {storageChecking ? "Rechecking…" : "Retry detection"}
+          </button>
+        </div>
+      )}
+
+      <StepFooter
+        secondary={{ label: "← Token", onClick: onBack }}
+        primary={{
+          label: storageReady ? "Continue → Connect" : "Pick or acknowledge a storage option",
+          enabled: storageReady,
+          onClick: onContinue,
+        }}
+      />
+    </section>
+  );
+}
+
+function renderStepConnect(props: {
+  token: string | null;
+  instanceUrl: string;
+  permanent: boolean;
+  testStatus: "idle" | "testing" | "ok" | "fail";
+  testError: string | null;
+  runMcpTest: () => void;
+  skipTest: boolean;
+  setSkipTest: (v: boolean) => void;
+  onBack: () => void;
+}) {
+  const {
+    token,
+    instanceUrl,
+    permanent,
+    testStatus,
+    testError,
+    runMcpTest,
+    skipTest,
+    setSkipTest,
+    onBack,
+  } = props;
+  // Both branches require permanent — skipTest only bypasses the test
+  // probe, not the underlying "is the token actually deployed" gate.
+  // Without this, a user on a stale state (token rotated server-side
+  // mid-flow) could click skip and reach /config without a working token.
+  const canContinue = permanent && (testStatus === "ok" || skipTest);
+
+  return (
+    <section>
+      <StepHeader
+        title="Connect your AI client"
+        subtitle="Add MyMCP to your client's MCP server config, then verify it works."
+      />
+
       {token && <TokenUsagePanel token={token} instanceUrl={instanceUrl} />}
       <MultiClientNote />
-
-      {token && <StarterSkillsPanel />}
 
       <TestMcpPanel
         permanent={permanent}
@@ -659,124 +1005,226 @@ export default function WelcomeClient({
         runMcpTest={runMcpTest}
       />
 
-      {(() => {
-        const canContinue = (permanent && testStatus === "ok" && storageReady) || skipTest;
+      {token && <StarterSkillsPanel />}
+
+      <StepFooter
+        secondary={{ label: "← Storage", onClick: onBack }}
+        primary={{
+          label: canContinue ? "Open dashboard →" : "Test your MCP connection first",
+          enabled: canContinue,
+          href: canContinue ? "/config" : undefined,
+        }}
+        tertiary={
+          !canContinue && !skipTest
+            ? {
+                label: "Skip test and continue anyway",
+                onClick: () => setSkipTest(true),
+              }
+            : undefined
+        }
+      />
+    </section>
+  );
+}
+
+// ── Wizard chrome ──────────────────────────────────────────────────────
+
+function WizardStepper({
+  current,
+  permanent,
+  storageReady,
+  testOk,
+  onGoTo,
+}: {
+  current: WizardStep;
+  permanent: boolean;
+  storageReady: boolean;
+  testOk: boolean;
+  onGoTo: (step: WizardStep) => void;
+}) {
+  const steps: { n: WizardStep; label: string; done: boolean }[] = [
+    { n: 1, label: "Auth token", done: permanent },
+    { n: 2, label: "Storage", done: storageReady },
+    { n: 3, label: "Connect", done: testOk },
+  ];
+  return (
+    <ol className="flex items-center gap-2 sm:gap-3 flex-wrap" aria-label="Setup progress">
+      {steps.map((s, i) => {
+        const isCurrent = current === s.n;
+        const reachable =
+          s.n === 1 ||
+          (s.n === 2 && permanent) ||
+          (s.n === 3 && permanent && storageReady) ||
+          s.n < current; // backward always allowed
         return (
-          <div className="flex items-center gap-4">
-            <a
-              href={canContinue ? "/config" : undefined}
-              aria-disabled={!canContinue}
-              onClick={(e) => {
-                if (!canContinue) e.preventDefault();
-              }}
-              className={`inline-block px-6 py-3 rounded-lg font-semibold text-sm transition-colors ${
-                canContinue
-                  ? "bg-blue-500 hover:bg-blue-400 text-white cursor-pointer"
-                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
+          <li key={s.n} className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => reachable && onGoTo(s.n)}
+              disabled={!reachable}
+              aria-current={isCurrent ? "step" : undefined}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                isCurrent
+                  ? "bg-blue-500/20 text-blue-200 ring-1 ring-blue-500/40"
+                  : s.done
+                    ? "text-emerald-300 hover:bg-emerald-950/40"
+                    : reachable
+                      ? "text-slate-300 hover:bg-slate-800/60"
+                      : "text-slate-600 cursor-not-allowed"
               }`}
             >
-              Continue to dashboard →
-            </a>
-            {!canContinue && !skipTest && (
-              <button
-                type="button"
-                onClick={() => setSkipTest(true)}
-                className="text-xs text-slate-600 hover:text-slate-400 underline"
+              <span
+                aria-hidden
+                className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                  s.done
+                    ? "bg-emerald-500 text-white"
+                    : isCurrent
+                      ? "bg-blue-500 text-white"
+                      : "bg-slate-800 text-slate-400"
+                }`}
               >
-                Skip test and continue anyway
-              </button>
+                {s.done ? "✓" : s.n}
+              </span>
+              <span>{s.label}</span>
+            </button>
+            {i < steps.length - 1 && (
+              <span aria-hidden className="text-slate-700 text-xs">
+                ›
+              </span>
             )}
-          </div>
+          </li>
         );
-      })()}
-      <RecoveryFooter />
-    </Shell>
+      })}
+    </ol>
+  );
+}
+
+function StepHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <header className="mb-6">
+      <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-2">{title}</h1>
+      <p className="text-sm text-slate-400 leading-relaxed">{subtitle}</p>
+    </header>
+  );
+}
+
+function StepFooter({
+  primary,
+  secondary,
+  tertiary,
+}: {
+  primary: { label: string; enabled: boolean; onClick?: () => void; href?: string };
+  secondary?: { label: string; onClick: () => void };
+  tertiary?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div className="mt-8 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3">
+        {secondary && (
+          <button
+            type="button"
+            onClick={secondary.onClick}
+            className="text-xs text-slate-500 hover:text-slate-300 px-2 py-1.5"
+          >
+            {secondary.label}
+          </button>
+        )}
+        {tertiary && (
+          <button
+            type="button"
+            onClick={tertiary.onClick}
+            className="text-xs text-slate-600 hover:text-slate-400 underline"
+          >
+            {tertiary.label}
+          </button>
+        )}
+      </div>
+      {primary.href ? (
+        <a
+          href={primary.enabled ? primary.href : undefined}
+          aria-disabled={!primary.enabled}
+          onClick={(e) => {
+            if (!primary.enabled) e.preventDefault();
+          }}
+          className={`inline-block px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${
+            primary.enabled
+              ? "bg-blue-500 hover:bg-blue-400 text-white"
+              : "bg-slate-800 text-slate-500 cursor-not-allowed"
+          }`}
+        >
+          {primary.label}
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={primary.enabled ? primary.onClick : undefined}
+          disabled={!primary.enabled}
+          className={`inline-block px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors ${
+            primary.enabled
+              ? "bg-blue-500 hover:bg-blue-400 text-white cursor-pointer"
+              : "bg-slate-800 text-slate-500 cursor-not-allowed"
+          }`}
+        >
+          {primary.label}
+        </button>
+      )}
+    </div>
   );
 }
 
 /**
- * Single line in the welcome step list reflecting current storage mode.
- *
- * - kv / file → green checkmark "Storage ready"
- * - static + acknowledged → grey checkmark "Static mode (env vars only)"
- * - static + not acknowledged → empty checkbox "Storage decision needed"
- * - kv-degraded → red ✗ "KV unreachable"
- * - null (still loading) → grey "Checking storage…"
+ * Active "I added Upstash — checking…" panel. Shows a visible countdown
+ * + optional last-outcome message, with an explicit "Stop checking" escape
+ * hatch. Closes the v3.5 UX gap where clicking recheck appeared to do
+ * nothing — now the user has continuous, obvious feedback.
  */
-function StorageStepLine({ status, ack }: { status: StorageStatus | null; ack: AckValue }) {
-  if (!status) {
-    return (
-      <li className="flex items-start gap-3">
-        <span className="text-slate-500 mt-0.5">…</span>
-        <span className="text-slate-300">Checking storage…</span>
-      </li>
-    );
-  }
-  if (status.mode === "kv") {
-    return (
-      <li className="flex items-start gap-3">
-        <span className="text-emerald-400 mt-0.5">✓</span>
-        <span className="text-slate-300">Storage: Upstash Redis ready</span>
-      </li>
-    );
-  }
-  if (status.mode === "file") {
-    // Ephemeral /tmp on Vercel is a SILENT TRAP in v2: saves appear to work
-    // but evaporate on the next cold start. We never show green here, even
-    // after the user acks — only amber/warn. Acknowledgment lets them
-    // continue but doesn't upgrade the tone because the underlying storage
-    // is still temporary.
-    if (status.ephemeral) {
-      if (ack === "ephemeral") {
-        return (
-          <li className="flex items-start gap-3">
-            <span className="text-amber-400 mt-0.5">⚠</span>
-            <span className="text-slate-300">
-              Storage: Vercel /tmp (temporary — saves will vanish on cold start, by your choice)
-            </span>
-          </li>
-        );
-      }
-      return (
-        <li className="flex items-start gap-3">
-          <span className="text-amber-400 mt-0.5">□</span>
-          <span className="text-slate-300">
-            Choose your storage strategy — current /tmp is temporary (see below)
-          </span>
-        </li>
-      );
-    }
-    return (
-      <li className="flex items-start gap-3">
-        <span className="text-emerald-400 mt-0.5">✓</span>
-        <span className="text-slate-300">Storage: file-based (writable)</span>
-      </li>
-    );
-  }
-  if (status.mode === "static") {
-    if (ack === "static") {
-      return (
-        <li className="flex items-start gap-3">
-          <span className="text-slate-400 mt-0.5">✓</span>
-          <span className="text-slate-300">
-            Storage: env-vars only (saves disabled, by your choice)
-          </span>
-        </li>
-      );
-    }
-    return (
-      <li className="flex items-start gap-3">
-        <span className="text-amber-400 mt-0.5">□</span>
-        <span className="text-slate-300">Choose your storage strategy (see below)</span>
-      </li>
-    );
-  }
-  // kv-degraded
+function UpstashCheckPanel({
+  secondsLeft,
+  onStop,
+  lastCheckOutcome,
+}: {
+  secondsLeft: number;
+  onStop: () => void;
+  lastCheckOutcome:
+    | { kind: "idle" }
+    | { kind: "no-change"; at: number }
+    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
+    | { kind: "timeout"; at: number };
+}) {
+  const elapsed = 120 - secondsLeft;
+  const pct = Math.min(100, Math.max(0, (elapsed / 120) * 100));
   return (
-    <li className="flex items-start gap-3">
-      <span className="text-red-400 mt-0.5">✗</span>
-      <span className="text-slate-300">Storage: KV unreachable — see below</span>
-    </li>
+    <div className="mb-4 rounded-lg border border-blue-900/60 bg-blue-950/30 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-blue-200">
+          Detecting Upstash setup… ({Math.floor(secondsLeft / 60)}m {secondsLeft % 60}s left)
+        </p>
+        <button
+          type="button"
+          onClick={onStop}
+          className="text-[11px] text-slate-400 hover:text-slate-200 underline"
+        >
+          Stop checking
+        </button>
+      </div>
+      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 transition-all duration-1000"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-[11px] text-slate-400 leading-relaxed">
+        Vercel typically takes 60–90s to redeploy after the Upstash integration lands. We&apos;re
+        rechecking every 5s.
+        {lastCheckOutcome.kind === "no-change" && (
+          <>
+            {" "}
+            Last check: {new Date(lastCheckOutcome.at).toLocaleTimeString()} — Upstash not detected
+            yet.
+          </>
+        )}
+      </p>
+    </div>
   );
 }
 
@@ -803,12 +1251,18 @@ function WelcomeStorageStep({
   ack,
   onRecheck,
   onAcknowledge,
+  onUpstashSetupStart,
+  upstashCheckActive,
 }: {
   status: StorageStatus;
   checking: boolean;
   ack: AckValue;
   onRecheck: () => void;
   onAcknowledge: (value: "static" | "ephemeral") => void;
+  /** Called when the user clicks "I added Upstash" — kicks off the active check loop. */
+  onUpstashSetupStart: () => void;
+  /** Whether the active upstash setup loop is currently running. */
+  upstashCheckActive: boolean;
 }) {
   if (status.mode === "kv-degraded") {
     return (
@@ -886,8 +1340,9 @@ function WelcomeStorageStep({
               status={status}
               ack={ack}
               checking={checking}
-              onRecheck={onRecheck}
               onAcknowledge={onAcknowledge}
+              onUpstashSetupStart={onUpstashSetupStart}
+              upstashCheckActive={upstashCheckActive}
             />
           </div>
         </details>
@@ -896,8 +1351,9 @@ function WelcomeStorageStep({
           status={status}
           ack={ack}
           checking={checking}
-          onRecheck={onRecheck}
           onAcknowledge={onAcknowledge}
+          onUpstashSetupStart={onUpstashSetupStart}
+          upstashCheckActive={upstashCheckActive}
         />
       )}
 
@@ -938,14 +1394,16 @@ function StorageChoiceCards({
   status,
   ack,
   checking,
-  onRecheck,
   onAcknowledge,
+  onUpstashSetupStart,
+  upstashCheckActive,
 }: {
   status: StorageStatus;
   ack: AckValue;
   checking: boolean;
-  onRecheck: () => void;
   onAcknowledge: (value: "static" | "ephemeral") => void;
+  onUpstashSetupStart: () => void;
+  upstashCheckActive: boolean;
 }) {
   const isKv = status.mode === "kv";
   const isFile = status.mode === "file";
@@ -988,15 +1446,27 @@ function StorageChoiceCards({
                 </a>
               </li>
               <li>Add the integration to this project</li>
-              <li>Wait for auto-redeploy, then recheck</li>
+              <li>
+                Come back and click below — we&apos;ll auto-detect when Vercel finishes redeploying
+                (~60–90s).
+              </li>
             </ol>
+            {/* Use onUpstashSetupStart instead of plain onRecheck so the
+                parent kicks off a 120s active polling loop with a visible
+                countdown. The v3.5 bug was that plain onRecheck fired ONE
+                fetch and showed nothing visible if the answer was the same,
+                making the button feel broken. */}
             <button
               type="button"
-              onClick={onRecheck}
-              disabled={checking}
-              className="w-full bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white px-3 py-1.5 rounded-md text-xs font-semibold"
+              onClick={onUpstashSetupStart}
+              disabled={upstashCheckActive || checking}
+              className="w-full bg-blue-500 hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-md text-xs font-semibold"
             >
-              {checking ? "Rechecking…" : "I added Upstash — recheck"}
+              {upstashCheckActive
+                ? "Detecting Upstash…"
+                : checking
+                  ? "Rechecking…"
+                  : "I added Upstash — start auto-detect"}
             </button>
           </>
         )}
@@ -1376,7 +1846,12 @@ function RecoveryFooter() {
 function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
-      <div className={`mx-auto px-6 py-20 ${wide ? "max-w-2xl" : "max-w-xl"}`}>
+      {/* The wizard layout needs more horizontal room for the 3-card storage
+          chooser; max-w-3xl gives enough breathing room without becoming a
+          wide-and-thin desktop layout that's hard to scan. The narrow
+          variant (max-w-xl) is kept for early-flow pages like "Generate
+          token" where there's only one CTA to focus on. */}
+      <div className={`mx-auto px-6 py-12 sm:py-16 ${wide ? "max-w-3xl" : "max-w-xl"}`}>
         <p className="text-xs font-mono text-blue-400 mb-4 tracking-wider uppercase">
           MyMCP · First-run setup
         </p>
