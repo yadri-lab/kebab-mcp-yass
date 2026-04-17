@@ -12,6 +12,8 @@ interface StatusReport {
   latencyMs: number | null;
   error: string | null;
   detectedAt: string;
+  /** True for Vercel /tmp — saves vanish on cold start. */
+  ephemeral?: boolean;
   counts: { credentials: number; skills: number; total: number } | null;
   legacy?: { backend: string; upstashConfigured: boolean; isVercel: boolean };
 }
@@ -22,12 +24,24 @@ interface MigrationDiff {
   unchanged: string[];
 }
 
-const MODE_META: Record<StorageMode, { label: string; tone: "ok" | "warn" | "error" }> = {
-  kv: { label: "Upstash Redis", tone: "ok" },
-  file: { label: "Filesystem", tone: "ok" },
-  static: { label: "Static (env-vars only)", tone: "warn" },
-  "kv-degraded": { label: "KV unreachable", tone: "error" },
-};
+/**
+ * Effective presentation tuple = (mode, ephemeral?). We derive display meta
+ * from the pair because Vercel `/tmp` file mode is a silent-data-loss trap
+ * that looks like plain file mode to the detector but should NEVER be shown
+ * as healthy in the UI. See storage-mode.ts for the underlying flag.
+ */
+function deriveMeta(
+  mode: StorageMode,
+  ephemeral: boolean
+): { label: string; tone: "ok" | "warn" | "error" } {
+  if (mode === "kv") return { label: "Upstash Redis", tone: "ok" };
+  if (mode === "file" && ephemeral) {
+    return { label: "Filesystem (temporary)", tone: "warn" };
+  }
+  if (mode === "file") return { label: "Filesystem", tone: "ok" };
+  if (mode === "static") return { label: "Static (env-vars only)", tone: "warn" };
+  return { label: "KV unreachable", tone: "error" };
+}
 
 export function StorageTab() {
   const [status, setStatus] = useState<StatusReport | null>(null);
@@ -72,7 +86,8 @@ export function StorageTab() {
     );
   }
 
-  const meta = MODE_META[status.mode];
+  const ephemeral = status.mode === "file" && Boolean(status.ephemeral);
+  const meta = deriveMeta(status.mode, ephemeral);
 
   return (
     <div className="space-y-5">
@@ -82,7 +97,12 @@ export function StorageTab() {
         <KvHealthCard status={status} onMigrateFromFile={() => setMigrationOpen(true)} />
       )}
 
-      {status.mode === "file" && <FileUpgradeCard />}
+      {/* Ephemeral /tmp takes precedence over the normal file upgrade card —
+          this is the silent-data-loss trap from the v2 review, and users on
+          this mode need a prominent red/amber warning, not the gentle
+          "Upgrade to KV (optional)" copy. */}
+      {status.mode === "file" && ephemeral && <FileEphemeralWarningCard />}
+      {status.mode === "file" && !ephemeral && <FileUpgradeCard />}
 
       {status.mode === "static" && <StaticUpgradeCard />}
 
@@ -210,6 +230,44 @@ function KvHealthCard({
           </button>
         </div>
       </details>
+    </div>
+  );
+}
+
+function FileEphemeralWarningCard() {
+  return (
+    <div className="border border-orange/40 rounded-lg p-5 bg-orange-bg/40 space-y-3">
+      <h3 className="text-sm font-semibold text-orange">
+        ⚠ Your storage is temporary — set up Upstash now
+      </h3>
+      <p className="text-xs text-text-dim leading-relaxed">
+        This instance is running on Vercel without Upstash configured. Saves go to{" "}
+        <code className="font-mono">/tmp</code>, which{" "}
+        <strong>Vercel recycles on every cold start</strong> (typically every 15–30 min of
+        inactivity). Any connector credentials saved from the dashboard will look like they worked,
+        then silently disappear.
+      </p>
+      <ol className="text-xs text-text-dim list-decimal list-inside space-y-0.5">
+        <li>
+          Open{" "}
+          <a
+            href="https://vercel.com/integrations/upstash"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline underline-offset-2"
+          >
+            Vercel → Integrations → Upstash
+          </a>{" "}
+          (free tier is fine)
+        </li>
+        <li>Add the integration to this project — env vars auto-inject</li>
+        <li>Vercel auto-redeploys, then click &ldquo;Recheck&rdquo; above</li>
+      </ol>
+      <p className="text-[11px] text-text-muted">
+        Prefer not to use Upstash? You can run in env-vars-only mode by removing the writable{" "}
+        <code className="font-mono">/tmp</code> path — but that requires setting every credential
+        via Vercel env vars and redeploying for each change.
+      </p>
     </div>
   );
 }

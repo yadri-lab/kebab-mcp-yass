@@ -3,21 +3,28 @@
 import { useEffect, useState } from "react";
 
 type Mode = "kv" | "file" | "static" | "kv-degraded";
+type EffectiveMode = Mode | "file-ephemeral";
 
-const META: Record<Mode, { label: string; tone: "ok" | "warn" | "error"; title: string }> = {
-  kv: { label: "KV", tone: "ok", title: "Storage: Upstash Redis (live saves)" },
-  file: { label: "File", tone: "ok", title: "Storage: filesystem (live saves)" },
-  static: {
-    label: "Static",
-    tone: "warn",
-    title: "Storage: env-vars only — dashboard saves disabled",
-  },
-  "kv-degraded": {
-    label: "KV ✗",
-    tone: "error",
-    title: "KV configured but unreachable — saves blocked",
-  },
-};
+const META: Record<EffectiveMode, { label: string; tone: "ok" | "warn" | "error"; title: string }> =
+  {
+    kv: { label: "KV", tone: "ok", title: "Storage: Upstash Redis (live saves)" },
+    file: { label: "File", tone: "ok", title: "Storage: filesystem (live saves)" },
+    "file-ephemeral": {
+      label: "File ⚠",
+      tone: "warn",
+      title: "Storage: Vercel /tmp — saves don't survive cold starts",
+    },
+    static: {
+      label: "Static",
+      tone: "warn",
+      title: "Storage: env-vars only — dashboard saves disabled",
+    },
+    "kv-degraded": {
+      label: "KV ✗",
+      tone: "error",
+      title: "KV configured but unreachable — saves blocked",
+    },
+  };
 
 /**
  * Compact badge surfacing the live storage mode. Shown in the sidebar so
@@ -28,20 +35,20 @@ const META: Record<Mode, { label: string; tone: "ok" | "warn" | "error"; title: 
  * don't need polling.
  */
 export function StorageModeBadge() {
-  const [mode, setMode] = useState<Mode | null>(null);
+  const [effectiveMode, setEffectiveMode] = useState<EffectiveMode | null>(null);
 
   // Initial fetch — runs once on mount. Separated from the polling effect
-  // below so we don't double-fire on the first mode-state change (the
-  // pre-fix version refired the whole effect when state went null → kv,
-  // hitting the API twice on cold load).
+  // below so we don't double-fire on the first mode-state change.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetch(`/api/storage/status?counts=0`, { credentials: "include" });
         if (!res.ok) return;
-        const data = (await res.json()) as { mode?: Mode };
-        if (!cancelled && data.mode) setMode(data.mode);
+        const data = (await res.json()) as { mode?: Mode; ephemeral?: boolean };
+        if (!cancelled && data.mode) {
+          setEffectiveMode(data.mode === "file" && data.ephemeral ? "file-ephemeral" : data.mode);
+        }
       } catch {
         // Silent — badge stays in last-known state
       }
@@ -51,10 +58,17 @@ export function StorageModeBadge() {
     };
   }, []);
 
-  // Auto-poll only in transient states (kv-degraded recovery, static waiting
-  // for upstash setup). KV/file are stable — no point burning requests.
+  // Auto-poll only in transient states where the user is waiting on an
+  // infrastructure change (degraded recovery, static awaiting Upstash,
+  // ephemeral /tmp awaiting Upstash). KV and real file are stable.
   useEffect(() => {
-    if (mode !== "kv-degraded" && mode !== "static") return;
+    if (
+      effectiveMode !== "kv-degraded" &&
+      effectiveMode !== "static" &&
+      effectiveMode !== "file-ephemeral"
+    ) {
+      return;
+    }
     let cancelled = false;
     const id = setInterval(async () => {
       try {
@@ -62,8 +76,10 @@ export function StorageModeBadge() {
           credentials: "include",
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { mode?: Mode };
-        if (!cancelled && data.mode) setMode(data.mode);
+        const data = (await res.json()) as { mode?: Mode; ephemeral?: boolean };
+        if (!cancelled && data.mode) {
+          setEffectiveMode(data.mode === "file" && data.ephemeral ? "file-ephemeral" : data.mode);
+        }
       } catch {
         // Silent
       }
@@ -72,9 +88,9 @@ export function StorageModeBadge() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [mode]);
+  }, [effectiveMode]);
 
-  if (!mode) {
+  if (!effectiveMode) {
     return (
       <span
         className="text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wide bg-bg-muted text-text-muted"
@@ -85,7 +101,7 @@ export function StorageModeBadge() {
     );
   }
 
-  const meta = META[mode];
+  const meta = META[effectiveMode];
   const toneClass =
     meta.tone === "ok"
       ? "bg-green-bg text-green"

@@ -186,6 +186,11 @@ export async function PUT(request: Request) {
       ok: true,
       storageBackend: backend,
       mode: storageReport.mode,
+      // Surface `ephemeral` so the client can flip the success toast from
+      // "Saved" (green) to "Saved temporarily" (amber) when the save just
+      // landed on /tmp that Vercel will recycle. Without this, the toast
+      // visually contradicts the ephemeral warning banner shown above.
+      ephemeral: storageReport.ephemeral,
       ...result,
       written: result.written + kvWritten,
       kvWritten,

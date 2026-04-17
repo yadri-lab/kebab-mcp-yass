@@ -30,6 +30,7 @@
 
 import { promises as fs } from "node:fs";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 
 export type StorageMode = "kv" | "file" | "static" | "kv-degraded";
@@ -48,6 +49,18 @@ export interface StorageModeReport {
   error: string | null;
   /** Timestamp of detection. */
   detectedAt: string;
+  /**
+   * True when the probed filesystem is "writable but data doesn't survive".
+   * Currently set for Vercel `/tmp` — the FS accepts writes but the container
+   * is recycled on every cold start (typically 15-30 minutes of idle).
+   *
+   * This is the silent-data-loss trap that v2 mis-labeled as healthy. UI
+   * surfaces this as an amber warning, and `storageReady` (welcome-side)
+   * requires explicit acknowledgment before the user can continue.
+   *
+   * Only meaningful when `mode === "file"`.
+   */
+  ephemeral: boolean;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -181,6 +194,7 @@ export async function detectStorageMode(opts?: { force?: boolean }): Promise<Sto
         latencyMs: ping.latencyMs,
         error: null,
         detectedAt,
+        ephemeral: false,
       };
       cached = { at: Date.now(), report };
       return report;
@@ -193,6 +207,7 @@ export async function detectStorageMode(opts?: { force?: boolean }): Promise<Sto
       latencyMs: ping.latencyMs,
       error: ping.error ?? "PING failed",
       detectedAt,
+      ephemeral: false,
     };
     cached = { at: Date.now(), report };
     return report;
@@ -202,19 +217,37 @@ export async function detectStorageMode(opts?: { force?: boolean }): Promise<Sto
   const dataDir = resolveDataDir();
   const probe = await probeFsWritable(dataDir);
   if (probe.writable) {
-    // Vercel /tmp is "writable" but ephemeral — flag it explicitly in the
-    // reason so the dashboard can show an info note even though saves work.
-    const ephemeral = process.env.VERCEL === "1" && dataDir === "/tmp";
+    // Serverless /tmp is "writable" but ephemeral — the container is
+    // recycled on every cold start and any writes vanish. We flag via the
+    // `ephemeral` field so the UI can render an amber warning state
+    // instead of the green "ready" it gives to real (Docker/dev) file
+    // storage. The check is broader than VERCEL === "1" — Netlify, AWS
+    // Lambda, Google Cloud Run, and anything else that identifies as
+    // serverless AND picks a /tmp data dir falls into the same trap.
+    const isServerless =
+      process.env.VERCEL === "1" ||
+      process.env.NETLIFY === "true" ||
+      Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+      Boolean(process.env.LAMBDA_TASK_ROOT) ||
+      Boolean(process.env.K_SERVICE); // Cloud Run
+    const sysTmp = os.tmpdir();
+    const looksTemp =
+      dataDir === "/tmp" ||
+      dataDir.startsWith("/tmp/") ||
+      dataDir === sysTmp ||
+      dataDir.startsWith(`${sysTmp}${path.sep}`);
+    const ephemeral = isServerless && looksTemp;
     const report: StorageModeReport = {
       mode: "file",
       reason: ephemeral
-        ? `Filesystem writable at ${dataDir} (ephemeral — Vercel /tmp, lost on cold start)`
+        ? `Filesystem writable at ${dataDir} (ephemeral — serverless /tmp, lost on cold start)`
         : `Filesystem writable at ${dataDir}`,
       dataDir,
       kvUrl: null,
       latencyMs: null,
       error: null,
       detectedAt,
+      ephemeral,
     };
     cached = { at: Date.now(), report };
     return report;
@@ -229,6 +262,7 @@ export async function detectStorageMode(opts?: { force?: boolean }): Promise<Sto
     latencyMs: null,
     error: probe.error ?? "EROFS",
     detectedAt,
+    ephemeral: false,
   };
   cached = { at: Date.now(), report };
   return report;

@@ -43,51 +43,98 @@ interface StorageStatus {
   dataDir: string | null;
   kvUrl: string | null;
   error: string | null;
+  /** True only for file mode on Vercel /tmp — saves vanish on cold start. */
+  ephemeral?: boolean;
 }
 
-const STATIC_ACK_KEY = "mymcp.storage.ack";
+type AckValue = "static" | "ephemeral" | null;
+/**
+ * Cookie name is versioned. v2 used `mymcp.storage.ack` with boolean "1"
+ * (always meant static-mode ack, because v2 didn't differentiate
+ * ephemeral). v3 uses `mymcp.storage.ack.v3` with semantic values. V2
+ * cookies are explicitly NOT honored post-upgrade: the v2 → v3 UX is
+ * materially different (3-card educational view, ephemeral-aware), so
+ * users deserve to see the new flow once. The old cookie is also
+ * cleared on first v3 mount to avoid ambiguity.
+ */
+const ACK_COOKIE = "mymcp.storage.ack.v3";
+const LEGACY_ACK_COOKIE = "mymcp.storage.ack";
+
+function deleteCookie(name: string): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
+}
 
 /**
- * Persist the "Continue env-vars only" acknowledgment.
+ * Persist the user's acknowledgment of a non-ideal storage mode.
  *
- * We try three layers in order: cookie (preferred — survives across reloads
- * and respects same-origin), localStorage (fallback when cookies are blocked
- * by Brave/Safari shields or strict private mode), and finally the in-memory
- * React state via `setStaticAcknowledged` which the caller uses for current
- * session at minimum. Returns whether durable persistence succeeded — when
- * false, the caller should surface a "your choice won't persist across
- * reloads" banner so the user understands and can take action.
+ *   - "static" → user explicitly chose env-vars-only (no runtime saves).
+ *   - "ephemeral" → user knows Vercel /tmp is temporary and accepts it.
+ *
+ * Scoped to the MODE it was given in: if the instance later flips to a
+ * different non-ideal mode, the user is re-prompted because it's a
+ * different decision. Cookie + localStorage for durability under strict
+ * browser privacy settings (Brave shields, Safari ITP).
  */
-function readStaticAck(): boolean {
-  if (typeof document === "undefined") return false;
-  if (document.cookie.split(";").some((c) => c.trim().startsWith(`${STATIC_ACK_KEY}=`))) {
-    return true;
+function readAck(): AckValue {
+  if (typeof document === "undefined") return null;
+  for (const raw of document.cookie.split(";")) {
+    const c = raw.trim();
+    if (c.startsWith(`${ACK_COOKIE}=`)) {
+      const value = c.slice(ACK_COOKIE.length + 1);
+      if (value === "static" || value === "ephemeral") return value;
+    }
   }
   try {
-    return window.localStorage.getItem(STATIC_ACK_KEY) === "1";
+    const ls = window.localStorage.getItem(ACK_COOKIE);
+    if (ls === "static" || ls === "ephemeral") return ls as AckValue;
   } catch {
-    return false;
+    // localStorage blocked — fine, cookie is the source of truth
+  }
+  return null;
+}
+
+/**
+ * Clear any legacy v2 cookie / localStorage key so it can't silently gate
+ * a user on v3 who was v2-acked before the UX overhaul.
+ */
+function purgeLegacyAck(): void {
+  deleteCookie(LEGACY_ACK_COOKIE);
+  try {
+    window.localStorage.removeItem(LEGACY_ACK_COOKIE);
+  } catch {
+    // ignore
   }
 }
 
-function writeStaticAck(): { persisted: boolean } {
+function writeAck(value: "static" | "ephemeral"): { persisted: boolean } {
   if (typeof document === "undefined") return { persisted: false };
   const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
   const secureFlag = isHttps ? "; Secure" : "";
-  // 1 year, root path. Not HttpOnly because it's a UX hint read client-side.
-  document.cookie = `${STATIC_ACK_KEY}=1; path=/; max-age=31536000; samesite=lax${secureFlag}`;
-  // Verify cookie landed (some browsers silently drop it under strict modes).
-  const cookieOk = document.cookie
-    .split(";")
-    .some((c) => c.trim().startsWith(`${STATIC_ACK_KEY}=`));
+  // Shorter TTL than v2 (30 days instead of 1 year). Storage modes change
+  // more often than users expect — an instance moved between deploys, a
+  // user set up Upstash and forgot. Forcing a re-confirm once a month
+  // catches stale acks that misrepresent the current decision.
+  document.cookie = `${ACK_COOKIE}=${value}; path=/; max-age=2592000; samesite=lax${secureFlag}`;
+  const cookieOk = document.cookie.split(";").some((c) => c.trim() === `${ACK_COOKIE}=${value}`);
   let storageOk: boolean;
   try {
-    window.localStorage.setItem(STATIC_ACK_KEY, "1");
-    storageOk = window.localStorage.getItem(STATIC_ACK_KEY) === "1";
+    window.localStorage.setItem(ACK_COOKIE, value);
+    storageOk = window.localStorage.getItem(ACK_COOKIE) === value;
   } catch {
     storageOk = false;
   }
   return { persisted: cookieOk || storageOk };
+}
+
+/** Remove the current ack. Called when the user transitions to a healthy mode. */
+function clearAck(): void {
+  deleteCookie(ACK_COOKIE);
+  try {
+    window.localStorage.removeItem(ACK_COOKIE);
+  } catch {
+    // ignore
+  }
 }
 
 export default function WelcomeClient({
@@ -109,15 +156,30 @@ export default function WelcomeClient({
   const [skipTest, setSkipTest] = useState(false);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const [storageChecking, setStorageChecking] = useState(false);
-  const [staticAcknowledged, setStaticAcknowledged] = useState(false);
+  const [ack, setAck] = useState<AckValue>(null);
   const [ackPersisted, setAckPersisted] = useState(true);
 
   // Hydrate ack flag from cookie/localStorage on mount (avoid SSR mismatch by
-  // reading post-mount). Persists user's "Continue env-vars-only" choice so
-  // the welcome flow doesn't re-prompt on every visit.
+  // reading post-mount). Also nuke any leftover v2 cookie — v3 has a
+  // materially different UX and a v2-acked user should see it at least once.
   useEffect(() => {
-    setStaticAcknowledged(readStaticAck());
+    purgeLegacyAck();
+    setAck(readAck());
   }, []);
+
+  // Auto-clear ack when the mode transitions to a healthy state. If the
+  // user acks ephemeral, then sets up Upstash (mode becomes kv), then later
+  // removes Upstash and drops to static, we want them re-prompted — not
+  // silently ready because of a stale ephemeral ack from six months ago.
+  useEffect(() => {
+    if (!storageStatus) return;
+    const healthyMode =
+      storageStatus.mode === "kv" || (storageStatus.mode === "file" && !storageStatus.ephemeral);
+    if (healthyMode && ack !== null) {
+      clearAck();
+      setAck(null);
+    }
+  }, [storageStatus, ack]);
 
   // Step 1: claim the instance. If we re-enter with bootstrap already active
   // (user came back to /welcome before the redeploy), auto-call init so we
@@ -182,17 +244,26 @@ export default function WelcomeClient({
   // Load the unified storage mode (kv / file / static / kv-degraded).
   // This replaces the legacy isolated "Upstash configured?" check and feeds
   // the welcome storage step + the MCP-client step list.
+  const [storageFailures, setStorageFailures] = useState(0);
   const loadStorageStatus = useCallback(async (force = false) => {
     setStorageChecking(true);
     try {
       const res = await fetch(`/api/storage/status${force ? "?force=1" : ""}`, {
         credentials: "include",
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setStorageFailures((n) => n + 1);
+        return;
+      }
       const data = (await res.json()) as StorageStatus;
       setStorageStatus(data);
+      setStorageFailures(0);
     } catch {
-      // Silent — UI falls back to "checking…" until next attempt
+      // Count failures so the UI can offer a "continue anyway" escape
+      // hatch after repeated detection errors (network partition, 500
+      // loop). Without this, a user with a flaky network is stuck on
+      // Welcome with the Continue button permanently disabled.
+      setStorageFailures((n) => n + 1);
     } finally {
       setStorageChecking(false);
     }
@@ -206,25 +277,53 @@ export default function WelcomeClient({
   }, [loadStorageStatus, token]);
 
   useEffect(() => {
-    // Auto-poll only while in transient states (kv-degraded retry, static
-    // waiting for upstash setup). Stop once we hit a settled mode.
+    // Auto-poll while in transient states where the user is waiting on an
+    // infrastructure change (kv-degraded recovery, ephemeral /tmp awaiting
+    // Upstash setup, static awaiting Upstash setup). Stop once settled
+    // (kv, non-ephemeral file) or once the user has explicitly acked the
+    // non-ideal mode they're on.
     if (!storageStatus) return;
-    if (storageStatus.mode === "kv" || storageStatus.mode === "file") return;
-    if (storageStatus.mode === "static" && staticAcknowledged) return;
+    const { mode, ephemeral } = storageStatus;
+    if (mode === "kv") return;
+    if (mode === "file" && !ephemeral) return;
+    if (mode === "file" && ephemeral && ack === "ephemeral") return;
+    if (mode === "static" && ack === "static") return;
     const id = setInterval(() => loadStorageStatus(true), 20_000);
     return () => clearInterval(id);
-  }, [storageStatus, staticAcknowledged, loadStorageStatus]);
+  }, [storageStatus, ack, loadStorageStatus]);
 
-  const acknowledgeStatic = useCallback(() => {
-    const { persisted } = writeStaticAck();
+  const acknowledge = useCallback((value: "static" | "ephemeral") => {
+    const { persisted } = writeAck(value);
     setAckPersisted(persisted);
-    setStaticAcknowledged(true);
+    setAck(value);
   }, []);
 
+  // "Ready" = user has a durable storage strategy. KV always ready. File
+  // only ready when non-ephemeral OR when user explicitly acked ephemeral.
+  // Static only ready when acked. Degraded never ready. Also: if we've
+  // failed to detect the mode 3+ times in a row, treat as ready so the
+  // user isn't trapped on welcome by a flaky network — server-side saves
+  // still validate independently.
+  const detectionTrapped = storageStatus === null && storageFailures >= 3;
   const storageReady =
     storageStatus?.mode === "kv" ||
-    storageStatus?.mode === "file" ||
-    (storageStatus?.mode === "static" && staticAcknowledged);
+    (storageStatus?.mode === "file" && !storageStatus.ephemeral) ||
+    (storageStatus?.mode === "file" && storageStatus.ephemeral && ack === "ephemeral") ||
+    (storageStatus?.mode === "static" && ack === "static") ||
+    detectionTrapped;
+
+  // Ack/mode mismatch: an existing ack stored for a different non-ideal
+  // mode (e.g. user acked "static" in a previous session, instance later
+  // flipped to file-ephemeral). storageReady will correctly gate them, but
+  // we owe them a hint explaining why the "Continue" button is greyed out
+  // despite a previous ack.
+  const ackMismatch =
+    ack !== null &&
+    storageStatus &&
+    !(storageStatus.mode === "kv") &&
+    !(storageStatus.mode === "file" && !storageStatus.ephemeral) &&
+    !(storageStatus.mode === "file" && storageStatus.ephemeral && ack === "ephemeral") &&
+    !(storageStatus.mode === "static" && ack === "static");
 
   const initialize = useCallback(async () => {
     setBusy(true);
@@ -433,7 +532,7 @@ export default function WelcomeClient({
                   {permanent ? "Redeployed — your instance is permanent." : "Redeploying… (~60s)"}
                 </span>
               </li>
-              <StorageStepLine status={storageStatus} acknowledged={staticAcknowledged} />
+              <StorageStepLine status={storageStatus} ack={ack} />
               <li className="flex items-start gap-3">
                 <span className="text-slate-500 mt-0.5">□</span>
                 <span className="text-slate-300">Configure your MCP client (snippet below)</span>
@@ -494,7 +593,7 @@ export default function WelcomeClient({
                   </a>
                 </span>
               </li>
-              <StorageStepLine status={storageStatus} acknowledged={staticAcknowledged} />
+              <StorageStepLine status={storageStatus} ack={ack} />
               <li className="flex items-start gap-3">
                 <span className="text-slate-500 mt-0.5">□</span>
                 <span className="text-slate-300">Configure your MCP client (snippet below)</span>
@@ -506,14 +605,21 @@ export default function WelcomeClient({
 
       {permanent && storageStatus && (
         <>
+          {ackMismatch && (
+            <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
+              <strong className="font-semibold">Your previous choice needs re-confirming.</strong>{" "}
+              This instance&apos;s storage changed since you last acked — pick an option from the
+              cards below to continue.
+            </div>
+          )}
           <WelcomeStorageStep
             status={storageStatus}
             checking={storageChecking}
-            acknowledged={staticAcknowledged}
+            ack={ack}
             onRecheck={() => loadStorageStatus(true)}
-            onAcknowledgeStatic={acknowledgeStatic}
+            onAcknowledge={acknowledge}
           />
-          {staticAcknowledged && !ackPersisted && (
+          {ack !== null && !ackPersisted && (
             <div className="mb-6 rounded-lg border border-orange-900/60 bg-orange-950/30 px-4 py-3 text-xs text-orange-200">
               <strong className="font-semibold">Your browser blocked our cookie.</strong> Your
               choice will not persist across reloads — re-confirm if you come back, or unblock
@@ -521,6 +627,24 @@ export default function WelcomeClient({
             </div>
           )}
         </>
+      )}
+      {permanent && detectionTrapped && (
+        <div className="mb-6 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4 text-xs text-amber-200">
+          <p className="font-semibold mb-1">Storage detection failed</p>
+          <p className="leading-relaxed mb-2">
+            We couldn&apos;t reach <code className="font-mono">/api/storage/status</code> after
+            several tries. Continue is unblocked so a flaky network doesn&apos;t trap you here — but
+            saves from the dashboard may fail until the server responds again. Retry detection:
+          </p>
+          <button
+            type="button"
+            onClick={() => loadStorageStatus(true)}
+            disabled={storageChecking}
+            className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
+          >
+            {storageChecking ? "Rechecking…" : "Retry"}
+          </button>
+        </div>
       )}
 
       {token && <TokenUsagePanel token={token} instanceUrl={instanceUrl} />}
@@ -579,13 +703,7 @@ export default function WelcomeClient({
  * - kv-degraded → red ✗ "KV unreachable"
  * - null (still loading) → grey "Checking storage…"
  */
-function StorageStepLine({
-  status,
-  acknowledged,
-}: {
-  status: StorageStatus | null;
-  acknowledged: boolean;
-}) {
+function StorageStepLine({ status, ack }: { status: StorageStatus | null; ack: AckValue }) {
   if (!status) {
     return (
       <li className="flex items-start gap-3">
@@ -603,6 +721,31 @@ function StorageStepLine({
     );
   }
   if (status.mode === "file") {
+    // Ephemeral /tmp on Vercel is a SILENT TRAP in v2: saves appear to work
+    // but evaporate on the next cold start. We never show green here, even
+    // after the user acks — only amber/warn. Acknowledgment lets them
+    // continue but doesn't upgrade the tone because the underlying storage
+    // is still temporary.
+    if (status.ephemeral) {
+      if (ack === "ephemeral") {
+        return (
+          <li className="flex items-start gap-3">
+            <span className="text-amber-400 mt-0.5">⚠</span>
+            <span className="text-slate-300">
+              Storage: Vercel /tmp (temporary — saves will vanish on cold start, by your choice)
+            </span>
+          </li>
+        );
+      }
+      return (
+        <li className="flex items-start gap-3">
+          <span className="text-amber-400 mt-0.5">□</span>
+          <span className="text-slate-300">
+            Choose your storage strategy — current /tmp is temporary (see below)
+          </span>
+        </li>
+      );
+    }
     return (
       <li className="flex items-start gap-3">
         <span className="text-emerald-400 mt-0.5">✓</span>
@@ -611,7 +754,7 @@ function StorageStepLine({
     );
   }
   if (status.mode === "static") {
-    if (acknowledged) {
+    if (ack === "static") {
       return (
         <li className="flex items-start gap-3">
           <span className="text-slate-400 mt-0.5">✓</span>
@@ -638,47 +781,35 @@ function StorageStepLine({
 }
 
 /**
- * Full storage configuration panel inside the welcome flow.
+ * Full storage configuration panel inside the welcome flow (v3).
  *
- * Renders one of four UIs based on the unified storage mode:
+ * **Design principle:** the welcome page is the pedagogical moment. Even
+ * when detection resolves a mode automatically, we SHOW the three options
+ * with tradeoffs so first-time users learn what's available and what they
+ * might be giving up. Compact banner-only rendering is fine for the
+ * dashboard (settled state), not here.
  *
- *  - **kv / file** → small green confirmation banner. No further action.
- *  - **static** (not yet acknowledged) → 2-card layout asking the user to
- *    either set up Upstash OR explicitly continue env-vars-only. We persist
- *    the latter via a cookie so we don't re-prompt forever.
- *  - **static** (acknowledged) → small confirmation banner.
- *  - **kv-degraded** → red banner with retry CTA.
+ * Mode-specific behavior:
+ *   - kv → green confirmation + collapsible "See other options"
+ *   - file (non-ephemeral, Docker/dev) → green confirmation + collapsible
+ *   - file (ephemeral, Vercel /tmp) → AMBER warning + 3 cards always visible
+ *     with explicit "Keep temporary (not recommended)" acknowledgment
+ *   - static → 3 cards always visible, ack required to continue
+ *   - kv-degraded → red error banner (don't show 3 cards — infra broken)
  */
 function WelcomeStorageStep({
   status,
   checking,
-  acknowledged,
+  ack,
   onRecheck,
-  onAcknowledgeStatic,
+  onAcknowledge,
 }: {
   status: StorageStatus;
   checking: boolean;
-  acknowledged: boolean;
+  ack: AckValue;
   onRecheck: () => void;
-  onAcknowledgeStatic: () => void;
+  onAcknowledge: (value: "static" | "ephemeral") => void;
 }) {
-  if (status.mode === "kv") {
-    return (
-      <div className="mb-6 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-        Storage ready — Upstash Redis connected. Connector saves persist instantly.
-      </div>
-    );
-  }
-
-  if (status.mode === "file") {
-    return (
-      <div className="mb-6 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-        Storage ready — file-based at {status.dataDir ?? "data dir"}. Connector saves persist
-        locally.
-      </div>
-    );
-  }
-
   if (status.mode === "kv-degraded") {
     return (
       <div className="mb-6 rounded-lg border border-red-900/60 bg-red-950/40 p-5">
@@ -705,80 +836,308 @@ function WelcomeStorageStep({
     );
   }
 
-  // static
-  if (acknowledged) {
-    return (
-      <div className="mb-6 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-        Continuing in env-vars-only mode. To save connector credentials, set them in your deploy
-        environment and redeploy. You can switch to KV anytime in /config → Storage.
-      </div>
-    );
-  }
+  const settled = status.mode === "kv" || (status.mode === "file" && !status.ephemeral);
 
   return (
-    <div className="mb-8 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-      <p className="text-sm font-semibold text-white mb-1">Choose your storage strategy</p>
-      <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
-        This instance has no persistent storage configured. Your filesystem is read-only and no KV
-        backend is set up. Pick one of these two paths.
-      </p>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="rounded-md border border-slate-700 bg-slate-950 p-4 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-950 px-1.5 py-0.5 rounded">
-              RECOMMENDED
-            </span>
-            <p className="text-sm font-semibold text-white">Add Upstash Redis</p>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            2-min setup. Save credentials live from the dashboard, no redeploys. Free tier covers
-            most personal use.
-          </p>
-          <ol className="text-[11px] text-slate-400 list-decimal list-inside space-y-0.5">
-            <li>
-              Open{" "}
-              <a
-                href="https://vercel.com/integrations/upstash"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 underline"
-              >
-                Vercel → Integrations → Upstash
-              </a>
-            </li>
-            <li>Add the integration to this project</li>
-            <li>Wait for redeploy, then recheck</li>
-          </ol>
-          <button
-            type="button"
-            onClick={onRecheck}
-            disabled={checking}
-            className="mt-2 w-full bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white px-3 py-1.5 rounded-md text-xs font-semibold"
-          >
-            {checking ? "Rechecking…" : "I added Upstash — recheck"}
-          </button>
+    <div className="mb-8 rounded-lg border border-slate-800 bg-slate-900/40 p-5 space-y-4">
+      {/* Header: intent + status */}
+      {status.mode === "kv" && (
+        <div className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
+          ✓ Storage ready — Upstash Redis connected. Saves persist instantly across deploys.
         </div>
+      )}
+      {status.mode === "file" && !status.ephemeral && (
+        <div className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
+          ✓ Storage ready — file-based at <code className="font-mono">{status.dataDir}</code>. Saves
+          persist locally.
+        </div>
+      )}
+      {status.mode === "file" && status.ephemeral && (
+        <div className="rounded-md border border-amber-700 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+          <p className="font-semibold mb-1">
+            ⚠ Your storage is temporary — saves will vanish on cold start
+          </p>
+          <p className="text-[12px] text-amber-200/90 leading-relaxed">
+            Vercel reset <code className="font-mono">/tmp</code> on every container recycle
+            (typically every 15–30 min of inactivity). Credentials saved from the dashboard{" "}
+            <strong>will be silently lost</strong>. Pick a real storage option below.
+          </p>
+        </div>
+      )}
+      {status.mode === "static" && (
+        <div>
+          <p className="text-sm font-semibold text-white mb-1">Choose your storage strategy</p>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            This instance has no persistent storage configured. Your filesystem is read-only and no
+            KV backend is set up. Pick one of the paths below.
+          </p>
+        </div>
+      )}
 
-        <div className="rounded-md border border-slate-700 bg-slate-950 p-4 space-y-2">
-          <p className="text-sm font-semibold text-white">Continue env-vars only</p>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Set credentials via env vars in your deploy. Each new connector requires a redeploy.
-            Dashboard saves are disabled — you&apos;ll get .env stub helpers instead.
+      {/* 3-card choice layout — always rendered for ephemeral/static,
+          collapsible for settled modes (KV / non-ephemeral file). */}
+      {settled ? (
+        <details>
+          <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-200">
+            See all storage options
+          </summary>
+          <div className="mt-3">
+            <StorageChoiceCards
+              status={status}
+              ack={ack}
+              checking={checking}
+              onRecheck={onRecheck}
+              onAcknowledge={onAcknowledge}
+            />
+          </div>
+        </details>
+      ) : (
+        <StorageChoiceCards
+          status={status}
+          ack={ack}
+          checking={checking}
+          onRecheck={onRecheck}
+          onAcknowledge={onAcknowledge}
+        />
+      )}
+
+      <details className="text-[11px] text-slate-500">
+        <summary className="cursor-pointer hover:text-slate-300">
+          What&apos;s the difference?
+        </summary>
+        <div className="mt-2 space-y-1.5 leading-relaxed">
+          <p>
+            <strong className="text-slate-300">Live database (Upstash):</strong> a hosted
+            Redis-compatible store. Saves from the dashboard go straight to Upstash and are
+            immediately visible to every connector. Works identically on Vercel, Docker, or any
+            other deploy. Free tier covers personal use.
           </p>
-          <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
-            <li>OK for infra-as-code teams</li>
-            <li>OK for static showcase deploys</li>
-            <li>You can switch to KV later</li>
-          </ul>
+          <p>
+            <strong className="text-slate-300">Local file:</strong> MyMCP writes to{" "}
+            <code className="font-mono">./data/kv.json</code> and <code>.env</code> on disk. Great
+            for Docker with a mounted volume or local dev. Doesn&apos;t work for multi-instance
+            deploys because each instance has its own file.
+          </p>
+          <p>
+            <strong className="text-slate-300">Env vars only:</strong> no dashboard saves. Set
+            credentials in your deploy environment (Vercel → Settings → Environment Variables),
+            redeploy, done. Good for infra-as-code teams who version everything.
+          </p>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * 3-card grid surfacing the storage options with tradeoffs. Highlights the
+ * current mode with a badge, recommends the best upgrade when the current
+ * one is sub-optimal, and exposes exactly one action per card.
+ */
+function StorageChoiceCards({
+  status,
+  ack,
+  checking,
+  onRecheck,
+  onAcknowledge,
+}: {
+  status: StorageStatus;
+  ack: AckValue;
+  checking: boolean;
+  onRecheck: () => void;
+  onAcknowledge: (value: "static" | "ephemeral") => void;
+}) {
+  const isKv = status.mode === "kv";
+  const isFile = status.mode === "file";
+  const isEphemeral = isFile && Boolean(status.ephemeral);
+  const isStatic = status.mode === "static";
+  // KV is "recommended" when the user's current mode is sub-optimal:
+  // ephemeral file or static. For healthy kv/file, no recommendation badge.
+  const kvRecommended = isEphemeral || isStatic;
+
+  return (
+    <div className="grid sm:grid-cols-3 gap-3">
+      {/* Card 1 — Live database (Upstash) */}
+      <Card
+        tone={isKv ? "current" : "default"}
+        title="Live database"
+        subtitle="(Upstash Redis)"
+        currentBadge={isKv}
+        recommendedBadge={kvRecommended}
+      >
+        <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
+          <li>Instant saves from the dashboard</li>
+          <li>Survives cold starts &amp; redeploys</li>
+          <li>Works on any host (Vercel, Docker, …)</li>
+          <li>Free tier available</li>
+        </ul>
+        {isKv ? (
+          <p className="text-[11px] text-emerald-300 font-medium">Active — nothing to do.</p>
+        ) : (
+          <>
+            <ol className="text-[11px] text-slate-400 list-decimal list-inside space-y-0.5">
+              <li>
+                Open{" "}
+                <a
+                  href="https://vercel.com/integrations/upstash"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 underline"
+                >
+                  Vercel → Integrations → Upstash
+                </a>
+              </li>
+              <li>Add the integration to this project</li>
+              <li>Wait for auto-redeploy, then recheck</li>
+            </ol>
+            <button
+              type="button"
+              onClick={onRecheck}
+              disabled={checking}
+              className="w-full bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white px-3 py-1.5 rounded-md text-xs font-semibold"
+            >
+              {checking ? "Rechecking…" : "I added Upstash — recheck"}
+            </button>
+          </>
+        )}
+      </Card>
+
+      {/* Card 2 — Local file.
+          When ephemeral, the warning badge IS the current-mode indicator;
+          showing both emerald "← Your setup" AND amber "⚠ Temporary" was
+          visually contradictory (emerald on amber). Suppress the emerald
+          current-badge in the ephemeral case. */}
+      <Card
+        tone={isFile && !isEphemeral ? "current" : isEphemeral ? "warning" : "default"}
+        title="Local file"
+        subtitle={isEphemeral ? "(serverless /tmp — temporary!)" : "(Docker / dev)"}
+        currentBadge={isFile && !isEphemeral}
+        warningBadge={isEphemeral}
+      >
+        {isEphemeral ? (
+          <>
+            <ul className="text-[11px] text-amber-200 list-disc list-inside space-y-0.5">
+              <li className="font-semibold">⚠ Vercel /tmp resets on every cold start</li>
+              <li>Saves look like they work, then silently disappear</li>
+              <li>Not viable for real use — only fine if you&apos;re actively testing</li>
+            </ul>
+            <button
+              type="button"
+              onClick={() => onAcknowledge("ephemeral")}
+              disabled={ack === "ephemeral"}
+              className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-amber-200 px-3 py-1.5 rounded-md text-xs font-semibold border border-amber-900/60"
+            >
+              {ack === "ephemeral"
+                ? "Acknowledged — saves are temporary"
+                : "I understand, keep temporary storage"}
+            </button>
+          </>
+        ) : (
+          <>
+            <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
+              <li>Saves persist across restarts (with a mounted volume)</li>
+              <li>Good for single-instance Docker or local dev</li>
+              <li>Not suited to multi-instance deploys</li>
+              <li>Export .env anytime for backup/migration</li>
+            </ul>
+            {isFile ? (
+              <p className="text-[11px] text-emerald-300 font-medium">
+                Active at <code className="font-mono">{status.dataDir}</code>.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                Not available on this deploy — filesystem is read-only.
+              </p>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* Card 3 — Env vars only */}
+      <Card
+        tone={isStatic ? "current" : "default"}
+        title="Env vars only"
+        subtitle="(no runtime saves)"
+        currentBadge={isStatic}
+      >
+        <ul className="text-[11px] text-slate-400 list-disc list-inside space-y-0.5">
+          <li>Set credentials in your deploy env</li>
+          <li>Each change requires a redeploy</li>
+          <li>Dashboard saves disabled (you get .env stub helpers)</li>
+          <li>Fits infra-as-code workflows</li>
+        </ul>
+        {isStatic ? (
           <button
             type="button"
-            onClick={onAcknowledgeStatic}
-            className="mt-2 w-full bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
+            onClick={() => onAcknowledge("static")}
+            disabled={ack === "static"}
+            className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
           >
-            Continue env-vars only
+            {ack === "static" ? "Acknowledged — env-vars only" : "Continue env-vars only"}
           </button>
-        </div>
+        ) : (
+          <p className="text-[11px] text-slate-500">
+            Switch by removing KV and any writable FS, then redeploy. Rarely what you want.
+          </p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function Card({
+  tone,
+  title,
+  subtitle,
+  currentBadge,
+  recommendedBadge,
+  warningBadge,
+  children,
+}: {
+  tone: "current" | "warning" | "default";
+  title: string;
+  subtitle: string;
+  currentBadge?: boolean;
+  recommendedBadge?: boolean;
+  warningBadge?: boolean;
+  children: React.ReactNode;
+}) {
+  const border =
+    tone === "current"
+      ? "border-emerald-700/80"
+      : tone === "warning"
+        ? "border-amber-700/80"
+        : "border-slate-700";
+  const bg =
+    tone === "current"
+      ? "bg-emerald-950/30"
+      : tone === "warning"
+        ? "bg-amber-950/30"
+        : "bg-slate-950";
+  return (
+    <div className={`rounded-md border ${border} ${bg} p-4 space-y-2 flex flex-col`}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {currentBadge && (
+          <span className="text-[9px] font-semibold text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded uppercase tracking-wide">
+            ← Your setup
+          </span>
+        )}
+        {recommendedBadge && (
+          <span className="text-[9px] font-semibold text-blue-300 bg-blue-950/60 px-1.5 py-0.5 rounded uppercase tracking-wide">
+            ★ Recommended
+          </span>
+        )}
+        {warningBadge && (
+          <span className="text-[9px] font-semibold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded uppercase tracking-wide">
+            ⚠ Temporary
+          </span>
+        )}
       </div>
+      <div>
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <p className="text-[11px] text-slate-500">{subtitle}</p>
+      </div>
+      <div className="space-y-2 flex-1">{children}</div>
     </div>
   );
 }

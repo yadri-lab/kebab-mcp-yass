@@ -23,6 +23,7 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   const [saveError, setSaveError] = useState<Record<string, string>>({});
   const [storageMode, setStorageMode] = useState<StorageMode>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [storageEphemeral, setStorageEphemeral] = useState(false);
 
   // Load current env on mount
   useEffect(() => {
@@ -35,13 +36,15 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   }, []);
 
   // Load storage mode so we can branch the save UX (disable in static, show
-  // KV-degraded warning, etc). Lightweight call — counts skipped.
+  // KV-degraded warning, ephemeral warning, etc). Lightweight call — counts
+  // skipped.
   useEffect(() => {
     fetch("/api/storage/status?counts=0", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         setStorageMode(data.mode ?? null);
         setStorageError(data.error ?? null);
+        setStorageEphemeral(Boolean(data.ephemeral));
       })
       .catch(() => {
         // Network error: keep mode null. Save button is enabled (server has
@@ -53,6 +56,8 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   // Static mode: saves are disabled, we render a per-connector .env stub
   // helper instead. kv-degraded also blocks. Null mode (network error during
   // detect) keeps saves enabled — server-side validation still runs.
+  // Ephemeral (/tmp on Vercel) does NOT disable saves — they technically
+  // work, just don't persist. We show a prominent warning banner instead.
   const savesDisabled = storageMode === "static" || storageMode === "kv-degraded";
 
   const getValue = useCallback(
@@ -133,9 +138,14 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
           for (const k of Object.keys(vars)) delete next[k];
           return next;
         });
-        // Show backend in the flash message
-        const backendLabel =
-          data.storageBackend === "upstash"
+        // Toast label reflects actual durability. The review surfaced a
+        // critical bug: in ephemeral mode the save returns
+        // storageBackend="filesystem" and the old code showed a green
+        // "Saved" toast — contradicting the amber ephemeral banner above
+        // and tricking the user into thinking creds persisted.
+        const backendLabel = data.ephemeral
+          ? "Saved (temporary — will vanish on cold start)"
+          : data.storageBackend === "upstash"
             ? "Saved to Upstash"
             : data.storageBackend === "vercel-api"
               ? "Saved to Vercel"
@@ -146,11 +156,47 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
           setSavedFlash(null);
           setSavedBackend(null);
         }, 3000);
+        // Sync ephemeral flag — if the save landed in ephemeral storage
+        // but state still said non-ephemeral (e.g. race between detect
+        // cache and actual save), update so the banner appears.
+        if (typeof data.ephemeral === "boolean") {
+          setStorageEphemeral(data.ephemeral);
+        }
+        // If the user just saved UPSTASH_REDIS_REST_URL/TOKEN, the
+        // detection cache was cleared server-side but our client still
+        // holds the old mode. Refetch so the amber banner disappears
+        // and the badge flips to green without a page reload.
+        const savedKeys = Object.keys(vars);
+        if (
+          savedKeys.includes("UPSTASH_REDIS_REST_URL") ||
+          savedKeys.includes("UPSTASH_REDIS_REST_TOKEN")
+        ) {
+          try {
+            const statusRes = await fetch("/api/storage/status?force=1&counts=0", {
+              credentials: "include",
+            });
+            if (statusRes.ok) {
+              const s = (await statusRes.json()) as {
+                mode?: StorageMode;
+                ephemeral?: boolean;
+                error?: string;
+              };
+              setStorageMode(s.mode ?? null);
+              setStorageEphemeral(Boolean(s.ephemeral));
+              setStorageError(s.error ?? null);
+            }
+          } catch {
+            // Silent — next page load will re-detect
+          }
+        }
       } else {
         // Server reported the mode if relevant — sync local state so the
         // stub helper appears without a manual recheck.
         if (data.mode === "static" || data.mode === "kv-degraded") {
           setStorageMode(data.mode);
+        }
+        if (typeof data.ephemeral === "boolean") {
+          setStorageEphemeral(data.ephemeral);
         }
         setSaveError((p) => ({ ...p, [packId]: data.error || "Save failed" }));
       }
@@ -224,6 +270,26 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
         </span>
       </div>
 
+      {/* Ephemeral /tmp warning — saves succeed server-side but vanish on
+          cold start. Not a "disabled" state (button still works) but a
+          prominent caution so users on Vercel without Upstash know what
+          they're in for. Goes away automatically once Upstash is set up. */}
+      {storageMode === "file" && storageEphemeral && (
+        <div className="mb-4 border border-orange/40 rounded-lg p-4 bg-orange-bg/40">
+          <p className="text-sm font-semibold text-orange mb-1">
+            ⚠ Saves here won&apos;t survive cold starts
+          </p>
+          <p className="text-xs text-text-dim leading-relaxed">
+            This instance is running on Vercel without Upstash. Credentials go to{" "}
+            <code className="font-mono">/tmp</code>, which Vercel recycles every 15–30 min.{" "}
+            <a href="/config?tab=storage" className="text-accent underline underline-offset-2">
+              Set up Upstash →
+            </a>{" "}
+            to keep them permanently.
+          </p>
+        </div>
+      )}
+
       {visibleConnectors.map((pack) => {
         const packDef = PACKS.find((p) => p.id === pack.id);
         const isOpen = expanded === pack.id;
@@ -281,7 +347,11 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
                   </span>
                   <span className="text-[11px] text-text-muted">{pack.toolCount} tools</span>
                   {savedFlash === pack.id && (
-                    <span className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full">
+                    <span
+                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                        storageEphemeral ? "text-orange bg-orange-bg" : "text-green bg-green-bg"
+                      }`}
+                    >
                       {savedBackend || "Saved"}
                     </span>
                   )}

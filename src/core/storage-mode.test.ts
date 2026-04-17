@@ -115,17 +115,77 @@ describe("detectStorageMode — file mode", () => {
     expect(report.mode).toBe("file");
     expect(report.dataDir).toBe(tmpDir);
     expect(report.kvUrl).toBeNull();
+    // Non-Vercel tmpDir is NOT ephemeral.
+    expect(report.ephemeral).toBe(false);
   });
 
-  it("flags Vercel /tmp file mode as ephemeral in reason", async () => {
+  it("flags Vercel /tmp file mode as ephemeral", async () => {
     process.env.VERCEL = "1";
     delete process.env.MYMCP_KV_PATH; // let resolveDataDir pick /tmp
     const report = await detectStorageMode();
     // We can't reliably write to /tmp under the test runner on Windows, so
     // either 'file' (Linux/macOS) or 'static' (Windows /tmp doesn't exist)
-    // is acceptable; just assert the reason mentions ephemeral when 'file'.
+    // is acceptable. When 'file' lands, both the reason string and the
+    // ephemeral flag must signal the trap.
     if (report.mode === "file") {
       expect(report.reason).toMatch(/ephemeral|Vercel/i);
+      expect(report.ephemeral).toBe(true);
+      expect(report.dataDir).toBe("/tmp");
+    }
+  });
+
+  it("non-Vercel file mode (Docker/dev) is NOT flagged ephemeral", async () => {
+    // tmpDir is not /tmp, VERCEL is unset — this is the Docker/local-dev case.
+    const report = await detectStorageMode();
+    expect(report.mode).toBe("file");
+    expect(report.ephemeral).toBe(false);
+  });
+
+  it("flags ephemeral for MYMCP_KV_PATH=/tmp/nested on Vercel", async () => {
+    // v3 hardening: the v2 ephemeral check was strict equality with "/tmp".
+    // A user with MYMCP_KV_PATH=/tmp/foo/kv.json would escape detection and
+    // get a green "saves persist locally" banner on Vercel. v3 normalizes
+    // this to any path under /tmp.
+    process.env.VERCEL = "1";
+    process.env.MYMCP_KV_PATH = "/tmp/nested/kv.json";
+    const report = await detectStorageMode();
+    if (report.mode === "file") {
+      expect(report.ephemeral).toBe(true);
+    }
+  });
+
+  it("flags ephemeral on Netlify with /tmp data dir", async () => {
+    // v3 broadens ephemeral detection beyond Vercel. Netlify, AWS Lambda,
+    // Cloud Run all have the same recycled-container trap.
+    process.env.NETLIFY = "true";
+    process.env.MYMCP_KV_PATH = "/tmp/kv.json";
+    const report = await detectStorageMode();
+    if (report.mode === "file") {
+      expect(report.ephemeral).toBe(true);
+    }
+  });
+
+  it("flags ephemeral on AWS Lambda with /tmp data dir", async () => {
+    process.env.AWS_LAMBDA_FUNCTION_NAME = "my-fn";
+    process.env.MYMCP_KV_PATH = "/tmp/kv.json";
+    const report = await detectStorageMode();
+    if (report.mode === "file") {
+      expect(report.ephemeral).toBe(true);
+    }
+  });
+
+  it("does NOT flag ephemeral for /tmp outside a known serverless host", async () => {
+    // Running locally with MYMCP_KV_PATH=/tmp is unusual but legitimate — no
+    // serverless identifier env var, so treat as regular file storage.
+    delete process.env.VERCEL;
+    delete process.env.NETLIFY;
+    delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    delete process.env.LAMBDA_TASK_ROOT;
+    delete process.env.K_SERVICE;
+    process.env.MYMCP_KV_PATH = "/tmp/kv.json";
+    const report = await detectStorageMode();
+    if (report.mode === "file") {
+      expect(report.ephemeral).toBe(false);
     }
   });
 });
