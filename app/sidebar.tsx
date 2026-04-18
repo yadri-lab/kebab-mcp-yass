@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import pkg from "../package.json";
+import { KebabLogo } from "./components/kebab-logo";
 import { StorageModeBadge } from "./components/storage-mode-badge";
 
 const VERSION = `v${pkg.version}`;
@@ -120,11 +121,9 @@ export function Sidebar({
     <>
       {/* MOBILE-01: top bar with hamburger — visible on < sm. */}
       <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-sidebar">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shrink-0">
-            {orgInitials}
-          </div>
-          <p className="text-sm font-semibold truncate">{serverName}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <KebabLogo size={22} className="text-amber-400 shrink-0" />
+          <p className="text-sm font-bold truncate">{serverName}</p>
         </div>
         <button
           type="button"
@@ -157,9 +156,10 @@ export function Sidebar({
       >
         {/* Brand / Org header */}
         <div className="px-4 pt-6 pb-5">
-          <p className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.12em] px-1 mb-2">
-            MYMCP
-          </p>
+          <div className="flex items-center gap-2 px-1 mb-3">
+            <KebabLogo size={22} className="text-amber-400 shrink-0" />
+            <p className="text-base font-bold tracking-tight">Kebab MCP</p>
+          </div>
           <div className="flex items-center gap-2.5 bg-bg border border-border rounded-lg px-2.5 py-2">
             <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shrink-0">
               {orgInitials}

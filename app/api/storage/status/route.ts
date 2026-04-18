@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkAdminAuth } from "@/core/auth";
-import { isClaimer } from "@/core/first-run";
+import { isClaimer, rehydrateBootstrapAsync } from "@/core/first-run";
 import { isLoopbackRequest } from "@/core/request-utils";
 import { detectStorageMode, clearStorageModeCache } from "@/core/storage-mode";
 import { getKVStore, kvScanAll } from "@/core/kv-store";
@@ -19,6 +19,13 @@ import { CRED_PREFIX } from "@/core/credential-store";
  *   ?counts=0 — skip the count scan when only the mode is needed (cheap path)
  */
 export async function GET(request: Request) {
+  // Rehydrate bootstrap state from /tmp (same container) or KV (cross-container)
+  // before the auth check. Without this, a cold lambda that didn't serve the
+  // original /welcome/claim call has no in-memory record of the claim and
+  // rejects the welcome flow's status polling with 401, leaving the user
+  // stuck on "Detecting your storage…".
+  await rehydrateBootstrapAsync();
+
   if (process.env.MCP_AUTH_TOKEN) {
     const authError = checkAdminAuth(request);
     if (authError) return authError;

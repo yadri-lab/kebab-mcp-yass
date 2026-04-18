@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { KebabLogo } from "../components/kebab-logo";
 import { McpClientSnippets } from "../components/mcp-client-snippets";
 
 type ClaimStatus = "loading" | "new" | "claimer" | "claimed-by-other" | "already-initialized";
@@ -297,6 +298,22 @@ export default function WelcomeClient({
   useEffect(() => {
     void loadStorageStatus(false);
   }, [loadStorageStatus, token]);
+
+  // Auto-retry on failure while we have no status yet. Without this, the
+  // initial fetch fires once and — if it hits a cold lambda that hasn't
+  // rehydrated the claim — the user is stuck on "Detecting your storage…"
+  // forever (polling below only starts once storageStatus is set, and the
+  // `detectionTrapped` escape hatch requires ≥3 failures to surface its
+  // Recheck button). Backs off 3s → 6s → stop, so the user sees the escape
+  // hatch within ~10s of a persistent failure rather than never.
+  useEffect(() => {
+    if (storageStatus) return;
+    if (storageFailures === 0) return;
+    if (storageFailures >= 3) return;
+    const delayMs = storageFailures === 1 ? 3000 : 6000;
+    const id = setTimeout(() => void loadStorageStatus(true), delayMs);
+    return () => clearTimeout(id);
+  }, [storageStatus, storageFailures, loadStorageStatus]);
 
   useEffect(() => {
     // Ambient polling — 20s rhythm while in transient (non-settled) modes.
@@ -1846,6 +1863,16 @@ function RecoveryFooter() {
 function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
+      {/* Brand bar: logo + name pinned top-left so the product identity is
+          visible throughout the wizard flow. Full-width so the mark anchors
+          to the viewport edge instead of shifting with each step's narrow
+          content column. */}
+      <header className="border-b border-slate-900/80 px-6 py-4">
+        <div className="flex items-center gap-2.5 text-white">
+          <KebabLogo size={26} className="text-amber-400" />
+          <span className="font-mono text-lg font-bold tracking-tight">Kebab MCP</span>
+        </div>
+      </header>
       {/* The wizard layout needs more horizontal room for the 3-card storage
           chooser; max-w-3xl gives enough breathing room without becoming a
           wide-and-thin desktop layout that's hard to scan. The narrow
@@ -1853,7 +1880,7 @@ function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }
           token" where there's only one CTA to focus on. */}
       <div className={`mx-auto px-6 py-12 sm:py-16 ${wide ? "max-w-3xl" : "max-w-xl"}`}>
         <p className="text-xs font-mono text-blue-400 mb-4 tracking-wider uppercase">
-          Kebab MCP · First-run setup
+          First-run setup
         </p>
         {children}
       </div>
