@@ -91,3 +91,47 @@ When self-hosting MyMCP, follow these guidelines:
 - Register your OAuth app with the minimal required scopes.
 - Keep `CLIENT_SECRET` values server-side only — they must never appear in client bundles.
 - Review OAuth app permissions periodically and revoke unused grants.
+
+## Token rotation
+
+Rotate `MCP_AUTH_TOKEN` when:
+
+- You suspect a leak (shared `.env`, logs leaked publicly, lost laptop)
+- A team member with access leaves
+- You can't remember the last time you rotated (≥6 months is a useful default)
+
+The procedure depends on where MyMCP is hosted.
+
+### Vercel
+
+1. Generate a new token: `openssl rand -hex 32` (or use the dashboard's `/welcome` flow which mints one for you)
+2. **Multi-token approach (zero-downtime)**: open Vercel → your project → Settings → Environment Variables → `MCP_AUTH_TOKEN`. **Append** the new token to the existing comma-separated list:
+
+   ```
+   MCP_AUTH_TOKEN=<old-token>,<new-token>
+   ```
+
+3. Trigger a redeploy (Vercel does this automatically on env-var change). Both tokens are now valid.
+4. Update each MCP client (Claude Desktop, ChatGPT, Cursor, …) to use the new token. Hit the endpoint to confirm it works.
+5. Once every client is on the new token, edit the env var again and **remove the old token**. Redeploy. The old token is now revoked.
+6. Verify revocation: `curl -H "Authorization: Bearer <old-token>" https://your-app.vercel.app/api/mcp` should return `401 Unauthorized`.
+
+### Docker
+
+1. Generate a new token: `openssl rand -hex 32`
+2. Edit your `.env` file: replace the `MCP_AUTH_TOKEN` value. (Multi-token works here too if you want zero-downtime.)
+3. Restart the container: `docker compose restart` (or `docker restart <container>`)
+4. Update MCP clients with the new token
+5. Verify: `curl -H "Authorization: Bearer <old-token>" http://localhost:3000/api/mcp` → 401
+
+### Local dev
+
+1. Edit `.env.local`: set the new `MCP_AUTH_TOKEN`
+2. `Ctrl-C` and re-run `npm run dev`
+3. Update any local MCP client config that points at `http://localhost:3000`
+
+### After rotation
+
+- **Logs may still contain the first 8 chars of the old token's SHA-256** (the dashboard masks tokens to that prefix in the log column). This is by design and not sensitive — the prefix is a hash, not the token itself. If you opted into `MYMCP_DURABLE_LOGS=true`, the historical entries are preserved for the configured retention window. No action needed.
+- The dashboard never displays the full token after the initial mint screen, so there's nothing in the UI to "scrub."
+- If you committed `.env` accidentally before the pre-commit hook landed (v0.3.5), follow [GitHub's guide to remove sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) and rotate immediately. The hook now blocks recurrence.
