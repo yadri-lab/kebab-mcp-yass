@@ -26,16 +26,16 @@ export async function GET(request: Request) {
   // stuck on "Detecting your storage…".
   await rehydrateBootstrapAsync();
 
-  if (process.env.MCP_AUTH_TOKEN) {
+  // Accept EITHER a valid first-run claim cookie OR loopback OR admin auth.
+  // During bootstrap, the welcome client only has the claim cookie — it
+  // doesn't know the freshly-minted MCP_AUTH_TOKEN and can't send it as a
+  // bearer header. Gating strictly on `process.env.MCP_AUTH_TOKEN` would
+  // force the admin-auth branch on any lambda that has rehydrated the
+  // bootstrap, rejecting welcome's status polls with 401. A valid claim
+  // cookie is itself proof of being the operator (see isClaimer notes).
+  if (!isLoopbackRequest(request) && !isClaimer(request)) {
     const authError = checkAdminAuth(request);
     if (authError) return authError;
-  } else {
-    if (!isLoopbackRequest(request) && !isClaimer(request)) {
-      return NextResponse.json(
-        { error: "Unauthorized — claim this instance via /welcome first" },
-        { status: 401 }
-      );
-    }
   }
 
   const url = new URL(request.url);
