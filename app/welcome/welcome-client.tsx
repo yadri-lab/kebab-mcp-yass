@@ -608,14 +608,16 @@ export default function WelcomeClient({
     );
   }
 
-  // Persistence gate for step-2 → step-3 transition. Durable backends
-  // (KV, durable file) auto-persist the bootstrap token via first-run.ts,
-  // so the user can continue as soon as mint succeeds. Ephemeral /tmp
-  // users must still wait for `permanent` (Vercel env-var paste + redeploy).
-  const stepTwoPersistenceReady =
-    permanent ||
-    storageStatus?.mode === "kv" ||
-    (storageStatus?.mode === "file" && !storageStatus.ephemeral);
+  // Persistence gate. Durable backends (KV, persistent file) store the
+  // token in the actual storage layer, not in Vercel env vars — so
+  // `permanent` (the status flag for "token landed in real env vars")
+  // never flips on no-auto-magic deploys, yet the instance is fully
+  // durable. Treat durable-backend + minted-token as equivalent to
+  // permanent for UI gating: step-2 Continue unlocks on mint, step-3
+  // Test MCP is callable immediately, no 15-minute bootstrap-TTL wait.
+  const durableBackend =
+    storageStatus?.mode === "kv" || (storageStatus?.mode === "file" && !storageStatus.ephemeral);
+  const persistenceReady = permanent || durableBackend;
 
   // claim === "new" or "claimer" — render the 3-step wizard.
   // ── 3-step wizard ──────────────────────────────────────────────────
@@ -655,7 +657,7 @@ export default function WelcomeClient({
       <WizardStepper
         current={step}
         storageReady={Boolean(storageReady)}
-        tokenSavedConfirmed={Boolean(token) && tokenSaved && stepTwoPersistenceReady}
+        tokenSavedConfirmed={Boolean(token) && tokenSaved && persistenceReady}
         testOk={testStatus === "ok"}
         onGoTo={(target) => {
           // Forward navigation requires the prior step's gate to be met.
@@ -666,8 +668,7 @@ export default function WelcomeClient({
             return;
           }
           if (target === 2 && storageReady) setStep(2);
-          else if (target === 3 && storageReady && tokenSaved && stepTwoPersistenceReady)
-            setStep(3);
+          else if (target === 3 && storageReady && tokenSaved && persistenceReady) setStep(3);
         }}
       />
 
@@ -716,7 +717,7 @@ export default function WelcomeClient({
           renderStepConnect({
             token,
             instanceUrl,
-            permanent,
+            persistenceReady,
             testStatus,
             testError,
             runMcpTest,
@@ -1280,7 +1281,7 @@ function renderStepStorage(props: {
 function renderStepConnect(props: {
   token: string | null;
   instanceUrl: string;
-  permanent: boolean;
+  persistenceReady: boolean;
   testStatus: "idle" | "testing" | "ok" | "fail";
   testError: string | null;
   runMcpTest: () => void;
@@ -1291,7 +1292,7 @@ function renderStepConnect(props: {
   const {
     token,
     instanceUrl,
-    permanent,
+    persistenceReady,
     testStatus,
     testError,
     runMcpTest,
@@ -1299,11 +1300,11 @@ function renderStepConnect(props: {
     setSkipTest,
     onBack,
   } = props;
-  // Both branches require permanent — skipTest only bypasses the test
-  // probe, not the underlying "is the token actually deployed" gate.
-  // Without this, a user on a stale state (token rotated server-side
-  // mid-flow) could click skip and reach /config without a working token.
-  const canContinue = permanent && (testStatus === "ok" || skipTest);
+  // persistenceReady means "token is durable" — either permanent (Vercel
+  // env var via auto-magic) OR KV/file-backed (survives cold starts on
+  // its own). Both are safe to hand off to an MCP client. skipTest only
+  // bypasses the probe, not the persistence gate.
+  const canContinue = persistenceReady && (testStatus === "ok" || skipTest);
 
   return (
     <section>
@@ -1316,7 +1317,7 @@ function renderStepConnect(props: {
       <MultiClientNote />
 
       <TestMcpPanel
-        permanent={permanent}
+        persistenceReady={persistenceReady}
         testStatus={testStatus}
         testError={testError}
         runMcpTest={runMcpTest}
@@ -1856,12 +1857,12 @@ function StorageBackendsExplainer() {
 }
 
 function TestMcpPanel({
-  permanent,
+  persistenceReady,
   testStatus,
   testError,
   runMcpTest,
 }: {
-  permanent: boolean;
+  persistenceReady: boolean;
   testStatus: "idle" | "testing" | "ok" | "fail";
   testError: string | null;
   runMcpTest: () => void;
@@ -1871,16 +1872,15 @@ function TestMcpPanel({
       <p className="text-sm font-semibold text-white mb-1">Verify your install</p>
       <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
         Test that your token authenticates against <code className="font-mono">/api/mcp</code> on
-        this instance. The dashboard unlocks only once the redeploy is live <em>and</em> the test
-        passes.
+        this instance. Once it passes, the dashboard unlocks.
       </p>
 
       <ol className="space-y-2 mb-4 text-xs">
         <li className="flex items-center gap-2">
-          <span aria-hidden>{permanent ? "✓" : "⏳"}</span>
-          <span className={permanent ? "text-emerald-300" : "text-amber-300"}>
-            {permanent
-              ? "Permanent token active in Vercel"
+          <span aria-hidden>{persistenceReady ? "✓" : "⏳"}</span>
+          <span className={persistenceReady ? "text-emerald-300" : "text-amber-300"}>
+            {persistenceReady
+              ? "Token persisted (durable across cold starts)"
               : "Waiting for Vercel redeploy (auto-polling)…"}
           </span>
         </li>
@@ -1906,7 +1906,7 @@ function TestMcpPanel({
       <button
         type="button"
         onClick={runMcpTest}
-        disabled={!permanent || testStatus === "testing"}
+        disabled={!persistenceReady || testStatus === "testing"}
         className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 px-4 py-2 rounded-md text-xs font-semibold transition-colors"
       >
         {testStatus === "testing"
@@ -1915,9 +1915,9 @@ function TestMcpPanel({
             ? "Re-run test"
             : "Test MCP connection"}
       </button>
-      {!permanent && (
+      {!persistenceReady && (
         <span className="ml-3 text-[11px] text-slate-600">
-          (enabled once the redeploy finishes)
+          (enabled once persistence is confirmed)
         </span>
       )}
     </div>
