@@ -2,7 +2,8 @@ import { promises as fs, readFileSync, existsSync } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { getKVStore, kvScanAll } from "@/core/kv-store";
+import { kvScanAll } from "@/core/kv-store";
+import { getContextKVStore } from "@/core/request-context";
 
 /**
  * Skills store — persists user-authored skills.
@@ -131,7 +132,7 @@ async function readRaw(): Promise<Skill[]> {
       throw err;
     }
   }
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const raw = await kv.get(KV_KEY);
   if (!raw) return [];
   return parseSkillsJson(raw);
@@ -146,7 +147,7 @@ async function writeRaw(skills: Skill[]): Promise<void> {
     await fs.rename(tmp, legacy);
     return;
   }
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   await kv.set(KV_KEY, JSON.stringify(skills));
 }
 
@@ -256,7 +257,7 @@ export function deleteSkill(id: string): Promise<boolean> {
     await writeRaw(next);
 
     // Clean up all versioning keys for this skill
-    const kv = getKVStore();
+    const kv = getContextKVStore();
     const keys = await kvScanAll(kv, `skill:${id}:*`);
     await Promise.all(keys.map((k) => kv.delete(k)));
 
@@ -304,7 +305,7 @@ function versionKey(skillId: string, version: number): string {
 }
 
 async function getVersionMeta(skillId: string): Promise<SkillVersionMeta | null> {
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const raw = await kv.get(versionMetaKey(skillId));
   if (!raw) return null;
   try {
@@ -315,7 +316,7 @@ async function getVersionMeta(skillId: string): Promise<SkillVersionMeta | null>
 }
 
 async function saveVersion(skill: Skill): Promise<number> {
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const meta = await getVersionMeta(skill.id);
   const nextVersion = (meta?.currentVersion ?? 0) + 1;
   const entry: SkillVersionEntry = {
@@ -338,7 +339,7 @@ async function saveVersion(skill: Skill): Promise<number> {
  * implementation should replace it if skill count grows significantly.
  */
 export async function listSkillVersions(skillId: string): Promise<number[]> {
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const prefix = `skill:${skillId}:v`;
   const keys = await kvScanAll(kv, `${prefix}*`);
   const versions: number[] = [];
@@ -355,7 +356,7 @@ export async function getSkillVersion(
   skillId: string,
   version: number
 ): Promise<SkillVersionEntry | null> {
-  const kv = getKVStore();
+  const kv = getContextKVStore();
   const raw = await kv.get(versionKey(skillId, version));
   if (!raw) return null;
   try {
