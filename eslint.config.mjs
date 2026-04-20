@@ -35,6 +35,29 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-empty-object-type": "off",
+      // SEC-02: forbid process.env mutation (concurrency-unsafe under
+      // concurrent requests on warm lambdas). Use runWithCredentials()
+      // + getCredential() from @/core/request-context instead.
+      //
+      // Two selectors:
+      //  - `process.env.FOO = ...`  (MemberExpression.MemberExpression)
+      //  - `process.env[key] = ...` (also MemberExpression.MemberExpression
+      //    but with computed=true — the same selector matches both)
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "AssignmentExpression[left.type='MemberExpression'][left.object.type='MemberExpression'][left.object.object.name='process'][left.object.property.name='env']",
+          message:
+            "Direct mutation of process.env is forbidden (SEC-02). Use runWithCredentials() + getCredential() from @/core/request-context. See v0.10 CHANGELOG and docs/SECURITY-ADVISORIES.md#sec-02.",
+        },
+        {
+          selector:
+            "AssignmentExpression[left.type='MemberExpression'][left.object.name='process'][left.property.name='env']",
+          message:
+            "Replacing process.env entirely is forbidden. See SEC-02.",
+        },
+      ],
     },
   },
   // Node globals + CJS allowed for release scripts.
@@ -65,5 +88,25 @@ export default tseslint.config(
     // test, update checker). Lifted in v0.5 phase 13 (GD2). See TECH
     // IMPROVEMENTS report for context.
     ignores: [".next/", "node_modules/"],
+  },
+  // SEC-02 allowlist: boot-path + scripts + tests may assign to process.env.
+  // Boot path: src/core/env-store.ts mutates process.env when the dashboard
+  // saves env vars via the FilesystemEnvStore (local dev) — transitional,
+  // removed in v0.11. Scripts run in one-shot CLI contexts where process.env
+  // races are not a concern. Tests need it for isolation.
+  {
+    files: [
+      "src/core/env-store.ts",
+      "scripts/**",
+      "tests/**",
+      "src/**/*.test.ts",
+      "src/**/*.e2e.test.ts",
+      "src/core/test-utils.ts",
+      "playwright.config.ts",
+      "app/api/storage/migrate/route.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
   }
 );
