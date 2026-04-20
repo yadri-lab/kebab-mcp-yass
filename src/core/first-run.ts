@@ -245,6 +245,14 @@ export function isClaimer(request: Request): boolean {
 /**
  * Generate the user's permanent token, mutate process.env, persist to /tmp.
  * Idempotent: calling twice with the same claimId returns the existing token.
+ *
+ * KV persistence is fire-and-forget here so the function stays sync for
+ * test callers. Production code paths that need cross-lambda durability
+ * (the welcome init endpoint) MUST also call `flushBootstrapToKv()` and
+ * await it before returning the response — otherwise Vercel reaps the
+ * lambda after the response is sent and the in-flight Upstash SET is
+ * cancelled mid-write, leaving the KV bootstrap key empty and every
+ * cold lambda after that thinking the instance is uninitialized.
  */
 export function bootstrapToken(claimId: string): { token: string } {
   pruneExpired();
@@ -266,13 +274,26 @@ export function bootstrapToken(claimId: string): { token: string } {
     // Best effort: /tmp may be read-only in some environments.
   }
 
-  // Fire-and-forget cross-instance persistence. Keeps bootstrapToken sync.
+  // Fire-and-forget cross-instance persistence. Production endpoints
+  // SHOULD additionally call `flushBootstrapToKv()` to guarantee the
+  // write lands before the response is sent — see fn comment above.
   void persistBootstrapToKv(activeBootstrap);
 
   console.info(
     `[Kebab MCP first-run] bootstrap token minted (claim=${claimId.slice(0, 8)}…, persisted=${persisted})`
   );
   return { token };
+}
+
+/**
+ * Synchronously-callable counterpart that production endpoints await
+ * after `bootstrapToken()` so the KV write is durable before the lambda
+ * is reaped. No-op when there's nothing to persist (e.g. test paths
+ * without an active bootstrap).
+ */
+export async function flushBootstrapToKv(): Promise<void> {
+  if (!activeBootstrap) return;
+  await persistBootstrapToKv(activeBootstrap);
 }
 
 /**

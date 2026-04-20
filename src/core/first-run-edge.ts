@@ -46,9 +46,19 @@ export async function ensureBootstrapRehydratedFromUpstash(): Promise<void> {
   ).trim();
   if (!url || !token) return;
   try {
-    const endpoint = `${url.replace(/\/$/, "")}/get/${KV_BOOTSTRAP_KEY}`;
-    const res = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${token}` },
+    // Use the POST-with-command-array form rather than the GET-style
+    // path endpoint. The key (`mymcp:firstrun:bootstrap`) contains
+    // colons that some Upstash gateway revisions treat as URL-reserved
+    // and 404 on, even though they were originally written via the
+    // POST form by `UpstashKV` in `kv-store.ts`. Aligning the two paths
+    // is the safer option.
+    const res = await fetch(url.replace(/\/$/, ""), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(["GET", KV_BOOTSTRAP_KEY]),
       // A second is plenty for a Redis GET on the same region; if it
       // takes longer than that, fall through to first-time-setup rather
       // than block the page.

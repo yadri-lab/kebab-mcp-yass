@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   bootstrapToken,
+  flushBootstrapToKv,
   isClaimer,
   isFirstRunMode,
   isBootstrapActive,
@@ -41,6 +42,13 @@ export async function POST(request: Request) {
   const claimId = decoded.split(".")[0];
 
   const { token } = bootstrapToken(claimId);
+
+  // Block on the KV write before responding. Without this, Vercel
+  // terminates the lambda when `return NextResponse.json(...)` resolves
+  // — the in-flight Upstash SET is cancelled and the bootstrap key
+  // stays empty, so every cold lambda after that sees first-run mode
+  // and locks the user out of /config behind a /welcome redirect loop.
+  await flushBootstrapToKv();
 
   const proto = request.headers.get("x-forwarded-proto") || "https";
   const host = request.headers.get("host") || "your-instance.vercel.app";
