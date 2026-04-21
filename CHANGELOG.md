@@ -4,6 +4,22 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.11 — Multi-tenant real
 
+### Phase 44 — Security supply chain + URL safety (SCM-01..05)
+
+Landed 5 requirements in 6 atomic commits (`d957933`, `11cc628`, `6c0c8f0`, `e7b3cc2`, `c1f4639`, `547e4c2`).
+
+**Supply chain:**
+- `@modelcontextprotocol/sdk` bumped `^1.26.0` → `^1.29.0` within `mcp-handler` peer range.
+- `KEBAB_BROWSER_CONNECTOR_V2=1` feature flag gates Stagehand v3 adapter dispatch in 4 browser tool handlers. Default OFF — v2 path stays active; operators opt in per deploy. Browser regression suite (16 cases: 4 tools × 2 flag states × 2 scenarios) covers both paths.
+- `scripts/audit-gate.mjs` replaces the previous `npm audit --audit-level=high` CI step. Policy: FAIL on any high/critical, FAIL on direct-dep moderate unless allowlisted with reason + reviewBy, WARN on transitive-dep moderate. 1 allowlist entry (`@browserbasehq/stagehand`) tracks the langsmith CVEs — reviewBy 2026-07-01.
+- Three moderate CVEs (`langsmith` SSRF + prototype pollution + output-redaction bypass) no longer block CI as `high`; they surface as tracked allowlisted direct + warning transitive every run.
+
+**URL safety:**
+- `src/core/url-safety.ts` consolidates `isPublicUrl`/`isPublicUrlSync` with RFC1918 + loopback + cloud-metadata + CGNAT + 0/8 + IPv4-mapped-IPv6 + DNS guards. Supersedes the divergent guards in `browserbase.ts` and `skills/lib/remote-fetcher.ts`.
+- `src/core/fetch-utils.ts` gains `fetchWithTimeout`. 5 duplicate copies removed (`apify/lib/client.ts`, `skills/lib/remote-fetcher.ts`, `vault/lib/github.ts`, `paywall/lib/fetch-html.ts`, inline in `storage-mode.ts`). Each migrated callsite passes an explicit `timeoutMs` so default-timeout divergences don't regress.
+
+**Policy docs:** `CONTRIBUTING.md` gains a "Security & supply chain policy" section documenting the gate, the allowlist contract, and the CVE-triage flow.
+
 ### Phase 43 — Performance & CI hardening (PERF-01/02/04/05 + CI-01..04)
 
 Landed 4 perf wins + 4 CI gates in 8 atomic commits. PERF-03

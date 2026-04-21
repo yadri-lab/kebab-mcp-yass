@@ -439,6 +439,33 @@ docs: add Airtable to connector ideas list
 
 ---
 
+## Security & supply chain policy
+
+CI runs `node scripts/audit-gate.mjs` on every push and pull request. The gate enforces:
+
+- **FAIL** on any `high` or `critical` vulnerability (any scope).
+- **FAIL** on `moderate` direct-dep vulnerabilities unless explicitly allowlisted in `scripts/audit-gate.mjs` with a reason and a `reviewBy` date.
+- **WARN** on `moderate` transitive-dep vulnerabilities (often un-fixable without upstream action; tracked, not blocking).
+
+### Adding an allowlist entry
+
+When a direct-dep `moderate` vulnerability cannot be patched short-term (e.g., requires an upstream major-version bump), add an entry to the `ALLOWLIST` array in `scripts/audit-gate.mjs` with:
+
+- `pkg` — the direct-dep package name
+- `reason` — the specific CVE/GHSA + mitigation (feature flag, runtime guard, etc.)
+- `reviewBy` — a date 3-6 months out when the entry must be re-evaluated
+
+Review expired entries at every milestone boundary.
+
+### Handling a new CVE
+
+1. Confirm with `node scripts/audit-gate.mjs` locally.
+2. If direct-dep: bump the package or allowlist with justification.
+3. If transitive-dep: open an upstream issue; document in FOLLOW-UP if tracking long-term.
+4. If the fix requires a breaking bump, prefer a feature flag (see `KEBAB_BROWSER_CONNECTOR_V2` for the pattern).
+
+---
+
 ## Getting Help
 
 - **GitHub Issues** — bug reports and feature requests
