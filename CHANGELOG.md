@@ -4,6 +4,109 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.12 — Welcome hardening + v1.0 readiness
 
+### Phase 47 — WelcomeShell runtime wiring (2026-04-22)
+
+**Goal:** wire the 923 LOC of dormant step components + hooks + reducer
+shipped in Phase 45 into the live `/welcome` render path. Reduce
+`WelcomeShell.tsx` from 2194 LOC → ≤ 200 LOC orchestrator. Closes
+Phase 45 FOLLOW-UP A (the deferred JSX migration) and the last
+structural welcome-flow debt.
+
+**Requirements closed:** WIRE-01, WIRE-02, WIRE-03, WIRE-04, WIRE-05,
+WIRE-06. WIRE-06 (per-step revertibility) was enforced across all 8
+commits — each per-step commit reverts independently against the prior
+step's component + the dual-path contract during migration (Tasks
+1–5); Task 6 collapsed the dual-path to reducer-only, and Task 7
+Part B (shim retirement) is itself a standalone revert if the
+import-graph simplification is undesired.
+
+**Commits (8, atomic, per-step revertible):**
+
+- `b8a9cca` refactor(welcome): wire WelcomeStateContext at WelcomeShell root (dual-path) — WIRE-02
+- `49583a9` refactor(welcome): migrate step-1 storage JSX to steps/storage.tsx — WIRE-01a
+- `ee410bc` refactor(welcome): migrate step-2 mint JSX to steps/mint.tsx — WIRE-01b
+- `ce1fb81` refactor(welcome): migrate step-3 test JSX to steps/test.tsx — WIRE-01c
+- `07fedd0` refactor(welcome): migrate already-initialized panel — WIRE-01d
+- `c15edb6` refactor(welcome): retire legacy useState + WelcomeShell ≤ 200 LOC — WIRE-03 + WIRE-04
+- `18abd64` refactor(welcome): welcome-client.tsx shim to page.tsx direct import — WIRE-05
+- `docs(47)` — this entry
+
+**Measurements:**
+
+- `app/welcome/WelcomeShell.tsx`: 2194 → 190 LOC (-91%). Zero useState.
+- `app/welcome/steps/*.tsx`: 351 → ~1930 LOC (4 step components carrying
+  the real JSX; ~815 storage + ~600 mint + ~410 test + ~110 already-init).
+- `app/welcome/chrome.tsx`: new (158 LOC) — Shell + WizardStepper +
+  RecoveryFooter + PreviewBanner + RecoveryResetBanner.
+- `app/welcome/welcome-client.tsx`: 29 LOC → deleted (shim retired).
+- `WizardStorageSummary.durable?` field added to `wizard-steps.ts` so
+  mint + test gates can distinguish durable backends from acked
+  ephemeral without reading the raw `StorageStatus` shape.
+- Test count: 801 unit + 37 UI + 59 regression/contract — Phase 45
+  baseline held. Phase 46 `welcome-init-concurrency.test.ts` 10 passed
+  (behavioral safety net intact).
+- Playwright E2E baseline: unchanged (no visual refresh).
+
+**Reducer state ownership (post-migration):**
+
+- `state.claim` — driven by `useClaimStatus()` invoked from the
+  orchestrator + `AlreadyInitializedPanel`.
+- `state.step` — orchestrator `setStep()` + step Continue/Back buttons.
+- `state.storage.{mode,healthy,durable}` — `<StorageStep />` bridges the
+  `/api/storage/status` poll result into `STORAGE_UPDATED`.
+- `state.token`, `state.instanceUrl`, `state.autoMagic` — `<MintStep />`
+  via `useMintToken().mint()` → `TOKEN_MINTED`.
+- `state.tokenSaved` — MintStep's save-checklist checkbox.
+- `state.permanent` — MintStep's /api/welcome/status poll.
+- `state.testStatus`, `state.testError` — `<TestStep />`.
+- `state.ack`, `state.ackPersisted` — StorageStep's cookie read/write.
+
+**Deviations / judgment calls:**
+
+- **Widened WizardStorageSummary** (Rule 2): added optional `durable:
+  boolean` so mint/test persistenceReady reads from the reducer
+  without a parallel raw StorageStatus reference. Optional field
+  preserves `wizard-steps.test.ts` truth-table back-compat.
+- **Grep-contract updates** (Rule 2):
+  `tests/regression/storage-ux.test.ts` `readClient()` reads ALL
+  per-step files + chrome.tsx + WelcomeShell + the welcome-client
+  shim (with try/catch fallback). `welcome-flow.test.ts` BUG-04
+  reads steps/test.tsx + steps/mint.tsx alongside WelcomeShell.tsx
+  since `persistenceReady` migrated. `fire-and-forget.test.ts`
+  FILE_ALLOWLIST gains app/welcome/steps/{storage,mint,test}.tsx.
+- **Step-local transients kept as useState** (ROADMAP judgment):
+  `copied`, `skipTest`, `storageChecking`, `storageFailures`,
+  `upstashCheck*`, `lastCheckOutcome`, `StarterSkillsPanel` locals —
+  single-consumer UI flags, not reducer values.
+- **Dual-path during migration** (ROADMAP judgment: YES). Tasks 1–5
+  ran with BOTH legacy useState AND the context provider active.
+  Task 6 collapsed to reducer-only.
+- **React.lazy on step components** NOT applied (ROADMAP: NO).
+  Components are small; lazy adds runtime cost without bundle-size
+  win at this scale.
+- **`useTestMcp` fetch inline** in `steps/test.tsx` rather than a
+  dedicated hook (ROADMAP). No reuse site; premature abstraction.
+- **`welcome-client.tsx` shim retired** — judgment taken. 29-LOC shim
+  had one consumer; direct import simplifies. Grep-contracts guard
+  via try/catch-wrapped reads.
+- **StepHeader + StepFooter copy-per-step** (minor): each step
+  declares its own chrome (~50 LOC total duplication). Not hoisted
+  because signatures vary slightly (`tertiary` only on test-step,
+  `href` only on test + mint) — unifying would create higher-
+  friction API than the duplication costs.
+
+**Follow-up items:**
+
+- `tests/integration/multi-host.test.ts` HOST-05 pre-existing failure
+  (Phase 39 carry-over) unchanged.
+- `scripts/audit-gate.mjs` no-undef lint errors (Phase 44 carry-over)
+  unchanged.
+- `tests/integration/welcome-durability.test.ts:328` TS2540 NODE_ENV
+  (Phase 42 carry-over) unchanged.
+- The `// Phase 47 WIRE-01*: … moved to steps/*.tsx` breadcrumb
+  comments in WelcomeShell.tsx prevent accidental re-inlining of the
+  JSX in a future refactor.
+
 ### Phase 46 — Welcome correctness hardening (2026-04-21)
 
 Closes the HTTP-level concurrent mint-race coverage gap GPT review
