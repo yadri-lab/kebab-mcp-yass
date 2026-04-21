@@ -4,6 +4,9 @@ import { getInstanceConfigAsync } from "@/core/config";
 import { getRecentLogs } from "@/core/logging";
 import { VERSION } from "@/core/version";
 import { withBootstrapRehydrate } from "@/core/with-bootstrap-rehydrate";
+import { getRehydrateCount } from "@/core/first-run";
+import { getKVLatencySamples } from "@/core/kv-store";
+import { getEnvPresence } from "@/core/env-safety";
 
 /**
  * Private admin status endpoint — requires ADMIN_AUTH_TOKEN.
@@ -50,6 +53,14 @@ async function getHandler(request: Request) {
     .filter((p) => p.enabled)
     .reduce((sum, p) => sum + p.manifest.tools.length, 0);
 
+  // OBS-02: cold-start-diagnostic payload. `rehydrateCount` is KV-backed
+  // with a 24h sliding window, so an operator can tell at a glance
+  // whether this lambda has been churning (cold-start loop) or stable
+  // (single rehydrate on the warm-up request). `kvLatencySamples` is the
+  // in-process ring buffer populated by pingKV and future per-op hooks.
+  // `envPresent` returns only booleans — `getEnvPresence` scrubs values.
+  const rehydrateCount = await getRehydrateCount();
+
   return Response.json({
     version: VERSION,
     packs,
@@ -66,6 +77,11 @@ async function getHandler(request: Request) {
       timestamp: l.timestamp,
       error: l.error,
     })),
+    firstRun: {
+      rehydrateCount,
+      kvLatencySamples: getKVLatencySamples(),
+      envPresent: getEnvPresence(),
+    },
     _ephemeral: "Logs are in-memory and reset on cold start.",
   });
 }
