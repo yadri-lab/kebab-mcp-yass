@@ -2,6 +2,7 @@ import type { InstanceConfig } from "./types";
 import { getKVStore } from "./kv-store";
 import { getTenantKVStore } from "./kv-store";
 import { emit } from "./events";
+import { validateDestructiveVarsAtStartup } from "./env-safety";
 
 /**
  * Reads instance configuration.
@@ -49,6 +50,46 @@ function envConfig(): InstanceConfig {
 
 let cached: InstanceConfig | null = null;
 
+// SAFE-04: destructive env-var validation runs lazily on the first
+// getInstanceConfig() / getInstanceConfigAsync() call, NOT at module
+// scope. Module-scope execution would:
+//   (1) pollute test processes that deliberately set destructive vars
+//       via `vi.stubEnv` after import
+//   (2) force every test that imports from `@/core/config` to eat the
+//       validation cost
+// Vitest tests that want to exercise the validator call
+// `runStartupValidation()` explicitly (and first reset via
+// `__resetStartupValidationForTests`).
+let bootValidated = false;
+
+/**
+ * One-shot destructive-env-var validator (SAFE-04). Called by
+ * `getInstanceConfig()` / `getInstanceConfigAsync()` on first use so the
+ * boot log surfaces any active destructive vars on the first request to
+ * hit the instance. In production, reject-severity misconfigurations
+ * terminate the process — the operator sees the Vercel / container crash
+ * log and gets an actionable error instead of a silently-wiped deploy.
+ */
+export function runStartupValidation(): void {
+  if (bootValidated) return;
+  bootValidated = true;
+  const { warnings, rejections } = validateDestructiveVarsAtStartup();
+  for (const w of warnings) console.warn(w);
+  for (const r of rejections) console.error(r);
+  if (rejections.length > 0 && process.env.NODE_ENV === "production") {
+    console.error(
+      "[ENV-SAFETY] Refusing to start due to reject-severity destructive env vars. Unset them, or change NODE_ENV if this really is a development instance."
+    );
+    // Give the log a chance to flush before exit.
+    process.exit(1);
+  }
+}
+
+/** Test-only. Resets the one-shot boot-validation flag. */
+export function __resetStartupValidationForTests(): void {
+  bootValidated = false;
+}
+
 /**
  * Synchronous read of instance config. Returns the last value loaded from
  * KV via `getInstanceConfigAsync()`; on cold start (before any async
@@ -56,6 +97,7 @@ let cached: InstanceConfig | null = null;
  * locale/timezone formatting without awaiting KV on every call.
  */
 export function getInstanceConfig(): InstanceConfig {
+  runStartupValidation();
   return cached ?? envConfig();
 }
 
@@ -72,6 +114,7 @@ export function resetInstanceConfigCache(): void {
  * env → KV so the dashboard can start managing it without losing state.
  */
 export async function getInstanceConfigAsync(tenantId?: string | null): Promise<InstanceConfig> {
+  runStartupValidation();
   const env = envConfig();
   let kv;
   try {
