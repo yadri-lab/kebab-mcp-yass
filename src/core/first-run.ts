@@ -34,7 +34,9 @@ import {
   rotateSigningSecret,
   SigningSecretUnavailableError,
 } from "./signing-secret";
-import { runV010TenantPrefixMigration } from "./migrations/v0.10-tenant-prefix";
+// Note: the v0.10 tenant-prefix migration trigger lives in
+// `src/core/with-bootstrap-rehydrate.ts` (DUR-02). See the docstring on
+// `rehydrateBootstrapAsync` below for the rationale.
 
 const KV_BOOTSTRAP_KEY = "mymcp:firstrun:bootstrap";
 
@@ -412,15 +414,15 @@ export function clearBootstrap(): void {
  * Handlers should call this at entry to pick up bootstrap state minted on
  * a different cold-start instance. Cheap when KV is unconfigured (no-op).
  *
- * SEC-01b side effect: also runs the v0.10 tenant-prefix migration
- * (idempotent, one-shot per process). Tracked via an in-process
- * `migrationStarted` flag + a KV-persisted `mymcp:migrations:*` marker.
+ * v0.10 DUR-02 fold-in: the one-shot tenant-prefix migration trigger used
+ * to live here as `void runV010TenantPrefixMigration().catch(() => {})`,
+ * which fired on every rehydrate call and made test-order dependent on a
+ * module-load disk-I/O side effect (ARCH-AUDIT §3). The trigger now lives
+ * in `withBootstrapRehydrate` (src/core/with-bootstrap-rehydrate.ts) with
+ * a one-shot module flag. Callers who rehydrate outside the HOC (tests,
+ * internal helpers) must invoke the migration directly if needed.
  */
 export async function rehydrateBootstrapAsync(): Promise<void> {
-  // Run the migration in the background on first call; never block
-  // boot on migration completion.
-  void runV010TenantPrefixMigration().catch(() => {});
-
   rehydrateBootstrapFromTmp();
   if (activeBootstrap) return;
   if (!isExternalKvAvailable()) return;
