@@ -9,6 +9,7 @@ import {
 } from "@/core/credential-store";
 import { detectStorageMode, clearStorageModeCache } from "@/core/storage-mode";
 import { withBootstrapRehydrate } from "@/core/with-bootstrap-rehydrate";
+import { errorResponse } from "@/core/error-response";
 
 /**
  * v0.6 (A1): these four env-var-style keys are now backed by KVStore,
@@ -69,10 +70,9 @@ async function getHandler(request: Request) {
     out.MYMCP_CONTEXT_PATH = cfg.contextPath;
     return NextResponse.json({ ok: true, kind: store.kind, vars: out });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    // P1 fold-in: never leak err.message to the client — server log
+    // has the full sanitized detail + errorId for correlation.
+    return errorResponse(err, { status: 500, route: "config/env" });
   }
 }
 
@@ -213,7 +213,7 @@ async function putHandler(request: Request) {
         { status: 422 }
       );
     }
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return errorResponse(err, { status: 500, route: "config/env" });
   }
 }
 

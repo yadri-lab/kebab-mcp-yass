@@ -4,6 +4,9 @@ import { getRecentLogs, getDurableLogs } from "@/core/logging";
 import { getLogStore } from "@/core/log-store";
 import { getTenantId, TenantError } from "@/core/tenant";
 import { withBootstrapRehydrate } from "@/core/with-bootstrap-rehydrate";
+import { getLogger } from "@/core/logging";
+
+const logsRouteLog = getLogger("API:config/logs");
 
 /**
  * GET /api/config/logs?count=100&filter=all|errors|success
@@ -47,10 +50,9 @@ async function getHandler(request: Request) {
     } catch (err) {
       // Fall through to the in-memory ring buffer so the dashboard
       // never loses visibility if the store is momentarily unhealthy.
-      console.error(
-        "[Kebab MCP] /api/config/logs: log store read failed, falling back to memory:",
-        err instanceof Error ? err.message : String(err)
-      );
+      logsRouteLog.error("log store read failed, falling back to memory", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

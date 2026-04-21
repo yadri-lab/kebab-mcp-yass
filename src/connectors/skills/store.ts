@@ -5,6 +5,9 @@ import { z } from "zod";
 import { kvScanAll } from "@/core/kv-store";
 import { getContextKVStore } from "@/core/request-context";
 import { hasUpstashCreds } from "@/core/upstash-env";
+import { getLogger } from "@/core/logging";
+
+const skillsLog = getLogger("CONNECTOR:skills");
 
 /**
  * Skills store — persists user-authored skills.
@@ -193,7 +196,15 @@ export function listSkillsSync(): Skill[] {
     const raw = (map as Record<string, string>)[KV_KEY];
     if (typeof raw !== "string") return [];
     return parseSkillsJson(raw);
-  } catch {
+  } catch (err) {
+    // P1 fold-in (Phase 38): the pre-v0.10 behavior silently returned []
+    // on any read/parse error. Now logs via the structured logger so a
+    // misconfigured skills store surfaces in logs instead of being
+    // invisible (which hid a bug during the 2026-04-20 session).
+    skillsLog.warn("listSkillsSync fell back to empty list", {
+      error: err instanceof Error ? err.message : String(err),
+      filePath,
+    });
     return [];
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { execSync } from "node:child_process";
 import { checkAdminAuth } from "@/core/auth";
 import { withBootstrapRehydrate } from "@/core/with-bootstrap-rehydrate";
+import { errorResponse } from "@/core/error-response";
 
 /**
  * GET  /api/config/update → check if updates are available
@@ -143,10 +144,13 @@ async function postHandler(request: Request) {
 
   const merge = run(`git merge --ff-only ${remote}/main`);
   if (!merge.ok) {
-    return NextResponse.json(
-      { ok: false, reason: `Merge failed: ${merge.err.split("\n")[0]}` },
-      { status: 500 }
-    );
+    // P1 fold-in: wrap the git-shell error in the canonical 500 shape.
+    // Server log retains the full (sanitized) merge.err for correlation;
+    // the client sees only `{ error, errorId, hint }`.
+    return errorResponse(new Error(`Merge failed: ${merge.err}`), {
+      status: 500,
+      route: "config/update",
+    });
   }
 
   return NextResponse.json({

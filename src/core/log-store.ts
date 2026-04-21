@@ -20,6 +20,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { getKVStore } from "./kv-store";
 import { hasUpstashCreds } from "./upstash-env";
+import { getLogger } from "./logging";
+
+const logStoreLog = getLogger("LOG-STORE");
 
 export interface LogEntry {
   ts: number;
@@ -47,6 +50,25 @@ function envMaxAgeSeconds(): number | undefined {
   if (!raw) return undefined;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Extract a 3-digit HTTP status code from an error message. Returns
+ * null if the message carries no recognizable status, or if the 3-digit
+ * number is not in the valid HTTP range (100-599).
+ *
+ * P0 fold-in (Phase 38): replaces the pre-v0.10 heuristic
+ * `lastError.message.includes("5")` which tripped the circuit breaker
+ * on any error containing the digit "5" (e.g. "timeout after 5s").
+ *
+ * Exported for the regression test — the function is small enough that
+ * inlining it would make the test harder to write.
+ */
+export function extractHttpStatus(err: Error): number | null {
+  const match = err.message.match(/\b([1-5]\d{2})\b/);
+  if (!match) return null;
+  const code = parseInt(match[1], 10);
+  return code >= 100 && code < 600 ? code : null;
 }
 
 function envRotateSegments(): number {
@@ -296,7 +318,7 @@ export class UpstashLogStore implements LogStore {
 
   async append(entry: LogEntry): Promise<void> {
     if (!this.shouldAllow()) {
-      console.warn("[Kebab MCP] UpstashLogStore: circuit open, skipping append");
+      logStoreLog.warn("circuit open, skipping append");
       return;
     }
 
@@ -316,8 +338,13 @@ export class UpstashLogStore implements LogStore {
         return;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        // Only retry on 5xx-like errors (Upstash errors contain status in message)
-        const is5xx = lastError.message.includes("5");
+        // P0 fold-in (Phase 38): parse an actual HTTP status code out of
+        // the error message and trip the retry only on 5xx. The pre-v0.10
+        // heuristic was `lastError.message.includes("5")`, which trivially
+        // tripped on any error message containing the digit "5" (e.g.
+        // "timeout after 5s" — no 5xx, but opens the circuit).
+        const status = extractHttpStatus(lastError);
+        const is5xx = status !== null && status >= 500 && status < 600;
         if (!is5xx || attempt >= RETRY_DELAYS_MS.length) {
           break;
         }
@@ -326,11 +353,11 @@ export class UpstashLogStore implements LogStore {
     }
 
     this.recordFailure();
-    // Swallow — withLogging must not cascade log-store failures to tool calls.
-    console.warn(
-      `[Kebab MCP] UpstashLogStore: append failed after retries (failures=${this._circuit.consecutiveFailures}):`,
-      lastError?.message
-    );
+    // silent-swallow-ok: withLogging must not cascade log-store failures to tool calls; we log at WARN via the tagged logger instead
+    logStoreLog.warn("append failed after retries", {
+      failures: this._circuit.consecutiveFailures,
+      error: lastError?.message,
+    });
   }
 
   async recent(n: number): Promise<LogEntry[]> {
