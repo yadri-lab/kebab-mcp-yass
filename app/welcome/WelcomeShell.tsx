@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { KebabLogo } from "../components/kebab-logo";
 import { McpClientSnippets } from "../components/mcp-client-snippets";
 import { extractTokenFromInput } from "@/core/welcome-url-parser";
-import { WelcomeStateProvider, type WelcomeState } from "./WelcomeStateContext";
+import {
+  WelcomeStateProvider,
+  useWelcomeDispatch,
+  useWelcomeState,
+  type WelcomeState,
+} from "./WelcomeStateContext";
+import { StorageStep } from "./steps/storage";
 
 type ClaimStatus = "loading" | "new" | "claimer" | "claimed-by-other" | "already-initialized";
 
@@ -47,109 +53,7 @@ interface WelcomeClientProps {
 
 type StorageMode = "kv" | "file" | "static" | "kv-degraded";
 
-interface StorageStatus {
-  mode: StorageMode;
-  reason: string;
-  dataDir: string | null;
-  kvUrl: string | null;
-  error: string | null;
-  /** True only for file mode on Vercel /tmp — saves vanish on cold start. */
-  ephemeral?: boolean;
-  /** ISO timestamp from the server — used by the UI to show "last checked X seconds ago". */
-  detectedAt?: string;
-}
-
 type WizardStep = 1 | 2 | 3;
-
-type AckValue = "static" | "ephemeral" | null;
-/**
- * Cookie name is versioned. v2 used `mymcp.storage.ack` with boolean "1"
- * (always meant static-mode ack, because v2 didn't differentiate
- * ephemeral). v3 uses `mymcp.storage.ack.v3` with semantic values. V2
- * cookies are explicitly NOT honored post-upgrade: the v2 → v3 UX is
- * materially different (3-card educational view, ephemeral-aware), so
- * users deserve to see the new flow once. The old cookie is also
- * cleared on first v3 mount to avoid ambiguity.
- */
-const ACK_COOKIE = "mymcp.storage.ack.v3";
-const LEGACY_ACK_COOKIE = "mymcp.storage.ack";
-
-function deleteCookie(name: string): void {
-  if (typeof document === "undefined") return;
-  document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
-}
-
-/**
- * Persist the user's acknowledgment of a non-ideal storage mode.
- *
- *   - "static" → user explicitly chose env-vars-only (no runtime saves).
- *   - "ephemeral" → user knows Vercel /tmp is temporary and accepts it.
- *
- * Scoped to the MODE it was given in: if the instance later flips to a
- * different non-ideal mode, the user is re-prompted because it's a
- * different decision. Cookie + localStorage for durability under strict
- * browser privacy settings (Brave shields, Safari ITP).
- */
-function readAck(): AckValue {
-  if (typeof document === "undefined") return null;
-  for (const raw of document.cookie.split(";")) {
-    const c = raw.trim();
-    if (c.startsWith(`${ACK_COOKIE}=`)) {
-      const value = c.slice(ACK_COOKIE.length + 1);
-      if (value === "static" || value === "ephemeral") return value;
-    }
-  }
-  try {
-    const ls = window.localStorage.getItem(ACK_COOKIE);
-    if (ls === "static" || ls === "ephemeral") return ls as AckValue;
-  } catch {
-    // localStorage blocked — fine, cookie is the source of truth
-  }
-  return null;
-}
-
-/**
- * Clear any legacy v2 cookie / localStorage key so it can't silently gate
- * a user on v3 who was v2-acked before the UX overhaul.
- */
-function purgeLegacyAck(): void {
-  deleteCookie(LEGACY_ACK_COOKIE);
-  try {
-    window.localStorage.removeItem(LEGACY_ACK_COOKIE);
-  } catch {
-    // ignore
-  }
-}
-
-function writeAck(value: "static" | "ephemeral"): { persisted: boolean } {
-  if (typeof document === "undefined") return { persisted: false };
-  const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
-  const secureFlag = isHttps ? "; Secure" : "";
-  // Shorter TTL than v2 (30 days instead of 1 year). Storage modes change
-  // more often than users expect — an instance moved between deploys, a
-  // user set up Upstash and forgot. Forcing a re-confirm once a month
-  // catches stale acks that misrepresent the current decision.
-  document.cookie = `${ACK_COOKIE}=${value}; path=/; max-age=2592000; samesite=lax${secureFlag}`;
-  const cookieOk = document.cookie.split(";").some((c) => c.trim() === `${ACK_COOKIE}=${value}`);
-  let storageOk: boolean;
-  try {
-    window.localStorage.setItem(ACK_COOKIE, value);
-    storageOk = window.localStorage.getItem(ACK_COOKIE) === value;
-  } catch {
-    storageOk = false;
-  }
-  return { persisted: cookieOk || storageOk };
-}
-
-/** Remove the current ack. Called when the user transitions to a healthy mode. */
-function clearAck(): void {
-  deleteCookie(ACK_COOKIE);
-  try {
-    window.localStorage.removeItem(ACK_COOKIE);
-  } catch {
-    // ignore
-  }
-}
 
 export type { WelcomeClientProps };
 
@@ -192,6 +96,25 @@ function WelcomeShellInner({
   previewToken = "",
   previewInstanceUrl = "",
 }: WelcomeClientProps) {
+  // Phase 47 WIRE-01a dual-path boundary: step, storage, ack fully migrate
+  // to the reducer via `<StorageStep />`. Legacy useState remains for
+  // token / mint / test / claim until Tasks 3–5 migrate those steps.
+  const reducerState = useWelcomeState();
+  const dispatch = useWelcomeDispatch();
+  // `state.step` is a string ("storage" | "mint" | "test" | "done"); the
+  // legacy stepper uses a 1|2|3 numeric index. Adapter below.
+  const stepString = reducerState.step;
+  const step: WizardStep = stepString === "storage" ? 1 : stepString === "mint" ? 2 : 3;
+  const setStep = useCallback(
+    (next: WizardStep) => {
+      dispatch({
+        type: "STEP_SET",
+        step: next === 1 ? "storage" : next === 2 ? "mint" : "test",
+      });
+    },
+    [dispatch]
+  );
+
   const [claim, setClaim] = useState<ClaimStatus>(previewMode ? "claimer" : "loading");
   const [token, setToken] = useState<string | null>(previewMode ? previewToken : null);
   const [instanceUrl, setInstanceUrl] = useState<string>(previewMode ? previewInstanceUrl : "");
@@ -203,61 +126,12 @@ function WelcomeShellInner({
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [testError, setTestError] = useState<string | null>(null);
   const [skipTest, setSkipTest] = useState(false);
-  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
-  const [storageChecking, setStorageChecking] = useState(false);
-  const [ack, setAck] = useState<AckValue>(null);
-  const [ackPersisted, setAckPersisted] = useState(true);
   // Token save confirmation — gates step 2 "Continue" button. Defaults to
   // true when the user is re-entering an already-bootstrapped instance
   // (initialBootstrap) so returning users aren't re-prompted to re-ack a
   // token they saved weeks ago. Fresh users (first mint in this session)
   // must explicitly check the box.
   const [tokenSaved, setTokenSaved] = useState<boolean>(initialBootstrap);
-  // Wizard state — step 1 = Storage, step 2 = Auth token, step 3 = Connect.
-  // Storage first because the token is minted into whatever storage is
-  // active: if user sets up Upstash BEFORE minting, the token lands in KV
-  // (durable across cold starts). If they mint before storage is ready,
-  // the token lives in /tmp only and vanishes with the next container
-  // recycle — the fragility that motivated the v4 flow reorder.
-  const [step, setStep] = useState<WizardStep>(1);
-  /**
-   * Active "Upstash setup in progress" mode. Triggered when the user clicks
-   * "I added Upstash — recheck" in step 2. While true, we auto-poll the
-   * detection endpoint every 5s for 120s instead of the ambient 20s rhythm,
-   * showing a visible countdown so the user knows we're actively checking
-   * for Vercel's redeploy to land. Without this, the user clicked "recheck"
-   * once, saw nothing change, and assumed the button was broken.
-   */
-  const [upstashCheckActive, setUpstashCheckActive] = useState(false);
-  const [upstashCheckSecondsLeft, setUpstashCheckSecondsLeft] = useState(0);
-  const [lastCheckOutcome, setLastCheckOutcome] = useState<
-    | { kind: "idle" }
-    | { kind: "no-change"; at: number }
-    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
-    | { kind: "timeout"; at: number }
-  >({ kind: "idle" });
-
-  // Hydrate ack flag from cookie/localStorage on mount (avoid SSR mismatch by
-  // reading post-mount). Also nuke any leftover v2 cookie — v3 has a
-  // materially different UX and a v2-acked user should see it at least once.
-  useEffect(() => {
-    purgeLegacyAck();
-    setAck(readAck());
-  }, []);
-
-  // Auto-clear ack when the mode transitions to a healthy state. If the
-  // user acks ephemeral, then sets up Upstash (mode becomes kv), then later
-  // removes Upstash and drops to static, we want them re-prompted — not
-  // silently ready because of a stale ephemeral ack from six months ago.
-  useEffect(() => {
-    if (!storageStatus) return;
-    const healthyMode =
-      storageStatus.mode === "kv" || (storageStatus.mode === "file" && !storageStatus.ephemeral);
-    if (healthyMode && ack !== null) {
-      clearAck();
-      setAck(null);
-    }
-  }, [storageStatus, ack]);
 
   // Step 1: claim the instance. If we re-enter with bootstrap already active
   // (user came back to /welcome before the redeploy), auto-call init so we
@@ -319,205 +193,12 @@ function WelcomeShellInner({
     return () => clearInterval(id);
   }, [permanent, previewMode]);
 
-  // Load the unified storage mode (kv / file / static / kv-degraded).
-  // This replaces the legacy isolated "Upstash configured?" check and feeds
-  // the welcome storage step + the MCP-client step list.
-  const [storageFailures, setStorageFailures] = useState(0);
-  const loadStorageStatus = useCallback(async (force = false) => {
-    setStorageChecking(true);
-    try {
-      const res = await fetch(`/api/storage/status${force ? "?force=1" : ""}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setStorageFailures((n) => n + 1);
-        return;
-      }
-      const data = (await res.json()) as StorageStatus;
-      setStorageStatus(data);
-      setStorageFailures(0);
-    } catch {
-      // Count failures so the UI can offer a "continue anyway" escape
-      // hatch after repeated detection errors (network partition, 500
-      // loop). Without this, a user with a flaky network is stuck on
-      // Welcome with the Continue button permanently disabled.
-      setStorageFailures((n) => n + 1);
-    } finally {
-      setStorageChecking(false);
-    }
-  }, []);
-
-  // Initial load on mount, refresh after token issued (so we re-fetch with
-  // bearer cookie set by /init), and auto-refresh every 20s while the page
-  // is open and the user hasn't yet reached a settled mode.
-  useEffect(() => {
-    void loadStorageStatus(false);
-  }, [loadStorageStatus, token]);
-
-  // Auto-retry on failure while we have no status yet. Without this, the
-  // initial fetch fires once and — if it hits a cold lambda that hasn't
-  // rehydrated the claim — the user is stuck on "Detecting your storage…"
-  // forever (polling below only starts once storageStatus is set, and the
-  // `detectionTrapped` escape hatch requires ≥3 failures to surface its
-  // Recheck button). Backs off 3s → 6s → stop, so the user sees the escape
-  // hatch within ~10s of a persistent failure rather than never.
-  useEffect(() => {
-    if (storageStatus) return;
-    if (storageFailures === 0) return;
-    if (storageFailures >= 3) return;
-    const delayMs = storageFailures === 1 ? 3000 : 6000;
-    const id = setTimeout(() => void loadStorageStatus(true), delayMs);
-    return () => clearTimeout(id);
-  }, [storageStatus, storageFailures, loadStorageStatus]);
-
-  useEffect(() => {
-    // Ambient polling — 20s rhythm while in transient (non-settled) modes.
-    // The active "Upstash setup in progress" mode owns its own faster poll
-    // (5s, see effect below) so when both are conditional-true we'd skip
-    // this one to avoid duplicate fetches.
-    if (upstashCheckActive) return;
-    if (!storageStatus) return;
-    const { mode, ephemeral } = storageStatus;
-    if (mode === "kv") return;
-    if (mode === "file" && !ephemeral) return;
-    if (mode === "file" && ephemeral && ack === "ephemeral") return;
-    if (mode === "static" && ack === "static") return;
-    const id = setInterval(() => loadStorageStatus(true), 20_000);
-    return () => clearInterval(id);
-  }, [storageStatus, ack, loadStorageStatus, upstashCheckActive]);
-
-  // Active Upstash-setup polling — split across three single-purpose
-  // effects to avoid React setState-in-updater anti-patterns and to keep
-  // each concern testable in isolation.
-  //
-  // Effect 1: 1 Hz countdown decrement. Pure state update, no side effects.
-  // Effect 2: 5 s polling cadence — separate setInterval, fires the fetch.
-  // Effect 3: timeout watcher — when countdown hits 0, close the loop.
-  //
-  // Why three effects: previously a single setInterval(1000ms) tried to do
-  // all three jobs inside a setState updater function (`setSecondsLeft(prev
-  // => { ... fire side-effects ... })`). React updaters must be pure and
-  // can be invoked twice under StrictMode/concurrent rendering, which would
-  // double-fire timeout/poll side-effects. Splitting separates the pure
-  // tick from the side-effect-bearing reactions.
-  useEffect(() => {
-    if (!upstashCheckActive) return;
-    const id = setInterval(() => {
-      setUpstashCheckSecondsLeft((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [upstashCheckActive]);
-
-  useEffect(() => {
-    if (!upstashCheckActive) return;
-    // Poll cadence — 5s. The first fetch fires at t=5s, NOT immediately.
-    // Vercel takes 60+ seconds to redeploy after Upstash integration; an
-    // immediate fetch gives no useful information and (combined with the
-    // mode-change effect below) caused a spurious "Upstash not detected
-    // yet" flash at t=~0.5s, making the user think the button was broken.
-    const id = setInterval(() => loadStorageStatus(true), 5000);
-    return () => clearInterval(id);
-  }, [upstashCheckActive, loadStorageStatus]);
-
-  useEffect(() => {
-    if (!upstashCheckActive) return;
-    if (upstashCheckSecondsLeft > 0) return;
-    // Timeout — close the loop. Use a functional setState so a successful
-    // mode-change that landed in the SAME render batch isn't overwritten
-    // by the timeout outcome. Order matters: clear active flag first so
-    // subsequent effects don't keep firing.
-    setUpstashCheckActive(false);
-    setLastCheckOutcome((prev) =>
-      prev.kind === "mode-changed" && prev.to === "kv" ? prev : { kind: "timeout", at: Date.now() }
-    );
-  }, [upstashCheckSecondsLeft, upstashCheckActive]);
-
-  // Detect mode transition (e.g., file-ephemeral → kv after Upstash setup
-  // completes). Depends ONLY on `storageStatus` so the effect fires only
-  // when a fetch actually completed (storageStatus reference changes).
-  // We read `upstashCheckActive` via a ref to avoid spurious re-runs when
-  // the user toggles the active loop — a previous version depended on
-  // both, which caused the no-change branch to fire the instant
-  // startUpstashCheck flipped the flag, even though no fetch had landed.
-  const prevModeRef = useRef<StorageMode | null>(null);
-  const upstashActiveRef = useRef(upstashCheckActive);
-  useEffect(() => {
-    upstashActiveRef.current = upstashCheckActive;
-  }, [upstashCheckActive]);
-  useEffect(() => {
-    if (!storageStatus) return;
-    const prev = prevModeRef.current;
-    const curr = storageStatus.mode;
-    if (prev === null) {
-      // First load — record current mode but don't surface any outcome.
-    } else if (prev !== curr) {
-      setLastCheckOutcome({ kind: "mode-changed", from: prev, to: curr, at: Date.now() });
-      if (upstashActiveRef.current && curr === "kv") {
-        setUpstashCheckActive(false);
-      }
-    } else if (upstashActiveRef.current) {
-      // Same mode after a fetch during active upstash setup — surface
-      // "still waiting" so the user knows we DID just check.
-      setLastCheckOutcome({ kind: "no-change", at: Date.now() });
-    }
-    prevModeRef.current = curr;
-  }, [storageStatus]);
-
-  const startUpstashCheck = useCallback(() => {
-    // Reset outcome so any stale "no-change" or "timeout" from a previous
-    // session disappears. The first poll fires at t=5s — no immediate
-    // fetch, because Vercel takes 60+ seconds to redeploy after Upstash
-    // integration and an immediate fetch was producing a confusing "not
-    // detected yet" flash at t=0.5s.
-    setLastCheckOutcome({ kind: "idle" });
-    setUpstashCheckSecondsLeft(120);
-    setUpstashCheckActive(true);
-  }, []);
-
-  const stopUpstashCheck = useCallback(() => {
-    setUpstashCheckActive(false);
-  }, []);
-
-  // No auto-skip step 1: removed because it could yank the token mid-read
-  // for users on a fast Vercel deploy. Re-entering users who already have
-  // a permanent token are routed to /config via the "already-initialized"
-  // claim branch (line ~507) and never see the wizard at all, so manual
-  // Continue on step 1 is the right behavior for the only path that
-  // reaches it (first-time setup).
-
-  const acknowledge = useCallback((value: "static" | "ephemeral") => {
-    const { persisted } = writeAck(value);
-    setAckPersisted(persisted);
-    setAck(value);
-  }, []);
-
-  // "Ready" = user has a durable storage strategy. KV always ready. File
-  // only ready when non-ephemeral OR when user explicitly acked ephemeral.
-  // Static only ready when acked. Degraded never ready. Also: if we've
-  // failed to detect the mode 3+ times in a row, treat as ready so the
-  // user isn't trapped on welcome by a flaky network — server-side saves
-  // still validate independently.
-  const detectionTrapped = storageStatus === null && storageFailures >= 3;
-  const storageReady =
-    storageStatus?.mode === "kv" ||
-    (storageStatus?.mode === "file" && !storageStatus.ephemeral) ||
-    (storageStatus?.mode === "file" && storageStatus.ephemeral && ack === "ephemeral") ||
-    (storageStatus?.mode === "static" && ack === "static") ||
-    detectionTrapped;
-
-  // Ack/mode mismatch: an existing ack stored for a different non-ideal
-  // mode (e.g. user acked "static" in a previous session, instance later
-  // flipped to file-ephemeral). storageReady will correctly gate them, but
-  // we owe them a hint explaining why the "Continue" button is greyed out
-  // despite a previous ack.
-  const ackMismatch = Boolean(
-    ack !== null &&
-    storageStatus &&
-    !(storageStatus.mode === "kv") &&
-    !(storageStatus.mode === "file" && !storageStatus.ephemeral) &&
-    !(storageStatus.mode === "file" && storageStatus.ephemeral && ack === "ephemeral") &&
-    !(storageStatus.mode === "static" && ack === "static")
-  );
+  // Storage detection + ack + Upstash polling now live inside
+  // <StorageStep /> (Phase 47 WIRE-01a). The reducer's
+  // `state.storage.{mode,healthy,durable}` is the single read surface
+  // for mint + test step gates below.
+  const storageReady = reducerState.storage.healthy;
+  const durableBackend = Boolean(reducerState.storage.durable);
 
   const initialize = useCallback(async () => {
     setBusy(true);
@@ -638,15 +319,29 @@ function WelcomeShellInner({
   // durable. Treat durable-backend + minted-token as equivalent to
   // permanent for UI gating: step-2 Continue unlocks on mint, step-3
   // Test MCP is callable immediately, no 15-minute bootstrap-TTL wait.
-  const durableBackend =
-    storageStatus?.mode === "kv" || (storageStatus?.mode === "file" && !storageStatus.ephemeral);
+  //
+  // Phase 47 WIRE-01a: `durableBackend` is derived from the reducer's
+  // `state.storage.durable` (bridged from StorageStep's polling hook).
   const persistenceReady = permanent || durableBackend;
+  // Legacy shape used by the still-inline step 2 renderer during the
+  // dual-path migration. Reducer-mode translates back to the file|kv|…
+  // vocabulary that renderStepToken expects.
+  const legacyStorageMode: StorageMode | null =
+    reducerState.storage.mode === "upstash"
+      ? "kv"
+      : reducerState.storage.mode === "filesystem"
+        ? "file"
+        : reducerState.storage.mode === "memory" && reducerState.storage.healthy
+          ? "static"
+          : null;
+  const legacyStorageEphemeral =
+    reducerState.storage.mode === "filesystem" && !reducerState.storage.durable;
 
   // claim === "new" or "claimer" — render the 3-step wizard.
   // ── 3-step wizard ──────────────────────────────────────────────────
-  // Step 1: Storage (detect + optional Upstash install).
-  // Step 2: Auth token (mint on click + save UX + ack).
-  // Step 3: Connect (snippet, MCP test, optional starter skill).
+  // step 1 = Storage (detect + optional Upstash install)
+  // step 2 = Auth token (mint on click + save UX + ack)
+  // step 3 = Connect (snippet, MCP test, optional starter skill)
   //
   // The storage-first order means the token gets minted into the chosen
   // backend: Upstash → durable across cold starts; durable file → also
@@ -696,24 +391,7 @@ function WelcomeShellInner({
       />
 
       <div className="mt-8">
-        {step === 1 &&
-          renderStepStorage({
-            storageStatus,
-            storageChecking,
-            ack,
-            ackMismatch,
-            ackPersisted,
-            detectionTrapped,
-            upstashCheckActive,
-            upstashCheckSecondsLeft,
-            lastCheckOutcome,
-            startUpstashCheck,
-            stopUpstashCheck,
-            loadStorageStatus,
-            acknowledge,
-            onContinue: () => setStep(2),
-            storageReady: Boolean(storageReady),
-          })}
+        {step === 1 && <StorageStep onContinue={() => setStep(2)} />}
 
         {step === 2 &&
           renderStepToken({
@@ -726,8 +404,8 @@ function WelcomeShellInner({
             initialize,
             tokenSaved,
             setTokenSaved,
-            storageMode: storageStatus?.mode ?? null,
-            storageEphemeral: Boolean(storageStatus?.ephemeral),
+            storageMode: legacyStorageMode,
+            storageEphemeral: legacyStorageEphemeral,
             permanent,
             autoMagicState,
             vercelEnvUrl,
@@ -1138,168 +816,11 @@ function TokenPersistencePanel({
   );
 }
 
-function renderStepStorage(props: {
-  storageStatus: StorageStatus | null;
-  storageChecking: boolean;
-  ack: AckValue;
-  ackMismatch: boolean;
-  ackPersisted: boolean;
-  detectionTrapped: boolean;
-  upstashCheckActive: boolean;
-  upstashCheckSecondsLeft: number;
-  lastCheckOutcome:
-    | { kind: "idle" }
-    | { kind: "no-change"; at: number }
-    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
-    | { kind: "timeout"; at: number };
-  startUpstashCheck: () => void;
-  stopUpstashCheck: () => void;
-  loadStorageStatus: (force: boolean) => Promise<void>;
-  acknowledge: (value: "static" | "ephemeral") => void;
-  onContinue: () => void;
-  storageReady: boolean;
-}) {
-  const {
-    storageStatus,
-    storageChecking,
-    ack,
-    ackMismatch,
-    ackPersisted,
-    detectionTrapped,
-    upstashCheckActive,
-    upstashCheckSecondsLeft,
-    lastCheckOutcome,
-    startUpstashCheck,
-    stopUpstashCheck,
-    loadStorageStatus,
-    acknowledge,
-    onContinue,
-    storageReady,
-  } = props;
-
-  return (
-    <section>
-      <StepHeader
-        title="Where your data lives"
-        subtitle="Pick where Kebab MCP saves your credentials, skills, and context. You can change this later from the dashboard."
-      />
-
-      {/* Mode-change celebration — shows briefly after Upstash setup completes */}
-      {lastCheckOutcome.kind === "mode-changed" && lastCheckOutcome.to === "kv" && (
-        <div className="mb-4 rounded-lg border border-emerald-700 bg-emerald-950/50 px-4 py-3">
-          <p className="text-sm font-semibold text-emerald-200">
-            🎉 Upstash detected — your storage is now persistent
-          </p>
-          <p className="text-[11px] text-emerald-300/80 mt-1">
-            Saves from the dashboard will survive cold starts and redeploys. You can continue.
-          </p>
-        </div>
-      )}
-
-      {/* Active upstash setup — visible countdown so the user knows we're checking */}
-      {upstashCheckActive && (
-        <UpstashCheckPanel
-          secondsLeft={upstashCheckSecondsLeft}
-          onStop={stopUpstashCheck}
-          lastCheckOutcome={lastCheckOutcome}
-        />
-      )}
-
-      {/* Timeout — happens when 120s elapsed without detecting Upstash */}
-      {!upstashCheckActive && lastCheckOutcome.kind === "timeout" && (
-        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4">
-          <p className="text-sm font-semibold text-amber-200 mb-1">
-            Still no Upstash detected after 2 minutes
-          </p>
-          <ul className="text-[11px] text-amber-200/90 list-disc list-inside space-y-0.5 mb-3">
-            <li>
-              Confirm the integration was added to <strong>this specific project</strong> in Vercel
-            </li>
-            <li>
-              Check{" "}
-              <a
-                href="https://vercel.com/dashboard"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-blue-400"
-              >
-                Vercel → Deployments
-              </a>{" "}
-              — the redeploy may have failed
-            </li>
-            <li>Try a manual recheck below, or pick a different storage option</li>
-          </ul>
-          <button
-            type="button"
-            onClick={startUpstashCheck}
-            className="text-xs font-medium px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200"
-          >
-            Retry Upstash check
-          </button>
-        </div>
-      )}
-
-      {/* Ack mismatch — user previously acked a different mode */}
-      {storageStatus && ackMismatch && (
-        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
-          <strong className="font-semibold">Your previous choice needs re-confirming.</strong> This
-          instance&apos;s storage changed since you last acked — pick an option from the cards below
-          to continue.
-        </div>
-      )}
-
-      {storageStatus ? (
-        <WelcomeStorageStep
-          status={storageStatus}
-          checking={storageChecking}
-          ack={ack}
-          onRecheck={() => loadStorageStatus(true)}
-          onAcknowledge={acknowledge}
-          onUpstashSetupStart={startUpstashCheck}
-          upstashCheckActive={upstashCheckActive}
-        />
-      ) : (
-        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-sm text-slate-400">
-          Detecting your storage…
-        </div>
-      )}
-
-      {ack !== null && !ackPersisted && (
-        <div className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/30 px-4 py-3 text-xs text-orange-200">
-          <strong className="font-semibold">Your browser blocked our cookie.</strong> Your choice
-          will not persist across reloads — re-confirm if you come back, or unblock cookies for this
-          origin.
-        </div>
-      )}
-
-      {detectionTrapped && (
-        <div className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/30 p-4 text-xs text-amber-200">
-          <p className="font-semibold mb-1">Storage detection failed</p>
-          <p className="leading-relaxed mb-2">
-            We couldn&apos;t reach <code className="font-mono">/api/storage/status</code> after
-            several tries. Continue is unblocked so a flaky network doesn&apos;t trap you here.
-          </p>
-          <button
-            type="button"
-            onClick={() => void loadStorageStatus(true)}
-            disabled={storageChecking}
-            className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-3 py-1.5 rounded-md text-xs font-semibold"
-          >
-            {storageChecking ? "Rechecking…" : "Retry detection"}
-          </button>
-        </div>
-      )}
-
-      <StepFooter
-        primary={{
-          label: storageReady ? "Continue → Auth token" : "Pick or acknowledge a storage option",
-          enabled: storageReady,
-          onClick: onContinue,
-        }}
-      />
-    </section>
-  );
-}
+// Phase 47 WIRE-01a: renderStepStorage + its helper components
+// (WelcomeStorageStep / StorageStatusLine / UpstashPrimaryCta /
+// UpstashCheckPanel / AdvancedOption / StorageBackendsExplainer)
+// moved to app/welcome/steps/storage.tsx. Step 1 now renders via
+// <StorageStep />.
 
 function renderStepConnect(props: {
   token: string | null;
@@ -1519,371 +1040,9 @@ function StepFooter({
   );
 }
 
-/**
- * Active "I added Upstash — checking…" panel. Shows a visible countdown
- * + optional last-outcome message, with an explicit "Stop checking" escape
- * hatch. Closes the v3.5 UX gap where clicking recheck appeared to do
- * nothing — now the user has continuous, obvious feedback.
- */
-function UpstashCheckPanel({
-  secondsLeft,
-  onStop,
-  lastCheckOutcome,
-}: {
-  secondsLeft: number;
-  onStop: () => void;
-  lastCheckOutcome:
-    | { kind: "idle" }
-    | { kind: "no-change"; at: number }
-    | { kind: "mode-changed"; from: StorageMode; to: StorageMode; at: number }
-    | { kind: "timeout"; at: number };
-}) {
-  const elapsed = 120 - secondsLeft;
-  const pct = Math.min(100, Math.max(0, (elapsed / 120) * 100));
-  return (
-    <div className="mb-4 rounded-lg border border-blue-900/60 bg-blue-950/30 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-blue-200">
-          Detecting Upstash setup… ({Math.floor(secondsLeft / 60)}m {secondsLeft % 60}s left)
-        </p>
-        <button
-          type="button"
-          onClick={onStop}
-          className="text-[11px] text-slate-400 hover:text-slate-200 underline"
-        >
-          Stop checking
-        </button>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-blue-500 transition-all duration-1000"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="text-[11px] text-slate-400 leading-relaxed">
-        Vercel typically takes 60–90s to redeploy after the Upstash integration lands. We&apos;re
-        rechecking every 5s.
-        {lastCheckOutcome.kind === "no-change" && (
-          <>
-            {" "}
-            Last check: {new Date(lastCheckOutcome.at).toLocaleTimeString()} — Upstash not detected
-            yet.
-          </>
-        )}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Storage step panel (v4) — one decision, one primary path.
- *
- * Prior design (v3) was a 3-card grid (Upstash / Local file / Env vars only)
- * that conflated two questions: "what's currently detected" and "what
- * should you choose". Both rendered at the same visual weight, the
- * detected card got highlighted as if pre-selected, and the badge pileup
- * (RECOMMENDED green + TEMPORARY amber + current emerald + a separate
- * warning banner) produced a Christmas-tree effect with no dominant
- * signal. Users read the highlighted "temporary" card as the default —
- * directly contradicting the banner telling them not to use it.
- *
- * New hierarchy:
- *   1. Status line — one sentence, detection outcome, neutral or amber
- *   2. Primary CTA — "Set up Upstash" hero, only when the current mode
- *      isn't already durable (kv or file+persistent)
- *   3. Advanced disclosure — ack buttons for users who explicitly want
- *      to stay on /tmp (testing) or env-vars-only (infra-as-code), plus
- *      a pedagogical "how the backends differ" reference
- *
- * Mode-specific behavior:
- *   kv              → ✓ status, no CTA, continue enabled
- *   file (durable)  → ✓ status (Docker/dev disk), no CTA
- *   file (ephemeral)→ ⚠ status, Upstash CTA, advanced: ack "keep /tmp"
- *   static          → ⚠ status, Upstash CTA, advanced: ack "env vars only"
- *   kv-degraded     → red error panel (retained from prior impl)
- */
-function WelcomeStorageStep({
-  status,
-  checking,
-  ack,
-  onRecheck,
-  onAcknowledge,
-  onUpstashSetupStart,
-  upstashCheckActive,
-}: {
-  status: StorageStatus;
-  checking: boolean;
-  ack: AckValue;
-  onRecheck: () => void;
-  onAcknowledge: (value: "static" | "ephemeral") => void;
-  /** Called when the user clicks "Already installed — detect" — kicks off the active check loop. */
-  onUpstashSetupStart: () => void;
-  /** Whether the active upstash setup loop is currently running. */
-  upstashCheckActive: boolean;
-}) {
-  // KV configured but unreachable — infra is broken, don't let the user
-  // pick anything; just surface the error and offer retry.
-  if (status.mode === "kv-degraded") {
-    return (
-      <div className="mb-6 rounded-lg border border-red-900/60 bg-red-950/40 p-5">
-        <p className="text-sm font-semibold text-red-300 mb-1">KV configured but unreachable</p>
-        <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
-          We don&apos;t silently downgrade to file storage during a temporary KV outage — that would
-          cause data loss when Upstash recovers. Check that your Upstash database is online and your
-          token is valid, then click recheck.
-        </p>
-        {status.error && (
-          <p className="text-[11px] font-mono text-red-200 bg-red-950/60 p-2 rounded mb-3">
-            {status.error}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={onRecheck}
-          disabled={checking}
-          className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-4 py-2 rounded-md text-xs font-semibold"
-        >
-          {checking ? "Rechecking…" : "Retry detection"}
-        </button>
-      </div>
-    );
-  }
-
-  const isKv = status.mode === "kv";
-  const isFileDurable = status.mode === "file" && !status.ephemeral;
-  const isEphemeral = status.mode === "file" && Boolean(status.ephemeral);
-  const isStatic = status.mode === "static";
-  // Durable backends need no user action. We still render an advanced
-  // disclosure so power users can see the other backends, but there's no
-  // CTA to push — status line alone is enough.
-  const isSettled = isKv || isFileDurable;
-
-  return (
-    <div className="mb-8 space-y-4">
-      <StorageStatusLine status={status} />
-
-      {!isSettled && (
-        <UpstashPrimaryCta
-          onUpstashSetupStart={onUpstashSetupStart}
-          checking={checking}
-          upstashCheckActive={upstashCheckActive}
-        />
-      )}
-
-      {/* Open-by-default once the user has acknowledged their fallback
-          choice, so they can see the "Acknowledged" state rather than
-          wondering where the button went. */}
-      <details
-        className="rounded-lg border border-slate-800 bg-slate-900/20 group"
-        open={ack !== null}
-      >
-        <summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center justify-between">
-          <span>Other storage options</span>
-          <span className="text-[10px] text-slate-600 group-open:hidden">expand</span>
-        </summary>
-        <div className="border-t border-slate-800 px-4 py-4 space-y-3">
-          {isEphemeral && (
-            <AdvancedOption
-              title="Keep /tmp — testing only"
-              description="Vercel recycles the container (and wipes /tmp) every 15–30 min of inactivity. Credentials saved from the dashboard silently disappear. Only pick this if you're actively poking around."
-              tone="warning"
-              buttonLabel={
-                ack === "ephemeral"
-                  ? "Acknowledged — saves are temporary"
-                  : "I understand — keep temporary storage"
-              }
-              onClick={() => onAcknowledge("ephemeral")}
-              disabled={ack === "ephemeral"}
-            />
-          )}
-          {isStatic && (
-            <AdvancedOption
-              title="Env vars only — no runtime saves"
-              description="Set credentials at deploy time in Vercel's env vars. Dashboard saves are disabled (you get .env stub helpers instead). Fits infra-as-code workflows."
-              tone="neutral"
-              buttonLabel={
-                ack === "static" ? "Acknowledged — env-vars only" : "Continue env-vars only"
-              }
-              onClick={() => onAcknowledge("static")}
-              disabled={ack === "static"}
-            />
-          )}
-          <StorageBackendsExplainer />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-/** One-line status — the detected state, tone matches severity. */
-function StorageStatusLine({ status }: { status: StorageStatus }) {
-  if (status.mode === "kv") {
-    return (
-      <div className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-2.5 text-sm text-emerald-300 flex items-center gap-2">
-        <span aria-hidden>✓</span>
-        <span>
-          Upstash connected
-          {status.kvUrl && (
-            <>
-              {" · "}
-              <code className="font-mono text-[11px] text-emerald-200/80">{status.kvUrl}</code>
-            </>
-          )}
-        </span>
-      </div>
-    );
-  }
-  if (status.mode === "file" && !status.ephemeral) {
-    return (
-      <div className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-2.5 text-sm text-emerald-300 flex items-center gap-2">
-        <span aria-hidden>✓</span>
-        <span>
-          Writing to local disk{" "}
-          {status.dataDir && (
-            <>
-              (<code className="font-mono text-[11px] text-emerald-200/80">{status.dataDir}</code>)
-            </>
-          )}{" "}
-          — persists across restarts
-        </span>
-      </div>
-    );
-  }
-  if (status.mode === "file" && status.ephemeral) {
-    return (
-      <div className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-2.5 text-sm text-amber-200 flex items-start gap-2">
-        <span aria-hidden>⚠</span>
-        <span>
-          Your data won&apos;t survive restarts — Vercel wipes{" "}
-          <code className="font-mono text-[11px]">/tmp</code> every 15–30 min of inactivity
-        </span>
-      </div>
-    );
-  }
-  // static
-  return (
-    <div className="rounded-md border border-amber-800 bg-amber-950/30 px-4 py-2.5 text-sm text-amber-200 flex items-center gap-2">
-      <span aria-hidden>⚠</span>
-      <span>Read-only filesystem — no persistent storage configured yet</span>
-    </div>
-  );
-}
-
-/**
- * Primary CTA: guide the user to install Upstash. The outbound link is
- * the setup action; the secondary button kicks off a 120s poll loop for
- * users who've already installed it (or just clicked the link and are
- * waiting for Vercel to finish the automatic redeploy).
- */
-function UpstashPrimaryCta({
-  onUpstashSetupStart,
-  checking,
-  upstashCheckActive,
-}: {
-  onUpstashSetupStart: () => void;
-  checking: boolean;
-  upstashCheckActive: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-blue-800/70 bg-blue-950/20 p-5 space-y-4">
-      <div>
-        <p className="text-base font-semibold text-white mb-1">Set up Upstash Redis</p>
-        <p className="text-sm text-slate-400 leading-relaxed">
-          Free tier, ~2-minute install. Saves survive restarts and redeploys on any host.
-        </p>
-      </div>
-      <div className="flex flex-col sm:flex-row gap-3">
-        <a
-          href="https://vercel.com/integrations/upstash"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-md text-sm font-semibold"
-        >
-          Add Upstash integration <span aria-hidden>↗</span>
-        </a>
-        <button
-          type="button"
-          onClick={onUpstashSetupStart}
-          disabled={upstashCheckActive || checking}
-          className="inline-flex items-center justify-center bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 px-4 py-2 rounded-md text-sm font-semibold"
-        >
-          {upstashCheckActive
-            ? "Auto-detecting…"
-            : checking
-              ? "Rechecking…"
-              : "Already installed — detect"}
-        </button>
-      </div>
-      <p className="text-[11px] text-slate-500 leading-relaxed">
-        After you add the integration, Vercel redeploys with{" "}
-        <code className="font-mono">UPSTASH_REDIS_REST_URL</code> /{" "}
-        <code className="font-mono">_TOKEN</code>. We poll for ~120s and pick it up automatically.
-      </p>
-    </div>
-  );
-}
-
-/** Ack card inside the advanced disclosure. */
-function AdvancedOption({
-  title,
-  description,
-  tone,
-  buttonLabel,
-  onClick,
-  disabled,
-}: {
-  title: string;
-  description: string;
-  tone: "warning" | "neutral";
-  buttonLabel: string;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  const border = tone === "warning" ? "border-amber-900/60" : "border-slate-800";
-  const titleColor = tone === "warning" ? "text-amber-200" : "text-slate-200";
-  const btnClass =
-    tone === "warning"
-      ? "bg-slate-800 hover:bg-slate-700 text-amber-200 border border-amber-900/60"
-      : "bg-slate-800 hover:bg-slate-700 text-slate-200";
-  return (
-    <div className={`rounded-md border ${border} bg-slate-950/40 p-4 space-y-2`}>
-      <p className={`text-sm font-semibold ${titleColor}`}>{title}</p>
-      <p className="text-[11px] text-slate-400 leading-relaxed">{description}</p>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className={`${btnClass} disabled:opacity-60 px-3 py-1.5 rounded-md text-xs font-semibold`}
-      >
-        {buttonLabel}
-      </button>
-    </div>
-  );
-}
-
-/** Reference card: plain-language summary of the three backends. */
-function StorageBackendsExplainer() {
-  return (
-    <div className="rounded-md border border-slate-800 bg-slate-950/30 p-4 space-y-2 text-[11px] text-slate-500 leading-relaxed">
-      <p className="text-slate-400 font-semibold text-xs mb-1">How the backends differ</p>
-      <p>
-        <strong className="text-slate-300">Upstash (Redis):</strong> hosted key-value store. Saves
-        from the dashboard hit it instantly. Works on Vercel, Docker, anywhere. Free tier covers
-        personal use.
-      </p>
-      <p>
-        <strong className="text-slate-300">Local file:</strong> writes{" "}
-        <code className="font-mono">./data/kv.json</code> + <code className="font-mono">.env</code>.
-        Auto-selected when the host has a durable filesystem (Docker with a mounted volume, local
-        dev). Not for multi-instance deploys — each has its own file.
-      </p>
-      <p>
-        <strong className="text-slate-300">Env vars only:</strong> no runtime persistence.
-        Credentials live in the deploy environment and get read at startup. Change = redeploy.
-      </p>
-    </div>
-  );
-}
+// Phase 47 WIRE-01a: UpstashCheckPanel / WelcomeStorageStep /
+// StorageStatusLine / UpstashPrimaryCta / AdvancedOption /
+// StorageBackendsExplainer moved to app/welcome/steps/storage.tsx.
 
 function TestMcpPanel({
   persistenceReady,

@@ -40,10 +40,19 @@ export const STEPS: readonly WizardStep[] = Object.freeze([
  * Storage-detection summary consumed by the mint gate. Mirrors the
  * shape of the full `StorageStatus` in `WelcomeStateContext` but
  * carries only the fields this module needs.
+ *
+ * `durable` is stricter than `healthy`: `healthy` allows acked-ephemeral
+ * ("user explicitly accepted /tmp"), while `durable` requires actual
+ * persistence across cold starts. The mint + test steps read `durable`
+ * to decide whether the token survives without a Vercel env-var write.
+ * Optional because v0 test fixtures don't construct it; `canAdvanceTo*`
+ * predicates only read `healthy` / `mode`.
  */
 export interface WizardStorageSummary {
   healthy: boolean;
   mode: "upstash" | "filesystem" | "memory";
+  /** True when the backend persists across cold starts (kv OR non-ephemeral file). Phase 47 WIRE-01a. */
+  durable?: boolean;
 }
 
 /**

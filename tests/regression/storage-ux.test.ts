@@ -24,13 +24,21 @@ import { resolve } from "node:path";
 
 function readClient(): string {
   // Phase 45 Task 5 moved the welcome render tree from `welcome-client.tsx`
-  // (now a 29-LOC shim) into `WelcomeShell.tsx`. The grep-contract
-  // concatenates both so the assertions fire against whichever file owns
-  // the JSX subtree they're guarding. Callers treat the result as a
-  // single logical "client source".
+  // (now a 29-LOC shim) into `WelcomeShell.tsx`.
+  // Phase 47 WIRE-01a/b/c/d further migrated each step's JSX subtree into
+  // app/welcome/steps/{storage,mint,test,already-initialized}.tsx. The
+  // grep-contract concatenates all five so the assertions fire against
+  // whichever file owns the JSX subtree they're guarding.
   const shim = readFileSync(resolve(process.cwd(), "app/welcome/welcome-client.tsx"), "utf-8");
   const shell = readFileSync(resolve(process.cwd(), "app/welcome/WelcomeShell.tsx"), "utf-8");
-  return shim + "\n" + shell;
+  const storage = readFileSync(resolve(process.cwd(), "app/welcome/steps/storage.tsx"), "utf-8");
+  const mint = readFileSync(resolve(process.cwd(), "app/welcome/steps/mint.tsx"), "utf-8");
+  const test = readFileSync(resolve(process.cwd(), "app/welcome/steps/test.tsx"), "utf-8");
+  const already = readFileSync(
+    resolve(process.cwd(), "app/welcome/steps/already-initialized.tsx"),
+    "utf-8"
+  );
+  return [shim, shell, storage, mint, test, already].join("\n");
 }
 
 function readStatusRoute(): string {

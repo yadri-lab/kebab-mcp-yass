@@ -78,7 +78,7 @@ export const initialWelcomeState: WelcomeState = {
   step: "storage",
   token: null,
   tokenSaved: false,
-  storage: { healthy: false, mode: "memory" },
+  storage: { healthy: false, mode: "memory", durable: false },
   // Extension fields
   instanceUrl: "",
   ack: null,
