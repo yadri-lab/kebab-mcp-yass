@@ -22,6 +22,9 @@ try {
 }
 
 export default defineConfig({
+  // Root testDir unused — each project below declares its own testDir.
+  // Kept for back-compat with bare `npx playwright test` invocations
+  // that don't pass --project.
   testDir: "tests/visual",
   timeout: 30_000,
   use: {
@@ -40,9 +43,29 @@ export default defineConfig({
         timeout: 60_000,
       },
   projects: [
+    // Visual regression project — snapshot-based, read-only. Unchanged.
+    {
+      name: "visual",
+      testDir: "tests/visual",
+      use: { browserName: "chromium" },
+    },
+    // Kept as an alias so the pre-existing `--project=chromium` invocation
+    // still works for anyone who scripted it before the rename.
     {
       name: "chromium",
+      testDir: "tests/visual",
       use: { browserName: "chromium" },
+    },
+    // E2E project (TEST-02) — state-mutating, black-box. Different test
+    // dir + no storageState reuse (each test resets cookies/KV).
+    {
+      name: "e2e",
+      testDir: "tests/e2e",
+      retries: process.env.CI ? 1 : 0,
+      use: {
+        browserName: "chromium",
+        storageState: undefined,
+      },
     },
   ],
 });
