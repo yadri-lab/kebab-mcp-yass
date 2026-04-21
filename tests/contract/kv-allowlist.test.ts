@@ -27,7 +27,7 @@ const ALLOWLIST = new Set<string>([
   // Operator-wide systems — tenant-scoping is v0.11 work (see FOLLOW-UP)
   "src/core/backup.ts",
   "src/core/log-store.ts",
-  "src/core/rate-limit.ts",
+  // rate-limit.ts migrated to getContextKVStore (Phase 42 / TEN-01)
   "src/core/tool-toggles.ts",
   "src/core/config.ts",
   // Migration scanner — intentionally global to inventory legacy keys

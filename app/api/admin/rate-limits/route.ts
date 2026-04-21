@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getKVStore, kvScanAll } from "@/core/kv-store";
-import { getTenantId } from "@/core/tenant";
+import { getContextKVStore, getCurrentTenantId } from "@/core/request-context";
 import { withAdminAuth } from "@/core/with-admin-auth";
 import type { PipelineContext } from "@/core/pipeline";
 
@@ -18,64 +18,120 @@ interface RateLimitScope {
  * Lists active rate limit buckets from KV, grouped by scope.
  * Auth-gated via admin token.
  *
- * KV key format: `ratelimit:{tenantId}:{scope}:{idHash}:{minuteBucket}`
+ * **Phase 42 (TEN-01) — tenant-scoped:**
  *
- * SEC-01b: filters scan results by the admin's tenant. Rate-limit
- * keys themselves embed the tenant in the key structure (written via
- * the allowlisted `getKVStore()` in rate-limit.ts), so the scan is
- * global but the returned rows are filtered to the admin's tenant.
- * An explicit `admin:global` future header could opt into the old
- * cross-tenant view; not exposed in v0.10.
+ * KV key format (new, v0.11+): `ratelimit:<scope>:<idHash>:<minuteBucket>`
+ * — 4 parts after the `ratelimit:` prefix; tenant namespace lives in
+ * the TenantKVStore wrapper (`tenant:<id>:ratelimit:...`).
+ *
+ * Default path scans the requester's tenant namespace via
+ * `getContextKVStore().scan(...)` — no more application-code tenant
+ * filter; the namespace handles isolation.
+ *
+ * Root-operator opt-in: `?scope=all` bypasses the tenant wrapper and
+ * scans every tenant's namespace via raw `getKVStore()`. This is the
+ * admin-cross-tenant view; the old 5-part key shape is ALSO parsed
+ * (legacy pre-v0.11 buckets) so operators can see both pre- and
+ * post-migration data during the 2-release transition window.
+ *
+ * Response shape unchanged (scopes[] of {scope, current, max,
+ * tenantId, percentage}).
  */
+// KV-ALLOWLIST-EXEMPT: `?scope=all` is a deliberate root-operator
+// escape hatch for cross-tenant rate-limit visibility. See
+// `.planning/phases/42-tenant-scoping/INVENTORY.md` §3. Default path
+// uses `getContextKVStore()` — safe.
 async function getHandler(ctx: PipelineContext) {
   const request = ctx.request;
-
-  let requesterTenant: string | null;
-  try {
-    requesterTenant = getTenantId(request);
-  } catch {
-    return NextResponse.json({ error: "Invalid tenant header" }, { status: 400 });
-  }
-  const tenantFilter = requesterTenant ?? "default";
+  const url = new URL(request.url);
+  const scopeAll = url.searchParams.get("scope") === "all";
 
   const defaultLimit = Math.max(1, parseInt(process.env.MYMCP_RATE_LIMIT_RPM ?? "60", 10) || 60);
 
   try {
-    const kv = getKVStore();
-    const keys = await kvScanAll(kv, "ratelimit:*");
-
-    if (keys.length === 0) {
-      return NextResponse.json({ scopes: [] });
-    }
-
     // Current minute bucket — only count active buckets
     const now = Date.now();
     const windowMs = 60_000;
     const currentBucket = Math.floor(now / windowMs);
 
-    // Filter to current-bucket keys only, then batch-read values
     const groups = new Map<string, { scope: string; tenantId: string; current: number }>();
+    type ActiveKey = { key: string; tenantId: string; scope: string; rawKey?: string };
+    const activeKeys: ActiveKey[] = [];
 
-    // Pre-filter keys to current bucket AND to the requesting tenant.
-    const activeKeys: { key: string; tenantId: string; scope: string }[] = [];
-    for (const key of keys) {
-      const parts = key.split(":");
-      if (parts.length < 5) continue;
-      const bucketStr = parts[parts.length - 1];
-      const bucket = parseInt(bucketStr, 10);
-      if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
-      const keyTenant = parts[1];
-      // SEC-01b: only the current admin's tenant gets surfaced.
-      if (keyTenant !== tenantFilter) continue;
-      activeKeys.push({ key, tenantId: keyTenant, scope: parts[2] });
+    if (scopeAll) {
+      // Root-operator cross-tenant view. Scan the raw (unwrapped) store
+      // and parse BOTH legacy (5-part: `ratelimit:<tid>:<scope>:<hash>:<bucket>`)
+      // and new-tenant-wrapped (6-part: `tenant:<tid>:ratelimit:<scope>:<hash>:<bucket>`)
+      // shapes. Also catches bare null-tenant new-shape
+      // (4-part after "ratelimit:": `ratelimit:<scope>:<hash>:<bucket>`).
+      const rawKV = getKVStore();
+      const [rlKeys, tenantKeys] = await Promise.all([
+        kvScanAll(rawKV, "ratelimit:*"),
+        kvScanAll(rawKV, "tenant:*"),
+      ]);
+
+      for (const key of rlKeys) {
+        const parts = key.split(":");
+        // Legacy pre-v0.11 5-part shape: ratelimit:<tenant>:<scope>:<hash>:<bucket>
+        // vs new null-tenant 4-part shape: ratelimit:<scope>:<hash>:<bucket>
+        let tenantId: string;
+        let scope: string;
+        let bucket: number;
+        if (parts.length === 5) {
+          tenantId = parts[1];
+          scope = parts[2];
+          bucket = parseInt(parts[4], 10);
+        } else if (parts.length === 4) {
+          tenantId = "default";
+          scope = parts[1];
+          bucket = parseInt(parts[3], 10);
+        } else {
+          continue;
+        }
+        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
+        activeKeys.push({ key, tenantId, scope, rawKey: key });
+      }
+
+      for (const key of tenantKeys) {
+        // tenant:<tid>:ratelimit:<scope>:<hash>:<bucket> — 6 parts
+        const parts = key.split(":");
+        if (parts.length !== 6 || parts[2] !== "ratelimit") continue;
+        const tenantId = parts[1];
+        const scope = parts[3];
+        const bucket = parseInt(parts[5], 10);
+        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
+        activeKeys.push({ key, tenantId, scope, rawKey: key });
+      }
+    } else {
+      // Default path: tenant-scoped scan. TenantKVStore wraps the match
+      // pattern and strips the prefix from returned keys, so we see
+      // `ratelimit:<scope>:<hash>:<bucket>` (4 parts).
+      const kv = getContextKVStore();
+      const keys = await kvScanAll(kv, "ratelimit:*");
+      const tenantId = getCurrentTenantId() ?? "default";
+      for (const key of keys) {
+        const parts = key.split(":");
+        if (parts.length !== 4) continue;
+        const bucket = parseInt(parts[3], 10);
+        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
+        activeKeys.push({ key, tenantId, scope: parts[1] });
+      }
     }
 
-    // Batch-read all active key values via mget
+    if (activeKeys.length === 0) {
+      return NextResponse.json({ scopes: [] });
+    }
+
+    // Batch-read active key values. For scope=all we read via the raw
+    // KV (rawKey is the un-wrapped key). For default we read via the
+    // tenant-wrapped kv (so the bare key re-wraps correctly).
     let values: (string | null)[];
-    if (activeKeys.length > 0 && typeof kv.mget === "function") {
-      values = await kv.mget(activeKeys.map((k) => k.key));
+    const readKV = scopeAll ? getKVStore() : getContextKVStore();
+    const readKeys = scopeAll ? activeKeys.map((k) => k.rawKey!) : activeKeys.map((k) => k.key);
+    if (readKeys.length > 0 && typeof readKV.mget === "function") {
+      values = await readKV.mget(readKeys);
     } else {
-      values = await Promise.all(activeKeys.map((k) => kv.get(k.key)));
+      values = await Promise.all(readKeys.map((k) => readKV.get(k)));
     }
 
     for (let i = 0; i < activeKeys.length; i++) {

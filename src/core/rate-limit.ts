@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { getKVStore, kvScanAll } from "./kv-store";
-import { getCurrentTenantId } from "./request-context";
+import { kvScanAll } from "./kv-store";
+import { getContextKVStore, getCurrentTenantId } from "./request-context";
+import { dualReadKV } from "./migrations/v0.11-tenant-scope";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -55,20 +56,35 @@ export function __resetInMemoryRateLimitForTests(): void {
 /**
  * Sliding-window (fixed per-minute bucket) rate limiter.
  *
- * KV key: `ratelimit:{scope}:{identifierHash}:{minuteBucket}`
- * Default limit controlled by MYMCP_RATE_LIMIT_RPM env var (default 60).
- * KV failures are treated as allow (fail open).
+ * **Phase 42 (TEN-01) — key-shape migration:**
  *
- * **Atomic path (v0.6):** when the KV implementation provides `incr`
- * (UpstashKV and MemoryKV for tests), we pipeline INCR + EXPIRE in a
- * single round-trip. This eliminates the classic get-then-set race
- * where two concurrent callers each read `count=N` and both write
- * `N+1`. The bucket TTL auto-expires stale keys, so no sweep is needed
- * on the incr path.
+ * Old shape (pre-v0.11):
+ *   `ratelimit:<tenantId>:<scope>:<idHash>:<bucket>`
+ *   — tenantId embedded in the key body; written via bare `getKVStore()`.
  *
- * **Legacy path:** the old get-then-set branch is kept only for stores
- * that don't implement `incr` (none in production). It's racy but
- * bounded, and runs a best-effort sweep of stale buckets.
+ * New shape (v0.11+):
+ *   `ratelimit:<scope>:<idHash>:<bucket>` (key body),
+ *   with TenantKVStore auto-prefixing to
+ *   `tenant:<id>:ratelimit:<scope>:<idHash>:<bucket>` when a tenant
+ *   context is active. Null-tenant keys stay at `ratelimit:...` (no
+ *   prefix), matching the null-tenant passthrough in TenantKVStore.
+ *
+ * Legacy keys are read transparently via `dualReadKV()` during the
+ * 2-release transition window. Writes ALWAYS go to the new (wrapped)
+ * key. Legacy-key DELETE is deferred to v0.13.
+ *
+ * **Atomic-path caveat:** the atomic `incr` branch does NOT invoke
+ * `dualReadKV`. Carrying over a legacy bucket into the atomic pipeline
+ * would require a read-then-incr sequence and defeat the atomicity
+ * guarantee that eliminates the get-then-set race. In the common case
+ * (Upstash in prod), a tenant with a legacy bucket gets a fresh count
+ * starting at 1 on the first post-v0.11 request within a 60-second
+ * bucket window. That is transient over-leniency — the bucket expires
+ * within 60 s and subsequent windows are clean.
+ *
+ * **Legacy path:** the get-then-set branch is kept only for stores
+ * that don't implement `incr` (none in production). It invokes
+ * `dualReadKV` so legacy counts carry over correctly.
  */
 export async function checkRateLimit(
   identifier: string,
@@ -82,22 +98,34 @@ export async function checkRateLimit(
   const minuteBucket = Math.floor(now / windowMs);
   const resetAt = (minuteBucket + 1) * windowMs;
   const idHash = hashToken(identifier);
-  const tenantId = getCurrentTenantId() ?? "global";
-  const key = `ratelimit:${tenantId}:${scope}:${idHash}:${minuteBucket}`;
+  const tenantId = getCurrentTenantId();
+
+  // Key body (no tenantId embedded). TenantKVStore prefixes automatically.
+  const key = `ratelimit:${scope}:${idHash}:${minuteBucket}`;
+
+  // Legacy key (pre-v0.11 shape). Read-only; used during dual-read.
+  const legacyKey = legacyRateLimitKey(tenantId, scope, idHash, minuteBucket);
 
   // HOST-05: opt-in in-memory path. UNSAFE across replicas. Must be
-  // checked BEFORE getKVStore() so dev/test setups that want a pure
-  // in-process limiter never touch KV (filesystem or Upstash).
+  // checked BEFORE any KV resolution so dev/test setups that want a
+  // pure in-process limiter never touch KV (filesystem or Upstash).
+  // Composite in-memory key keeps tenants separate even without the
+  // KV namespace wrapper.
   if (process.env.MYMCP_RATE_LIMIT_INMEMORY === "1") {
-    return checkRateLimitInMemory(key, limit, resetAt);
+    const memKey = `${tenantId ?? "null"}:${key}`;
+    return checkRateLimitInMemory(memKey, limit, resetAt);
   }
 
-  const kv = getKVStore();
+  const kv = getContextKVStore();
 
   try {
     // Atomic path — preferred whenever incr is implemented. TTL is set
     // to 2× the window so the bucket always outlives its own relevance
-    // even under clock skew, without accumulating forever.
+    // even under clock skew, without accumulating forever. See the
+    // "Atomic-path caveat" in the function doc-comment: this branch
+    // intentionally does NOT consult the legacy key; carrying a legacy
+    // count into the atomic pipeline would defeat the atomicity
+    // guarantee, and the 60-second bucket TTL bounds the staleness.
     if (typeof kv.incr === "function") {
       const count = await kv.incr(key, { ttlSeconds: Math.ceil((windowMs / 1000) * 2) });
       // v0.6 MED-1: FilesystemKV.incr does not honor TTL (dev-only path),
@@ -107,7 +135,7 @@ export async function checkRateLimit(
       // avoid doing it on every request.
       if (kv.kind === "filesystem" && count === 1) {
         // fire-and-forget OK: janitor for stale bucket keys; no response dependency
-        void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
+        void sweepOldBuckets(scope, idHash, minuteBucket);
       }
       if (count > limit) {
         return { allowed: false, remaining: 0, resetAt };
@@ -116,18 +144,21 @@ export async function checkRateLimit(
     }
 
     // Legacy fallback (stores without incr). Racy but bounded.
-    const raw = await kv.get(key);
+    // dualReadKV carries legacy-bucket counts forward during the
+    // v0.11 transition window.
+    const raw = await dualReadKV(kv, key, legacyKey);
     const count = raw ? parseInt(raw, 10) : 0;
 
     if (count >= limit) {
       return { allowed: false, remaining: 0, resetAt };
     }
 
+    // Write-through ALWAYS goes to the new (wrapped) key.
     await kv.set(key, String(count + 1));
 
     if (count === 0) {
       // fire-and-forget OK: janitor for stale bucket keys; no response dependency
-      void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
+      void sweepOldBuckets(scope, idHash, minuteBucket);
     }
 
     return { allowed: true, remaining: limit - count - 1, resetAt };
@@ -142,18 +173,34 @@ export async function checkRateLimit(
 }
 
 /**
- * Best-effort bucket cleanup. Lists keys under the scope+id prefix and
- * deletes anything older than the current minute. Failures are swallowed.
+ * Compute the pre-v0.11 rate-limit KV key for dual-read.
+ *
+ * Exported so the v0.11 migration shim's inventory step can count
+ * legacy buckets via `kvScanAll(getKVStore(), "ratelimit:*")` and
+ * detect un-prefixed entries (not starting with `tenant:`).
+ */
+export function legacyRateLimitKey(
+  tenantId: string | null,
+  scope: string,
+  idHash: string,
+  minuteBucket: number
+): string {
+  return `ratelimit:${tenantId ?? "global"}:${scope}:${idHash}:${minuteBucket}`;
+}
+
+/**
+ * Best-effort bucket cleanup. Scans within the current tenant's
+ * namespace (via `getContextKVStore()`) and deletes anything older
+ * than the current minute. Failures are swallowed.
  */
 async function sweepOldBuckets(
   scope: string,
   idHash: string,
-  currentBucket: number,
-  tenantId: string = "global"
+  currentBucket: number
 ): Promise<void> {
   try {
-    const kv = getKVStore();
-    const prefix = `ratelimit:${tenantId}:${scope}:${idHash}:`;
+    const kv = getContextKVStore();
+    const prefix = `ratelimit:${scope}:${idHash}:`;
     const keys = await kvScanAll(kv, `${prefix}*`);
     for (const key of keys) {
       const bucketStr = key.slice(prefix.length);

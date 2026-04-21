@@ -123,11 +123,13 @@ describe("checkRateLimit — MemoryKV atomic path", () => {
 
   beforeEach(async () => {
     memKv = new MemoryKV();
-    // Swap getKVStore by monkey-patching the module cache: we import it
-    // and override via resetting + stubbing the env to force fallback,
-    // but the cleanest path is to inject via vi.spyOn on the module.
+    // Phase 42 (TEN-01): rate-limit now reads via getContextKVStore().
+    // Spy on that module so the test's in-memory store is what gets
+    // returned under the null-tenant (default) path.
     const kvModule = await import("./kv-store");
     vi.spyOn(kvModule, "getKVStore").mockReturnValue(memKv);
+    const ctxModule = await import("./request-context");
+    vi.spyOn(ctxModule, "getContextKVStore").mockReturnValue(memKv);
   });
 
   afterEach(() => {
