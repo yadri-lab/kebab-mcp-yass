@@ -7,6 +7,7 @@ import { loadDocs } from "@/core/docs";
 import { getDisabledTools } from "@/core/tool-toggles";
 import { ConfigTabs } from "./tabs";
 import { DryRunBanner } from "./dry-run-banner";
+import { DestructiveVarsBanner } from "./banner";
 import { cookies } from "next/headers";
 import packageJson from "../../package.json";
 
@@ -93,6 +94,7 @@ export default async function ConfigPage({
 
   return (
     <AppShell title={meta.title} subtitle={meta.subtitle} displayName={config.displayName}>
+      <DestructiveVarsBanner />
       {dryRunMode && <DryRunBanner />}
       <ConfigTabs
         activeTab={tab}
