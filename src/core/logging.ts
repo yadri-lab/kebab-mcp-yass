@@ -3,6 +3,7 @@ import { McpToolError } from "./errors";
 import type { ToolResult } from "./types";
 import { startToolSpan, endToolSpan } from "./tracing";
 import { getToolTimeout } from "./config";
+import { getCurrentTenantId } from "./request-context";
 
 // ── T10: MYMCP_TOOL_TIMEOUT enforcement at the transport ─────────
 //
@@ -101,15 +102,64 @@ export interface ToolLog {
   requestId?: string;
 }
 
-// In-memory ring buffer for recent logs (survives across requests in same serverless instance)
-const LOG_BUFFER_SIZE = 100;
-const recentLogs: ToolLog[] = [];
+// ── ISO-01 / Phase 48 — per-tenant ring buffer ────────────────────
+//
+// Before Phase 48, this module held a single operator-wide
+// `ToolLog[]` capped at 100. Under one warm lambda serving two
+// tenants, tenant A's logs landed in the same array tenant B read
+// from (Phase 42 FOLLOW-UP §1). The durable store fixed that in
+// Phase 42 / TEN-02, but the fast-path in-memory buffer still leaked.
+//
+// The buffer is now `Map<tenantId | "__root__", ToolLog[]>` keyed
+// from `getCurrentTenantId()`. Each bucket LRU-trims independently
+// under the `BUFFER_CAP_PER_TENANT` cap, so one noisy tenant cannot
+// evict another's entries. The "__root__" sentinel holds writes
+// that occur outside any requestContext (boot, cron, tests).
+//
+// Cap default: 100 per tenant. Configurable via
+// `KEBAB_LOG_BUFFER_PER_TENANT`. This is a new env var (no
+// `MYMCP_*` predecessor) — the alias logic is Phase 50.
+//
+// TODO(FACADE-02a, Task 5): migrate BUFFER_CAP read from
+// `process.env.KEBAB_LOG_BUFFER_PER_TENANT` to
+// `getConfig('KEBAB_LOG_BUFFER_PER_TENANT')` from @/core/config-facade.
+/** Sentinel bucket key for writes that happen outside any requestContext. */
+const ROOT_BUCKET = "__root__" as const;
+
+/** Per-tenant ring buffer cap. Defaults to 100. */
+function getBufferCapPerTenant(): number {
+  const raw = process.env.KEBAB_LOG_BUFFER_PER_TENANT;
+  if (!raw) return 100;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 100;
+}
+
+const buffers: Map<string, ToolLog[]> = new Map();
+
+/**
+ * Test-only. Clears every per-tenant bucket. Parallels Phase 42's
+ * `__resetV011MigrationForTests`.
+ */
+export function __resetRingBufferForTests(): void {
+  buffers.clear();
+}
+
+function bucketFor(tenantId: string | null | undefined): ToolLog[] {
+  const key = tenantId ?? ROOT_BUCKET;
+  let buf = buffers.get(key);
+  if (!buf) {
+    buf = [];
+    buffers.set(key, buf);
+  }
+  return buf;
+}
 
 export function logToolCall(log: ToolLog) {
-  recentLogs.push(log);
-  if (recentLogs.length > LOG_BUFFER_SIZE) {
-    recentLogs.shift();
-  }
+  const key = getCurrentTenantId() ?? ROOT_BUCKET;
+  const buf = bucketFor(key);
+  buf.push(log);
+  const cap = getBufferCapPerTenant();
+  while (buf.length > cap) buf.shift();
 
   const emoji = log.status === "success" ? "✓" : "✗";
   const errorSuffix = log.error
@@ -186,7 +236,13 @@ export function getToolStats(): {
   const byToken: Record<string, { calls: number; errors: number }> = {};
   const allDurations: number[] = [];
 
-  for (const log of recentLogs) {
+  // ISO-01 / Phase 48: aggregate across the flattened union of all
+  // per-tenant buckets. `byToken` keeps its operator-wide role — the
+  // admin metrics tab is root-scoped.
+  const allLogs: ToolLog[] = [];
+  for (const buf of buffers.values()) allLogs.push(...buf);
+
+  for (const log of allLogs) {
     if (!byTool[log.tool]) {
       byTool[log.tool] = { calls: 0, errors: 0, durations: [] };
     }
@@ -204,9 +260,9 @@ export function getToolStats(): {
     }
   }
 
-  const totalCalls = recentLogs.length;
-  const errorCount = recentLogs.filter((l) => l.status === "error").length;
-  const totalMs = recentLogs.reduce((sum, l) => sum + l.durationMs, 0);
+  const totalCalls = allLogs.length;
+  const errorCount = allLogs.filter((l) => l.status === "error").length;
+  const totalMs = allLogs.reduce((sum, l) => sum + l.durationMs, 0);
   const sortedAll = [...allDurations].sort((a, b) => a - b);
 
   return {
@@ -234,9 +290,39 @@ export function getToolStats(): {
   };
 }
 
-export function getRecentLogs(count?: number): ToolLog[] {
-  const n = Math.min(count || 20, LOG_BUFFER_SIZE);
-  return recentLogs.slice(-n);
+/**
+ * Return the most recent log entries.
+ *
+ * ISO-01 / Phase 48: reads are now tenant-scoped.
+ *   - Default: current tenant bucket (`getCurrentTenantId() ?? "__root__"`).
+ *   - `opts.tenantId`: explicit bucket select — admin root query for a
+ *     specific tenant. Pass `null` for the __root__ bucket.
+ *   - `opts.scope === 'all'`: flattened union across every bucket,
+ *     sorted by timestamp descending; the root-operator path for
+ *     `/config → Logs` tenant selector ("All tenants (root)").
+ */
+export function getRecentLogs(
+  count?: number,
+  opts?: { tenantId?: string | null; scope?: "all" }
+): ToolLog[] {
+  const cap = getBufferCapPerTenant();
+  const n = Math.min(count || 20, Math.max(cap, 1) * 100); // generous ceiling
+
+  if (opts?.scope === "all") {
+    const all: ToolLog[] = [];
+    for (const buf of buffers.values()) all.push(...buf);
+    all.sort((a, b) => {
+      const ta = Date.parse(a.timestamp) || 0;
+      const tb = Date.parse(b.timestamp) || 0;
+      return ta - tb; // chronological ascending — matches pre-Phase-48 slice(-n) order
+    });
+    return all.slice(-n);
+  }
+
+  const key = opts && "tenantId" in opts ? opts.tenantId : getCurrentTenantId();
+  const buf = buffers.get(key ?? ROOT_BUCKET);
+  if (!buf) return [];
+  return buf.slice(-n);
 }
 
 export async function getDurableLogs(
