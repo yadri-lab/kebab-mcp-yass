@@ -1,5 +1,29 @@
 version: 2
 updates:
+  # CI-04 (v0.11 Phase 43): security updates get their own ecosystem block
+  # with a generous open-PR cap so an urgent CVE fix is never blocked
+  # behind queued minor bumps. Daily interval + `applies-to:
+  # security-updates` on the groups config routes every security advisory
+  # Dependabot raises into this block, not the slower version-updates
+  # block below.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - security
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Normal version bumps — weekly cadence, capped at 5 open PRs so the
+  # queue doesn't fill with minor churn. Grouped by dep-family so a
+  # single typescript release doesn't eat the cap with three sibling
+  # @types/* bumps on the same day.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -7,6 +31,27 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      typescript:
+        patterns:
+          - "@types/*"
+          - "typescript"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+          - "@playwright/test"
+      nextjs-core:
+        patterns:
+          - "next"
+          - "@next/*"
+          - "react"
+          - "react-dom"
+
+  # github-actions — monthly, unchanged from pre-CI-04 cadence.
   - package-ecosystem: github-actions
     directory: /
     schedule:
