@@ -4,6 +4,120 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.11 — Multi-tenant real
 
+### Phase 45 — Welcome refactor + QA polish (UX-01..04 + QA-01..02)
+
+Landed 6 requirements in 10 atomic commits (`9094b7d`, `c3f4fb2`,
+`9a7e8b0`, `67f013d`, `37fd1bf`, `866602f`, `f3c70e6`, `a2160e4`,
+`09a4aad`, `docs:45` final). welcome-client.tsx dropped from
+**2207 LOC to 29 LOC** (shim) without any visual or behavioral
+regression — the render tree moved verbatim into
+`app/welcome/WelcomeShell.tsx`, and the new per-step components +
+hooks + pure modules land as dormant infrastructure ready for a
+follow-up JSX migration.
+
+**Welcome refactor (UX-01..03):**
+
+- `app/welcome/welcome-client.tsx` is a 29-LOC shim that re-exports
+  the new `WelcomeShell` named component from
+  `app/welcome/WelcomeShell.tsx`. Prop contract unchanged;
+  `app/welcome/page.tsx` import site untouched.
+- Reducer-backed state machine at
+  `app/welcome/WelcomeStateContext.tsx` with 10-action
+  discriminated union + `WelcomeStateProvider` + `useWelcomeState`
+  + `useWelcomeDispatch`.
+- 4 step components split under `app/welcome/steps/`:
+  `storage.tsx`, `mint.tsx`, `test.tsx`, `already-initialized.tsx`.
+  Each wires to the context + the relevant hook (storage
+  polling, mint, or inline test-mcp fetch).
+- 3 custom hooks under `app/welcome/hooks/`: `useClaimStatus`,
+  `useStoragePolling`, `useMintToken`. Each ≤ 1 useEffect + ≤ 4
+  useState; AbortController prevents setState-on-unmount leaks.
+- 2 pure modules: `src/core/welcome-url-parser.ts` (named export
+  `extractTokenFromInput` — the parallel re-implementation in
+  `tests/regression/welcome-flow.test.ts:79-113` is deleted) and
+  `app/welcome/wizard-steps.ts` (STEPS array + 3 gate predicates
+  + `nextStep`). Both tested directly instead of via JSX-grep
+  contracts — closes Phase 40 FOLLOW-UP A + B.
+- Playwright E2E (`tests/e2e/welcome.spec.ts`) green post-refactor
+  (3 passed, 1 skipped — same as pre-refactor). No visual
+  regression.
+
+**Mint-race fix (UX-04):**
+
+- `KVStore.setIfNotExists(key, value, opts?)` atomic primitive
+  added. UpstashKV uses native `SET key value NX EX`; FilesystemKV
+  serializes via the write queue (single-process dev).
+- `src/core/first-run.ts` gains `flushBootstrapToKvIfAbsent()` —
+  returns `{ok:true}` for the winner or `{ok:false; reason:
+  "already_minted"; existing}` for the loser. Idempotent retry
+  path matches when the existing entry's claimId equals the
+  current mint.
+- `app/api/welcome/init/route.ts` switches to the new helper and
+  returns 409 `{error: "already_minted"}` for the losing minter,
+  without echoing the winner's token in the body.
+- Integration test
+  `tests/integration/welcome-mint-race.test.ts` covers the
+  winner/loser split + idempotent retry + FilesystemKV SETNX
+  smoke test (3 cases).
+
+**CI stabilization (QA-01):**
+
+- 4 flaky render tests across 3 files (HealthTab +
+  ConnectorsTab + SkillsTab + SettingsTab) stabilized via the
+  new isolated vitest pool at `vitest.ui.config.ts` (`pool:
+  'forks'` + `singleFork: true` + `testTimeout: 10_000` +
+  jsdom env). `vitest.config.ts` excludes `tests/components/**`
+  and `tests/ui/**/*.test.tsx` so render tests don't run
+  twice. `npm test` chains both configs; 2 consecutive green
+  runs establish stability.
+
+**NIT hygiene (QA-02):**
+
+- `src/core/migrations/v0.10-tenant-prefix.ts` now uses
+  `getLogger("MIGRATION")` (was 2× `console.info`). Zero
+  `console.*` remaining in the migration file.
+- `app/api/admin/health-history/route.ts:76` stale-sample cleanup
+  logs partial failures via `getLogger("admin.health-history")`
+  instead of silently swallowing.
+- `app/api/cron/health/route.ts:69` error-webhook alert failure
+  swapped `console.info` for `getLogger("cron.health").warn`
+  (rationale comment preserved).
+- `src/core/with-bootstrap-rehydrate.ts:59` outer migration
+  swallow keeps `.catch(() => {})` pattern with an expanded
+  comment cross-referencing the inner MIGRATION logger as
+  authoritative.
+
+**Test count delta:** 763 → 801 total (+38 new tests: 8
+welcome-url-parser + 6 wizard-steps + 14 hooks + 3 mint-race + 2
+UX-04 regressions + 5 knock-on). 37 UI tests isolated under
+`vitest.ui.config.ts`.
+
+**LOC delta:**
+
+| File | Before | After |
+|------|--------|-------|
+| `app/welcome/welcome-client.tsx` | 2207 | 29 |
+| `app/welcome/WelcomeShell.tsx` | — | 2194 |
+| `app/welcome/WelcomeStateContext.tsx` | — | 140 |
+| `app/welcome/steps/storage.tsx` | — | 70 |
+| `app/welcome/steps/mint.tsx` | — | 100 |
+| `app/welcome/steps/test.tsx` | — | 80 |
+| `app/welcome/steps/already-initialized.tsx` | — | 85 |
+| `app/welcome/hooks/useClaimStatus.ts` | — | 80 |
+| `app/welcome/hooks/useStoragePolling.ts` | — | 120 |
+| `app/welcome/hooks/useMintToken.ts` | — | 90 |
+| `app/welcome/wizard-steps.ts` | — | 120 |
+| `src/core/welcome-url-parser.ts` | — | 45 |
+
+**Deferred (filed to FOLLOW-UP):**
+
+- Full JSX migration from `WelcomeShell.tsx` into
+  `app/welcome/steps/*.tsx` — the structural split is complete;
+  the subtree migration is an incremental v0.12 follow-up with
+  Playwright E2E as the safety net.
+- `scripts/audit-gate.mjs` no-undef lint errors (pre-existing
+  Phase 44 carry-over — eslint env missing for .mjs files).
+
 ### Phase 44 — Security supply chain + URL safety (SCM-01..05)
 
 Landed 5 requirements in 6 atomic commits (`d957933`, `11cc628`, `6c0c8f0`, `e7b3cc2`, `c1f4639`, `547e4c2`).
