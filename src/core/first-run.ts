@@ -92,17 +92,11 @@ function isExternalKvAvailable(): boolean {
   return false;
 }
 
-async function persistBootstrapToKv(payload: BootstrapPayload): Promise<void> {
-  if (!isExternalKvAvailable()) return;
-  try {
-    const kv = getKVStore();
-    await kv.set(KV_BOOTSTRAP_KEY, JSON.stringify(payload));
-  } catch (err) {
-    console.info(
-      `[Kebab MCP first-run] KV persist skipped: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-}
+// DUR-04: `persistBootstrapToKv(...)` (fire-and-forget KV writer) was
+// removed along with its sole caller in `bootstrapToken()`. The
+// authoritative cross-instance persistence is `flushBootstrapToKv()`
+// below, which route handlers await before responding so the lambda
+// reaper cannot kill the write mid-flight.
 
 async function loadBootstrapFromKv(): Promise<BootstrapPayload | null> {
   if (!isExternalKvAvailable()) return null;
@@ -309,10 +303,13 @@ export function bootstrapToken(claimId: string): { token: string } {
     // Best effort: /tmp may be read-only in some environments.
   }
 
-  // Fire-and-forget cross-instance persistence. Production endpoints
-  // SHOULD additionally call `flushBootstrapToKv()` to guarantee the
-  // write lands before the response is sent — see fn comment above.
-  void persistBootstrapToKv(activeBootstrap);
+  // DUR-04: the previous `void persistBootstrapToKv(activeBootstrap)`
+  // here was the root cause of one of the 2026-04-20 session's bugs —
+  // Vercel's lambda reaper killed the fire-and-forget write before it
+  // landed in Upstash. The authoritative cross-instance persistence is
+  // `flushBootstrapToKv()`, awaited by welcome/init before responding
+  // (see app/api/welcome/init/route.ts). Keeping a parallel fire-and-
+  // forget call here added nothing and reliably lost the race.
 
   console.info(
     `[Kebab MCP first-run] bootstrap token minted (claim=${claimId.slice(0, 8)}…, persisted=${persisted})`
@@ -353,6 +350,7 @@ export function forceReset(): void {
   } catch {
     // Ignore.
   }
+  // fire-and-forget OK: recovery cleanup of KV bootstrap key; caller does not depend on KV ack
   void deleteBootstrapFromKv();
   console.info("[Kebab MCP first-run] forceReset() called — bootstrap state cleared");
 }
@@ -362,8 +360,8 @@ export function rehydrateBootstrapFromTmp(): void {
   if (process.env.MYMCP_RECOVERY_RESET === "1") {
     forceReset();
     // SEC-05: rotate the signing secret so pre-reset claim cookies no
-    // longer verify. Fire-and-forget — rotation failure on KV outage
-    // should not block cold-start.
+    // longer verify.
+    // fire-and-forget OK: recovery reset; signing-secret rotation is idempotent and safe to retry
     void rotateSigningSecret().catch((err: unknown) => {
       console.info(
         `[Kebab MCP first-run] rotateSigningSecret skipped: ${err instanceof Error ? err.message : String(err)}`
@@ -404,6 +402,7 @@ export function clearBootstrap(): void {
   } catch {
     // Ignore.
   }
+  // fire-and-forget OK: recovery cleanup path; caller does not wait on KV ack
   void deleteBootstrapFromKv();
 }
 
@@ -456,7 +455,7 @@ export function __resetFirstRunForTests(): void {
   } catch {
     // Ignore.
   }
-  // Also clear KV (sync path with best-effort fire-and-forget).
+  // fire-and-forget OK: test-helper cleanup; test runner awaits via __resetFirstRunForTestsAsync() when the KV ack actually matters
   void deleteBootstrapFromKv();
 }
 

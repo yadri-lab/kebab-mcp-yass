@@ -6,6 +6,7 @@ import {
   getOrCreateClaim,
   isClaimer,
   bootstrapToken,
+  flushBootstrapToKv,
   clearBootstrap,
   forceReset,
   rehydrateBootstrapFromTmp,
@@ -212,11 +213,18 @@ describe("KV cross-instance bootstrap persistence", () => {
     kvSpy.mockRestore();
   });
 
-  it("persistBootstrapToKv is called when KV is available (via bootstrapToken)", async () => {
+  it("flushBootstrapToKv persists the bootstrap when KV is available (authoritative write)", async () => {
+    // DUR-04: the fire-and-forget `void persistBootstrapToKv(...)` that used
+    // to run inside `bootstrapToken()` was deleted — Vercel's reaper killed
+    // it before the KV SET landed. The authoritative cross-instance write
+    // is `flushBootstrapToKv()`, awaited by route handlers. This test
+    // asserts THAT invariant.
     const c = await getOrCreateClaim(new Request("http://localhost/api/welcome/claim"));
     bootstrapToken(c.claimId);
-    // Fire-and-forget: wait a microtask tick.
-    await new Promise((r) => setTimeout(r, 10));
+    // bootstrapToken itself no longer schedules a KV write; flush is the
+    // authoritative path.
+    expect(stubKv.set).toHaveBeenCalledTimes(0);
+    await flushBootstrapToKv();
     expect(stubKv.set).toHaveBeenCalledTimes(1);
     expect(stubKv.set.mock.calls[0][0]).toBe("mymcp:firstrun:bootstrap");
     const stored = JSON.parse(stubKv.set.mock.calls[0][1] as string);

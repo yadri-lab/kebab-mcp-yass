@@ -59,6 +59,7 @@ export async function checkRateLimit(
       // trigger the sweep on `count === 1` (fresh bucket boundary) to
       // avoid doing it on every request.
       if (kv.kind === "filesystem" && count === 1) {
+        // fire-and-forget OK: janitor for stale bucket keys; no response dependency
         void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
       }
       if (count > limit) {
@@ -78,6 +79,7 @@ export async function checkRateLimit(
     await kv.set(key, String(count + 1));
 
     if (count === 0) {
+      // fire-and-forget OK: janitor for stale bucket keys; no response dependency
       void sweepOldBuckets(scope, idHash, minuteBucket, tenantId);
     }
 
