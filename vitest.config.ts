@@ -14,6 +14,14 @@ export default defineConfig({
       "tests/integration/multi-host.test.ts",
       "tests/integration/server-startup.test.ts",
       "tests/integration/welcome-durability.test.ts",
+      // Phase 46 CORR-01..05: the init-concurrency suite mocks KV at
+      // the module boundary and races two POST handlers through
+      // vi.resetModules() — it only belongs in `npm run test:integration`,
+      // where fileParallelism is off and each test file owns its module
+      // graph. Running it under the default pool collides with other
+      // first-run tests that import `@/core/first-run` and `@/core/kv-store`
+      // directly.
+      "tests/integration/welcome-init-concurrency.test.ts",
       // QA-01 (Phase 45 Task 7): UI + component render tests run under
       // the isolated forked pool via `vitest.ui.config.ts`. Excluding
       // them here prevents double-execution when `npm test` chains both
