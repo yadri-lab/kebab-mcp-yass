@@ -113,9 +113,13 @@ vi.mock("@/core/with-admin-auth", () => ({
 let currentTenantFromHeader: string | null = null;
 vi.mock("@/core/request-context", async () => {
   const kvMod = await import("@/core/kv-store");
+  // Phase 48 (FACADE-02a): see rate-limit-tenant.test.ts for rationale.
   return {
     getCurrentTenantId: () => currentTenantFromHeader,
     getContextKVStore: () => kvMod.getTenantKVStore(currentTenantFromHeader),
+    getCredential: (envKey: string) => process.env[envKey],
+    runWithCredentials: <T>(_creds: Record<string, string>, fn: () => T) => fn(),
+    requestContext: { run: <T>(_ctx: unknown, fn: () => T) => fn(), getStore: () => undefined },
   };
 });
 

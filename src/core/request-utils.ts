@@ -7,6 +7,7 @@
  */
 
 import type { NextRequest } from "next/server";
+import { getConfig } from "./config-facade";
 
 function isLoopbackCandidate(ip: string): boolean {
   const n = ip
@@ -36,7 +37,7 @@ function isLoopbackCandidate(ip: string): boolean {
  * same reason — a spoofable trust input must be explicitly enabled.
  */
 export function isLoopbackRequest(request: Request): boolean {
-  if (process.env.VERCEL === "1") return false;
+  if (getConfig("VERCEL") === "1") return false;
 
   // Forwarded headers (x-forwarded-for / x-real-ip) are spoofable on any
   // deploy that isn't behind a proxy that strips client-supplied copies.
@@ -44,7 +45,7 @@ export function isLoopbackRequest(request: Request): boolean {
   // MYMCP_TRUST_URL_HOST=1 (reuses the v0.5 NIT-05 env var — when you
   // trust the URL host, you also trust your forwarding layer's headers).
   // Vercel already short-circuited above.
-  const trustForwarded = process.env.MYMCP_TRUST_URL_HOST === "1";
+  const trustForwarded = getConfig("MYMCP_TRUST_URL_HOST") === "1";
   const xff = request.headers.get("x-forwarded-for");
   const xri = request.headers.get("x-real-ip");
   if (trustForwarded) {
@@ -63,7 +64,7 @@ export function isLoopbackRequest(request: Request): boolean {
   // because a misconfigured reverse proxy can forward Host: localhost
   // from the public internet. Set MYMCP_TRUST_URL_HOST=1 only when you
   // know nothing in front of this server can spoof Host.
-  if (process.env.MYMCP_TRUST_URL_HOST === "1") {
+  if (getConfig("MYMCP_TRUST_URL_HOST") === "1") {
     try {
       const urlHost = new URL(request.url).hostname.toLowerCase();
       return isLoopbackCandidate(urlHost);
@@ -82,7 +83,7 @@ export function isLoopbackRequest(request: Request): boolean {
  * a malicious client could spoof it.
  */
 export function getClientIP(request: Request): string {
-  const isVercel = process.env.VERCEL === "1";
+  const isVercel = getConfig("VERCEL") === "1";
   if (isVercel) {
     const xff = request.headers.get("x-forwarded-for");
     if (xff) {

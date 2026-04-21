@@ -26,11 +26,12 @@ import type { Step, PipelineContext } from "./types";
 import { checkMcpAuth, checkAdminAuth } from "../auth";
 import { isLoopbackRequest } from "../request-utils";
 import { requestContext } from "../request-context";
+import { getConfig } from "../config-facade";
 
 export type AuthKind = "mcp" | "admin" | "cron";
 
 function cronTokenIdFromSecret(): string {
-  const secret = process.env.CRON_SECRET ?? "";
+  const secret = getConfig("CRON_SECRET") ?? "";
   return createHash("sha256").update(secret).digest("hex").slice(0, 8);
 }
 
@@ -83,7 +84,7 @@ export function authStep(kind: AuthKind): Step {
   // kind === 'cron'
   return async (ctx, next) => {
     const authHeader = ctx.request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = getConfig("CRON_SECRET");
 
     if (cronSecret) {
       if (authHeader !== `Bearer ${cronSecret}`) {

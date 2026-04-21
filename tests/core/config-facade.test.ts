@@ -30,16 +30,22 @@ describe("config-facade — FACADE-01 synchronous resolution", () => {
     vi.unstubAllEnvs();
   });
 
-  it("Test 1 — bootEnv is frozen at module load; post-load mutations are invisible", () => {
+  it("Test 1 — getConfig tracks live process.env (SEC-02 carried by request-context, not snapshot)", () => {
     // At module load the test harness set MYMCP_TRUST_URL_HOST=1 via
-    // vitest.config.ts. That's in bootEnv.
+    // vitest.config.ts. That's in bootEnv AND live process.env.
     expect(getConfig("MYMCP_TRUST_URL_HOST")).toBe("1");
 
-    // Mutate process.env directly AFTER module load (vi.stubEnv also
-    // mutates process.env under the hood). The bootEnv snapshot does
-    // not see it — these keys are NOT in RUNTIME_READ_THROUGH.
-    vi.stubEnv("A_FRESH_KEY_AFTER_BOOT", "should-not-appear");
-    expect(getConfig("A_FRESH_KEY_AFTER_BOOT")).toBeUndefined();
+    // Mutate + observe — the facade tracks live process.env.
+    // The SEC-02 guarantee is carried by runWithCredentials (step 1);
+    // direct mutation of process.env is forbidden in production by the
+    // SEC-02 ESLint rule, so in production `live === bootEnv` always.
+    const orig = process.env.MYMCP_TRUST_URL_HOST;
+    delete process.env.MYMCP_TRUST_URL_HOST;
+    try {
+      expect(getConfig("MYMCP_TRUST_URL_HOST")).toBeUndefined();
+    } finally {
+      if (orig !== undefined) process.env.MYMCP_TRUST_URL_HOST = orig;
+    }
   });
 
   it("Test 2 — runWithCredentials override wins over bootEnv", async () => {

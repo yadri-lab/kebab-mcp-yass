@@ -84,9 +84,15 @@ vi.mock("@/core/kv-store", () => ({
 let mockTenantId: string | null = null;
 vi.mock("@/core/request-context", async () => {
   const { getTenantKVStore } = await import("@/core/kv-store");
+  // Phase 48 (FACADE-02a): config-facade delegates getConfig() to
+  // request-context.getCredential. Provide a no-op that defers to the
+  // live process.env so the facade behaves like pre-facade direct reads.
   return {
     getCurrentTenantId: () => mockTenantId,
     getContextKVStore: () => getTenantKVStore(mockTenantId),
+    getCredential: (envKey: string) => process.env[envKey],
+    runWithCredentials: <T>(_creds: Record<string, string>, fn: () => T) => fn(),
+    requestContext: { run: <T>(_ctx: unknown, fn: () => T) => fn(), getStore: () => undefined },
   };
 });
 

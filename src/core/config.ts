@@ -3,6 +3,7 @@ import { getKVStore } from "./kv-store";
 import { getTenantKVStore } from "./kv-store";
 import { emit } from "./events";
 import { validateDestructiveVarsAtStartup } from "./env-safety";
+import { getConfig } from "./config-facade";
 
 /**
  * Reads instance configuration.
@@ -41,10 +42,10 @@ export const SETTINGS_ENV_KEYS = [
 
 function envConfig(): InstanceConfig {
   return {
-    timezone: process.env.MYMCP_TIMEZONE || "UTC",
-    locale: process.env.MYMCP_LOCALE || "en-US",
-    displayName: process.env.MYMCP_DISPLAY_NAME || "User",
-    contextPath: process.env.MYMCP_CONTEXT_PATH || "System/context.md",
+    timezone: getConfig("MYMCP_TIMEZONE") || "UTC",
+    locale: getConfig("MYMCP_LOCALE") || "en-US",
+    displayName: getConfig("MYMCP_DISPLAY_NAME") || "User",
+    contextPath: getConfig("MYMCP_CONTEXT_PATH") || "System/context.md",
   };
 }
 
@@ -76,7 +77,7 @@ export function runStartupValidation(): void {
   const { warnings, rejections } = validateDestructiveVarsAtStartup();
   for (const w of warnings) console.warn(w);
   for (const r of rejections) console.error(r);
-  if (rejections.length > 0 && process.env.NODE_ENV === "production") {
+  if (rejections.length > 0 && getConfig("NODE_ENV") === "production") {
     console.error(
       "[ENV-SAFETY] Refusing to start due to reject-severity destructive env vars. Unset them, or change NODE_ENV if this really is a development instance."
     );
@@ -134,17 +135,21 @@ export async function getInstanceConfigAsync(tenantId?: string | null): Promise<
   // One-time env → KV migration per key. Idempotent: if KV already has a
   // value we never touch it.
   const migrations: Array<Promise<void>> = [];
-  if (kvDisplay === null && process.env.MYMCP_DISPLAY_NAME) {
-    migrations.push(kv.set(KV_KEYS.displayName, process.env.MYMCP_DISPLAY_NAME));
+  const envDisplay = getConfig("MYMCP_DISPLAY_NAME");
+  const envTz = getConfig("MYMCP_TIMEZONE");
+  const envLocale = getConfig("MYMCP_LOCALE");
+  const envCtx = getConfig("MYMCP_CONTEXT_PATH");
+  if (kvDisplay === null && envDisplay) {
+    migrations.push(kv.set(KV_KEYS.displayName, envDisplay));
   }
-  if (kvTz === null && process.env.MYMCP_TIMEZONE) {
-    migrations.push(kv.set(KV_KEYS.timezone, process.env.MYMCP_TIMEZONE));
+  if (kvTz === null && envTz) {
+    migrations.push(kv.set(KV_KEYS.timezone, envTz));
   }
-  if (kvLocale === null && process.env.MYMCP_LOCALE) {
-    migrations.push(kv.set(KV_KEYS.locale, process.env.MYMCP_LOCALE));
+  if (kvLocale === null && envLocale) {
+    migrations.push(kv.set(KV_KEYS.locale, envLocale));
   }
-  if (kvCtx === null && process.env.MYMCP_CONTEXT_PATH) {
-    migrations.push(kv.set(KV_KEYS.contextPath, process.env.MYMCP_CONTEXT_PATH));
+  if (kvCtx === null && envCtx) {
+    migrations.push(kv.set(KV_KEYS.contextPath, envCtx));
   }
   if (migrations.length > 0) {
     await Promise.all(migrations).catch(() => {
@@ -183,7 +188,7 @@ export async function saveInstanceConfig(patch: Partial<InstanceConfig>): Promis
 
 /** Default tool timeout in ms. Override via MYMCP_TOOL_TIMEOUT env var. */
 export function getToolTimeout(): number {
-  const raw = process.env.MYMCP_TOOL_TIMEOUT;
+  const raw = getConfig("MYMCP_TOOL_TIMEOUT");
   if (raw) {
     const n = parseInt(raw, 10);
     if (!isNaN(n) && n > 0) return n;
@@ -193,7 +198,7 @@ export function getToolTimeout(): number {
 
 /** Webhook URL for error notifications. If set, POST is sent on tool failure. */
 export function getErrorWebhookUrl(): string | undefined {
-  return process.env.MYMCP_ERROR_WEBHOOK_URL || undefined;
+  return getConfig("MYMCP_ERROR_WEBHOOK_URL") || undefined;
 }
 
 /**
@@ -202,7 +207,7 @@ export function getErrorWebhookUrl(): string | undefined {
  * Returns Set of pack IDs if set (only listed packs are considered).
  */
 export function getEnabledPacksOverride(): Set<string> | undefined {
-  const raw = process.env.MYMCP_ENABLED_PACKS;
+  const raw = getConfig("MYMCP_ENABLED_PACKS");
   if (!raw) return undefined;
   return new Set(
     raw

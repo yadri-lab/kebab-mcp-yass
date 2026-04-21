@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { kvScanAll } from "./kv-store";
 import { getContextKVStore, getCurrentTenantId } from "./request-context";
 import { dualReadKV } from "./migrations/v0.11-tenant-scope";
+import { getConfigInt, getConfig } from "./config-facade";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -91,7 +92,7 @@ export async function checkRateLimit(
   options: { scope?: string; limit?: number } = {}
 ): Promise<RateLimitResult> {
   const scope = options.scope || "mcp";
-  const defaultLimit = Math.max(1, parseInt(process.env.MYMCP_RATE_LIMIT_RPM ?? "60", 10) || 60);
+  const defaultLimit = Math.max(1, getConfigInt("MYMCP_RATE_LIMIT_RPM", 60));
   const limit = options.limit ?? defaultLimit;
   const now = Date.now();
   const windowMs = 60_000;
@@ -111,7 +112,7 @@ export async function checkRateLimit(
   // pure in-process limiter never touch KV (filesystem or Upstash).
   // Composite in-memory key keeps tenants separate even without the
   // KV namespace wrapper.
-  if (process.env.MYMCP_RATE_LIMIT_INMEMORY === "1") {
+  if (getConfig("MYMCP_RATE_LIMIT_INMEMORY") === "1") {
     const memKey = `${tenantId ?? "null"}:${key}`;
     return checkRateLimitInMemory(memKey, limit, resetAt);
   }

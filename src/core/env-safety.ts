@@ -17,6 +17,8 @@
  * See .planning/milestones/v0.10-durability-ROADMAP.md Phase 38.
  */
 
+import { getConfig } from "./config-facade";
+
 export type DestructiveSeverity = "warn" | "reject";
 
 export interface DestructiveEnvVar {
@@ -107,18 +109,22 @@ export const WATCHED_ENV_KEYS: readonly string[] = [
 
 /**
  * Returns presence booleans for every watched env var.
- * Only `!!process.env[key]` — never the value itself.
+ * Only `!!getConfig(key)` — never the value itself.
+ *
+ * Phase 48 / FACADE-02a: migrated from direct `process.env[key]` to
+ * the facade. The per-key read goes through the same resolution order
+ * as every other config read (context → runtime → bootEnv).
  */
 export function getEnvPresence(): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const key of WATCHED_ENV_KEYS) {
-    out[key] = !!process.env[key];
+    out[key] = !!getConfig(key);
   }
   return out;
 }
 
 function currentNodeEnv(): "development" | "production" | "test" {
-  const raw = process.env.NODE_ENV;
+  const raw = getConfig("NODE_ENV");
   if (raw === "production" || raw === "development" || raw === "test") return raw;
   return "development";
 }
@@ -146,7 +152,7 @@ export function getActiveDestructiveVars(): ActiveDestructiveVar[] {
   const nodeEnv = currentNodeEnv();
   const out: ActiveDestructiveVar[] = [];
   for (const v of DESTRUCTIVE_ENV_VARS) {
-    if (!isVarActive(process.env[v.name])) continue;
+    if (!isVarActive(getConfig(v.name))) continue;
     out.push({
       var: v,
       value: "<set>",

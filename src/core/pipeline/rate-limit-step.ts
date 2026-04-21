@@ -31,6 +31,7 @@ import { checkRateLimit } from "../rate-limit";
 import { extractToken } from "../auth";
 import { getClientIP } from "../request-utils";
 import { createHash } from "node:crypto";
+import { getConfig } from "../config-facade";
 
 export type RateLimitKeyFrom = "token" | "ip" | "cronSecretTokenId";
 
@@ -52,7 +53,7 @@ function deriveKey(keyFrom: RateLimitKeyFrom, request: Request, tokenId: string 
       return getClientIP(request);
     }
     case "cronSecretTokenId": {
-      const secret = process.env.CRON_SECRET ?? "";
+      const secret = getConfig("CRON_SECRET") ?? "";
       return createHash("sha256").update(secret).digest("hex").slice(0, 8);
     }
   }
@@ -61,7 +62,7 @@ function deriveKey(keyFrom: RateLimitKeyFrom, request: Request, tokenId: string 
 export function rateLimitStep(options: RateLimitStepOptions): Step {
   const envKey = options.enabledEnv ?? "MYMCP_RATE_LIMIT_ENABLED";
   return async (ctx, next) => {
-    if (process.env[envKey] !== "true") return next();
+    if (getConfig(envKey) !== "true") return next();
 
     const identifier = deriveKey(options.keyFrom, ctx.request, ctx.tokenId);
     const result = await checkRateLimit(identifier, {

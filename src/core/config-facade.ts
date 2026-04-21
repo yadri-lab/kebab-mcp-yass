@@ -29,16 +29,28 @@
  * lookup step between (1) and (2) without touching the public API.
  */
 
-import { getCredential } from "./request-context";
+import { getCredential, requestContext } from "./request-context";
 import { McpConfigError } from "./errors";
 
 /**
- * Frozen snapshot of process.env captured at module load. Tests that
- * need to mutate env after import use `vi.stubEnv` on
- * RUNTIME_READ_THROUGH keys, or `runWithCredentials()` for the
- * request-context override path.
+ * Snapshot of process.env captured at module load.
+ *
+ * Retained for:
+ *   - operator-visible introspection via `__getBootEnvSnapshotForTests()`
+ *   - future FACADE-04 work that wants a "what did we boot with?" view
+ *     distinct from the live process.env
+ *
+ * NOT consulted by `getConfig()` — that path reads live process.env
+ * directly (see getConfig JSDoc). The SEC-02 concurrency guarantee is
+ * carried by `runWithCredentials()` / `getCredential()` (step 1), not
+ * by this snapshot.
  */
 const bootEnv: Readonly<Record<string, string | undefined>> = Object.freeze({ ...process.env });
+
+/** Test-only accessor for inspecting the module-load snapshot. */
+export function __getBootEnvSnapshotForTests(): Readonly<Record<string, string | undefined>> {
+  return bootEnv;
+}
 
 /**
  * Platform lifecycle keys that the process itself may legitimately
@@ -56,13 +68,38 @@ const RUNTIME_READ_THROUGH = new Set<string>([
 ]);
 
 /**
- * Primary accessor. Resolves: context → runtime → boot → undefined.
+ * Primary accessor. Resolves: context → runtime → live process.env → undefined.
+ *
+ * **Why "live process.env" and not the frozen bootEnv:** SEC-02's
+ * tenant-isolation guarantee is carried by step (1) — `getCredential()`
+ * via `runWithCredentials()` — not by the snapshot. Step (1) always
+ * wins, so a credential override by tenant A cannot leak to tenant B
+ * regardless of what process.env looks like. The SEC-02 ESLint rule
+ * forbids production code from mutating process.env at request time,
+ * so in production `live === bootEnv` by construction.
+ *
+ * The frozen `bootEnv` is retained as a DEFENSIVE record (preserved for
+ * test inspection + FACADE-04 global-settings fallback) but is not
+ * consulted by the hot path — tests that `delete process.env.FOO` see
+ * the deletion reflected immediately, matching pre-facade semantics.
+ *
+ * RUNTIME_READ_THROUGH is kept separate because those keys (VERCEL_*,
+ * NODE_ENV) are documented platform lifecycle values — splitting the
+ * Set makes intent visible.
  */
 export function getConfig(key: string): string | undefined {
-  const ctx = getCredential(key);
-  if (ctx !== undefined) return ctx;
+  // Request-context override: only consulted when an AsyncLocalStorage
+  // context is active. Outside a request, `getCredential()` would fall
+  // through to its own frozen bootEnv snapshot and shadow live
+  // process.env mutations — which is the wrong semantic for CLI /
+  // boot-path / test callers. When there is no active context, jump
+  // straight to live process.env.
+  if (requestContext.getStore() !== undefined) {
+    const ctx = getCredential(key);
+    if (ctx !== undefined) return ctx;
+  }
   if (RUNTIME_READ_THROUGH.has(key)) return process.env[key];
-  return bootEnv[key];
+  return process.env[key];
 }
 
 /**
@@ -187,11 +224,6 @@ export const ALLOWED_DIRECT_ENV_READS: ReadonlyArray<AllowedDirectEnvRead> = Obj
     reason: "facade itself owns the bootEnv snapshot + RUNTIME_READ_THROUGH",
   },
   {
-    file: "src/core/credential-store.ts",
-    vars: ["VERCEL", "VERCEL_TOKEN", "VERCEL_PROJECT_ID"],
-    reason: "boot-time credential bootstrap before request context exists",
-  },
-  {
     file: "src/core/env-store.ts",
     vars: ["VERCEL", "VERCEL_TOKEN", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"],
     reason: "EnvStore platform bootstrap; also on SEC-02 off-list for mutation",
@@ -251,11 +283,9 @@ export const ALLOWED_DIRECT_ENV_READS: ReadonlyArray<AllowedDirectEnvRead> = Obj
 ]);
 
 /**
- * Test-only. bootEnv is frozen at module load; this is an intentional
- * no-op that lets test suites state the invariant explicitly. Tests
- * needing env-override use vi.stubEnv for RUNTIME_READ_THROUGH keys,
- * or runWithCredentials() for the request-context path.
+ * Test-only stub. Retained for tests that assert the existence of a
+ * reset hook; no-op because the facade reads live process.env.
  */
 export function __resetBootEnvForTests(): void {
-  // No-op: bootEnv is frozen and captured at module load.
+  // No-op: getConfig() tracks live process.env; the snapshot is advisory only.
 }

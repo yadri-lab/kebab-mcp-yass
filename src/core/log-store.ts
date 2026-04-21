@@ -22,6 +22,7 @@ import { getContextKVStore, getCurrentTenantId } from "./request-context";
 import { hasUpstashCreds } from "./upstash-env";
 import { getLogger } from "./logging";
 import type { KVStore } from "./kv-store";
+import { getConfig, getConfigInt } from "./config-facade";
 
 const logStoreLog = getLogger("LOG-STORE");
 
@@ -40,14 +41,12 @@ export interface LogStore {
 }
 
 function envMaxEntries(): number {
-  const raw = process.env.MYMCP_LOG_MAX_ENTRIES;
-  if (!raw) return 500;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : 500;
+  const n = getConfigInt("MYMCP_LOG_MAX_ENTRIES", 500);
+  return n > 0 ? n : 500;
 }
 
 function envMaxAgeSeconds(): number | undefined {
-  const raw = process.env.MYMCP_LOG_MAX_AGE_SECONDS;
+  const raw = getConfig("MYMCP_LOG_MAX_AGE_SECONDS");
   if (!raw) return undefined;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
@@ -73,10 +72,8 @@ export function extractHttpStatus(err: Error): number | null {
 }
 
 function envRotateSegments(): number {
-  const raw = process.env.MYMCP_LOG_ROTATE_SEGMENTS;
-  if (!raw) return 3;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 1 ? n : 3;
+  const n = getConfigInt("MYMCP_LOG_ROTATE_SEGMENTS", 3);
+  return n >= 1 ? n : 3;
 }
 
 // ── MemoryLogStore ──────────────────────────────────────────────────
@@ -473,7 +470,7 @@ export function getLogStore(): LogStore {
     // different tenant context hits a fresh factory call and gets its
     // own instance with its own (tenant-wrapped) KV.
     store = new UpstashLogStore({ kv: getContextKVStore() });
-  } else if (process.env.VERCEL === "1") {
+  } else if (getConfig("VERCEL") === "1") {
     console.warn(
       "[Kebab MCP] LogStore: running on Vercel without UPSTASH_REDIS_REST_URL/TOKEN " +
         "(or KV_REST_API_URL/TOKEN for Vercel Marketplace setups) — " +

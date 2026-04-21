@@ -20,6 +20,7 @@
 import { kvScanAll } from "./kv-store";
 import { getContextKVStore } from "./request-context";
 import { hasUpstashCreds } from "./upstash-env";
+import { getConfig } from "./config-facade";
 
 export const CRED_PREFIX = "cred:";
 
@@ -30,7 +31,7 @@ export function isUpstashConfigured(): boolean {
 
 /** Whether Vercel API is configured (env var write via API). */
 export function isVercelApiConfigured(): boolean {
-  return Boolean(process.env.VERCEL_TOKEN?.trim() && process.env.VERCEL_PROJECT_ID?.trim());
+  return Boolean(getConfig("VERCEL_TOKEN")?.trim() && getConfig("VERCEL_PROJECT_ID")?.trim());
 }
 
 /**
@@ -45,7 +46,7 @@ export type StorageBackend = "upstash" | "vercel-api" | "filesystem" | "none";
 
 export function detectStorageBackend(): StorageBackend {
   if (isUpstashConfigured()) return "upstash";
-  if (process.env.VERCEL === "1") {
+  if (getConfig("VERCEL") === "1") {
     if (isVercelApiConfigured()) return "vercel-api";
     return "none";
   }
@@ -173,7 +174,7 @@ export async function readAllCredentialsFromKV(): Promise<Record<string, string>
   const kv = getContextKVStore();
   // On Vercel without Upstash the KV is an ephemeral /tmp filesystem —
   // reading from it is useless (data doesn't survive cold starts).
-  if (process.env.VERCEL === "1" && kv.kind !== "upstash") return {};
+  if (getConfig("VERCEL") === "1" && kv.kind !== "upstash") return {};
 
   const keys = await kvScanAll(kv, `${CRED_PREFIX}*`);
   if (keys.length === 0) return {};

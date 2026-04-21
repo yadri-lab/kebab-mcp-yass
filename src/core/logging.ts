@@ -4,6 +4,7 @@ import type { ToolResult } from "./types";
 import { startToolSpan, endToolSpan } from "./tracing";
 import { getToolTimeout } from "./config";
 import { getCurrentTenantId } from "./request-context";
+import { getConfig } from "./config-facade";
 
 // ── T10: MYMCP_TOOL_TIMEOUT enforcement at the transport ─────────
 //
@@ -76,7 +77,7 @@ export function getLogger(tag?: string): Logger {
     error: (msg, meta) =>
       meta ? console.error(`${prefix}${msg}`, meta) : console.error(`${prefix}${msg}`),
     debug: (msg, meta) => {
-      if (process.env.MYMCP_DEBUG !== "1") return;
+      if (getConfig("MYMCP_DEBUG") !== "1") return;
       if (meta) console.log(`[DEBUG]${prefix}${msg}`, meta);
       else console.log(`[DEBUG]${prefix}${msg}`);
     },
@@ -120,15 +121,14 @@ export interface ToolLog {
 // `KEBAB_LOG_BUFFER_PER_TENANT`. This is a new env var (no
 // `MYMCP_*` predecessor) — the alias logic is Phase 50.
 //
-// TODO(FACADE-02a, Task 5): migrate BUFFER_CAP read from
-// `process.env.KEBAB_LOG_BUFFER_PER_TENANT` to
-// `getConfig('KEBAB_LOG_BUFFER_PER_TENANT')` from @/core/config-facade.
+// Phase 48 / FACADE-02a: cap read now routes through getConfig()
+// (see getBufferCapPerTenant below).
 /** Sentinel bucket key for writes that happen outside any requestContext. */
 const ROOT_BUCKET = "__root__" as const;
 
 /** Per-tenant ring buffer cap. Defaults to 100. */
 function getBufferCapPerTenant(): number {
-  const raw = process.env.KEBAB_LOG_BUFFER_PER_TENANT;
+  const raw = getConfig("KEBAB_LOG_BUFFER_PER_TENANT");
   if (!raw) return 100;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 100;
@@ -171,7 +171,7 @@ export function logToolCall(log: ToolLog) {
   // Fire-and-forget: a failing log write must never surface to the
   // caller of the tool. The in-memory ring buffer above is what drives
   // p95/metrics so we stay observable even if the store is misbehaving.
-  if (process.env.MYMCP_DURABLE_LOGS === "true") {
+  if (getConfig("MYMCP_DURABLE_LOGS") === "true") {
     try {
       const store = getLogStore();
       const entry: LogEntry = {
@@ -193,7 +193,7 @@ export function logToolCall(log: ToolLog) {
 
   // Fire error webhook if configured
   if (log.status === "error") {
-    const webhookUrl = process.env.MYMCP_ERROR_WEBHOOK_URL;
+    const webhookUrl = getConfig("MYMCP_ERROR_WEBHOOK_URL");
     if (webhookUrl) {
       fetch(webhookUrl, {
         method: "POST",
