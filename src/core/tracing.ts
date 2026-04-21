@@ -162,6 +162,124 @@ export function endToolSpan(
     }
     realSpan.end();
   } catch {
-    // Swallow — tracing must never break tool execution.
+    // silent-swallow-ok: tracing must never break tool execution
   }
+}
+
+// ── OBS-04: internal (non-tool) span helpers ──────────────────────
+//
+// Wraps the 3 hot paths called out in the Phase 38 plan:
+//   - mymcp.bootstrap.rehydrate (src/core/first-run.ts)
+//   - mymcp.kv.write            (src/core/kv-store.ts, via wrapWithTracing)
+//   - mymcp.auth.check          (src/core/auth.ts)
+// Returns a NOOP_SPAN when tracing is disabled so callers pay zero cost.
+
+/**
+ * Start a span for an internal (non-tool) operation. Follows the
+ * existing `mymcp.<component>.<op>` naming convention.
+ */
+export function startInternalSpan(
+  name: string,
+  attrs?: Record<string, string | number | boolean>
+): ToolSpan {
+  if (!isTracingEnabled()) return NOOP_SPAN;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const api = require("@opentelemetry/api") as typeof import("@opentelemetry/api");
+    const tracer = api.trace.getTracer(TRACER_NAME);
+    const span = tracer.startSpan(name, attrs ? { attributes: attrs } : undefined);
+    return span;
+  } catch {
+    return NOOP_SPAN;
+  }
+}
+
+/**
+ * Ergonomic wrapper: open a span, run the callback, record duration +
+ * status, end the span. Errors are re-thrown so the caller's control
+ * flow is unchanged. Zero allocation when tracing is disabled.
+ */
+export async function withSpan<T>(
+  name: string,
+  fn: () => Promise<T>,
+  attrs?: Record<string, string | number | boolean>
+): Promise<T> {
+  const span = startInternalSpan(name, attrs);
+  if (isNoopSpan(span)) return fn();
+  const started = Date.now();
+  try {
+    const result = await fn();
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const api = require("@opentelemetry/api") as typeof import("@opentelemetry/api");
+      const real = span as Span;
+      real.setAttribute("mymcp.duration_ms", Date.now() - started);
+      real.setAttribute("mymcp.status", "ok");
+      real.setStatus({ code: api.SpanStatusCode.OK });
+      real.end();
+    } catch {
+      // silent-swallow-ok: tracing emission must never break the wrapped call
+    }
+    return result;
+  } catch (err) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const api = require("@opentelemetry/api") as typeof import("@opentelemetry/api");
+      const real = span as Span;
+      real.setAttribute("mymcp.duration_ms", Date.now() - started);
+      real.setAttribute("mymcp.status", "error");
+      real.setAttribute("mymcp.error.message", String(err).slice(0, 200));
+      real.setStatus({ code: api.SpanStatusCode.ERROR });
+      real.end();
+    } catch {
+      // silent-swallow-ok: tracing emission must never break the wrapped call
+    }
+    throw err;
+  }
+}
+
+/** Sync variant of `withSpan` — used by checkMcpAuth which is non-async. */
+export function withSpanSync<T>(
+  name: string,
+  fn: () => T,
+  attrs?: Record<string, string | number | boolean>
+): T {
+  const span = startInternalSpan(name, attrs);
+  if (isNoopSpan(span)) return fn();
+  const started = Date.now();
+  try {
+    const result = fn();
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const api = require("@opentelemetry/api") as typeof import("@opentelemetry/api");
+      const real = span as Span;
+      real.setAttribute("mymcp.duration_ms", Date.now() - started);
+      real.setAttribute("mymcp.status", "ok");
+      real.setStatus({ code: api.SpanStatusCode.OK });
+      real.end();
+    } catch {
+      // silent-swallow-ok: tracing emission must never break the wrapped call
+    }
+    return result;
+  } catch (err) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const api = require("@opentelemetry/api") as typeof import("@opentelemetry/api");
+      const real = span as Span;
+      real.setAttribute("mymcp.duration_ms", Date.now() - started);
+      real.setAttribute("mymcp.status", "error");
+      real.setAttribute("mymcp.error.message", String(err).slice(0, 200));
+      real.setStatus({ code: api.SpanStatusCode.ERROR });
+      real.end();
+    } catch {
+      // silent-swallow-ok: tracing emission must never break the wrapped call
+    }
+    throw err;
+  }
+}
+
+/** True iff OTel is currently active. Exposed for callers that want to
+ * short-circuit expensive attribute assembly. */
+export function isTracingActive(): boolean {
+  return isTracingEnabled();
 }

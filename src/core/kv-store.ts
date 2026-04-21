@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { withTenantPrefix } from "./tenant";
 import { getUpstashCreds, hasUpstashCreds } from "./upstash-env";
+import { withSpan, isTracingActive } from "./tracing";
 
 // ── OBS-02: in-process KV latency ring buffer ───────────────────────
 //
@@ -479,16 +480,58 @@ class UpstashKV implements KVStore {
 
 let cached: KVStore | null = null;
 
-export function getKVStore(): KVStore {
-  if (cached) return cached;
+// OBS-04: wrap the underlying store so every set/setNx/delete emits a
+// `mymcp.kv.write` span with op + key_prefix (first 2 segments only —
+// no full-key leak) + kind. Reads stay untraced (high volume, low
+// diagnostic signal per span). Zero overhead when tracing is off.
+function keyPrefix2(key: string): string {
+  const parts = key.split(":");
+  return parts.slice(0, 2).join(":");
+}
 
-  const creds = getUpstashCreds();
-  if (creds) {
-    cached = new UpstashKV(creds.url, creds.token);
-    return cached;
+function wrapWithTracing(kv: KVStore): KVStore {
+  const wrapped: KVStore = {
+    kind: kv.kind,
+    get: kv.get.bind(kv),
+    set: (key, value, ttlSeconds) =>
+      withSpan("mymcp.kv.write", () => kv.set(key, value, ttlSeconds), {
+        "mymcp.kv.kind": kv.kind,
+        "mymcp.kv.op": "set",
+        "mymcp.kv.key_prefix": keyPrefix2(key),
+      }),
+    delete: (key) =>
+      withSpan("mymcp.kv.write", () => kv.delete(key), {
+        "mymcp.kv.kind": kv.kind,
+        "mymcp.kv.op": "delete",
+        "mymcp.kv.key_prefix": keyPrefix2(key),
+      }),
+    list: kv.list.bind(kv),
+  };
+  if (typeof kv.incr === "function") {
+    wrapped.incr = (key, opts) =>
+      withSpan("mymcp.kv.write", () => kv.incr!(key, opts), {
+        "mymcp.kv.kind": kv.kind,
+        "mymcp.kv.op": "incr",
+        "mymcp.kv.key_prefix": keyPrefix2(key),
+      });
   }
+  if (typeof kv.scan === "function") wrapped.scan = kv.scan.bind(kv);
+  if (typeof kv.mget === "function") wrapped.mget = kv.mget.bind(kv);
+  if (typeof kv.lpushCapped === "function") {
+    wrapped.lpushCapped = (key, value, maxLength, opts) =>
+      withSpan("mymcp.kv.write", () => kv.lpushCapped!(key, value, maxLength, opts), {
+        "mymcp.kv.kind": kv.kind,
+        "mymcp.kv.op": "lpushCapped",
+        "mymcp.kv.key_prefix": keyPrefix2(key),
+      });
+  }
+  if (typeof kv.lrange === "function") wrapped.lrange = kv.lrange.bind(kv);
+  return wrapped;
+}
 
-  // Vercel detected, but no Upstash: fall back to /tmp with a warning.
+function buildKVStore(): KVStore {
+  const creds = getUpstashCreds();
+  if (creds) return new UpstashKV(creds.url, creds.token);
   if (process.env.VERCEL === "1") {
     console.warn(
       "[Kebab MCP] KVStore: running on Vercel without UPSTASH_REDIS_REST_URL/TOKEN " +
@@ -496,14 +539,18 @@ export function getKVStore(): KVStore {
         "using /tmp filesystem (ephemeral, data lost on cold start). " +
         "Set Upstash env vars for persistence."
     );
-    cached = new FilesystemKV("/tmp/mymcp-kv.json");
-    return cached;
+    return new FilesystemKV("/tmp/mymcp-kv.json");
   }
-
   // Allow test overrides via MYMCP_KV_PATH (used by store-versioning tests
   // to point at a unique temp file per test, preventing cross-test state leak).
   const kvPath = process.env.MYMCP_KV_PATH?.trim();
-  cached = new FilesystemKV(kvPath || path.resolve(process.cwd(), "data", "kv.json"));
+  return new FilesystemKV(kvPath || path.resolve(process.cwd(), "data", "kv.json"));
+}
+
+export function getKVStore(): KVStore {
+  if (cached) return cached;
+  const base = buildKVStore();
+  cached = isTracingActive() ? wrapWithTracing(base) : base;
   return cached;
 }
 

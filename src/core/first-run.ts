@@ -36,6 +36,7 @@ import {
 } from "./signing-secret";
 import { hasUpstashCreds } from "./upstash-env";
 import { getLogger } from "./logging";
+import { withSpan } from "./tracing";
 
 const firstRunLog = getLogger("FIRST-RUN");
 // Note: the v0.10 tenant-prefix migration trigger lives in
@@ -528,6 +529,18 @@ export async function getRehydrateCount(): Promise<{ total: number; last24h: num
  * internal helpers) must invoke the migration directly if needed.
  */
 export async function rehydrateBootstrapAsync(): Promise<void> {
+  // OBS-04: wrap in mymcp.bootstrap.rehydrate span when OTel is active.
+  // When tracing is disabled, withSpan is a pass-through (no allocation).
+  return withSpan("mymcp.bootstrap.rehydrate", () => _rehydrateBootstrapAsyncImpl(), {
+    // Source attribute intentionally left `cold` — the trace is
+    // emitted once per lambda process on first call. If a future
+    // caller wants to distinguish cold/warm/forced, it can pass the
+    // attribute through a richer API (out of scope for Phase 38).
+    "mymcp.bootstrap.source": "cold",
+  });
+}
+
+async function _rehydrateBootstrapAsyncImpl(): Promise<void> {
   rehydrateBootstrapFromTmp();
   // OBS-02 design note: we only record a rehydrate event when the KV
   // path actually did work (KV-hit below). The /tmp fast path runs on

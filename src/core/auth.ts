@@ -2,6 +2,7 @@ import { timingSafeEqual, createHash } from "crypto";
 import { isLoopbackRequest } from "./request-utils";
 import { isClaimer, getBootstrapAuthToken } from "./first-run";
 import { getTenantId } from "./tenant";
+import { withSpan, withSpanSync } from "./tracing";
 
 /**
  * Auth utilities for Kebab MCP.
@@ -97,6 +98,16 @@ export function extractToken(request: Request): string | null {
  *   connector credentials the server already has.
  */
 export function checkMcpAuth(request: Request): {
+  error: Response | null;
+  tokenId: string | null;
+  tenantId: string | null;
+} {
+  return withSpanSync("mymcp.auth.check", () => _checkMcpAuthImpl(request), {
+    "mymcp.auth.kind": "mcp",
+  });
+}
+
+function _checkMcpAuthImpl(request: Request): {
   error: Response | null;
   tokenId: string | null;
   tenantId: string | null;
@@ -205,6 +216,12 @@ export function checkCsrf(request: Request): Response | null {
  * caught that the prior single-string compare broke multi-token setups.
  */
 export async function checkAdminAuth(request: Request): Promise<Response | null> {
+  return withSpan("mymcp.auth.check", () => _checkAdminAuthImpl(request), {
+    "mymcp.auth.kind": "admin",
+  });
+}
+
+async function _checkAdminAuthImpl(request: Request): Promise<Response | null> {
   // CSRF first — doesn't depend on token state, so no info leak.
   const csrfError = checkCsrf(request);
   if (csrfError) return csrfError;
