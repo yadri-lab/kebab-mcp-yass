@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveRegistry } from "@/core/registry";
+import { resolveRegistryAsync } from "@/core/registry";
 import type { z } from "zod";
 import { withAdminAuth } from "@/core/with-admin-auth";
 import type { PipelineContext } from "@/core/pipeline";
@@ -17,7 +17,8 @@ async function getHandler(ctx: PipelineContext) {
   const { searchParams } = new URL(ctx.request.url);
   const toolName = searchParams.get("tool");
 
-  const registry = resolveRegistry();
+  // PERF-01: lazy resolve. Handler is already async.
+  const registry = await resolveRegistryAsync();
   const enabledPacks = registry.filter((p) => p.enabled);
 
   // If no tool param, return list of all tools

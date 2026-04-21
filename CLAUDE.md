@@ -140,7 +140,7 @@ integration test lives at
 ## Adding a Connector
 
 1. Create `src/connectors/myconnector/manifest.ts` exporting a `ConnectorManifest`
-2. Add import + entry in `src/core/registry.ts` `ALL_CONNECTORS` array
+2. Add a `ConnectorLoaderEntry` (id + label + description + requiredEnvVars + `toolCount` + `loader: () => import(...)`) to `src/core/registry.ts` `ALL_CONNECTOR_LOADERS` table — v0.11 Phase 43 replaced the static `ALL_CONNECTORS` array with lazy loaders (PERF-01). Keep `toolCount` in sync with `manifest.tools.length`; a contract test enforces this
 3. Document required env vars in `.env.example`
 
 ## Framework vs Instance

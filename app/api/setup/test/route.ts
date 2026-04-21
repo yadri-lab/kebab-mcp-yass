@@ -3,7 +3,7 @@ import { isClaimer } from "@/core/first-run";
 import { checkAdminAuth } from "@/core/auth";
 import { isLoopbackRequest, getClientIP } from "@/core/request-utils";
 import { checkRateLimit } from "@/core/rate-limit";
-import { resolveRegistry } from "@/core/registry";
+import { loadConnectorManifest } from "@/core/registry";
 import { withTimeout } from "@/core/timeout";
 import { composeRequestPipeline, rehydrateStep, type PipelineContext } from "@/core/pipeline";
 
@@ -60,17 +60,23 @@ async function postHandler(ctx: PipelineContext) {
     return NextResponse.json({ ok: false, message: "Missing pack" }, { status: 400 });
   }
 
-  const state = resolveRegistry().find((c) => c.manifest.id === packId);
-  if (!state) {
+  // PERF-01: force-load the full manifest even if the connector is disabled
+  // by missing env vars. The wizard tests DRAFT credentials before they are
+  // persisted, so we cannot rely on gated resolve (it would return a stub
+  // manifest with no `testConnection`). loadConnectorManifest() still dedupes
+  // via the in-flight Map so we don't repeat the import if another resolve
+  // is already in flight.
+  const manifest = await loadConnectorManifest(packId);
+  if (!manifest) {
     return NextResponse.json({ ok: true, message: "No test available" });
   }
-  if (!state.manifest.testConnection) {
+  if (!manifest.testConnection) {
     return NextResponse.json({ ok: true, message: "No test available" });
   }
 
   try {
     const result = await withTimeout(
-      state.manifest.testConnection(credentials),
+      manifest.testConnection(credentials),
       TEST_TIMEOUT_MS,
       `${packId} testConnection()`
     );

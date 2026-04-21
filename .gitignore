@@ -14,3 +14,9 @@ tests/visual/screenshots/
 test-results/
 playwright-report/
 coverage/
+
+# Ephemeral probe scripts produced by scripts/measure-cold-start.ts.
+# Cleaned up automatically on run; ignored in case a run is interrupted.
+.cold-start-probe-*.ts
+.cold-start-probe-*.mjs
+.cold-start-probe-*.js

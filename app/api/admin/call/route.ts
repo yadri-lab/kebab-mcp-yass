@@ -1,4 +1,4 @@
-import { getEnabledPacks } from "@/core/registry";
+import { getEnabledPacksLazy } from "@/core/registry";
 import { withLogging } from "@/core/logging";
 import { requestContext } from "@/core/request-context";
 import { getTenantId } from "@/core/tenant";
@@ -54,8 +54,8 @@ async function adminCallHandler(ctx: PipelineContext): Promise<Response> {
     return Response.json({ error: "Missing 'tool' field" }, { status: 400 });
   }
 
-  // Find the tool in enabled packs
-  const enabledPacks = getEnabledPacks();
+  // Find the tool in enabled packs (PERF-01: lazy resolve).
+  const enabledPacks = await getEnabledPacksLazy();
   let toolDef = null;
   for (const pack of enabledPacks) {
     const found = pack.manifest.tools.find((t) => t.name === toolName);

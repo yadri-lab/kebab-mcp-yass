@@ -12,10 +12,15 @@
  *   in the test sets)
  * - The registry's activation predicate changed semantics
  * - A connector stopped respecting MYMCP_DISABLE_* toggles
+ *
+ * PERF-01: migrated from sync `resolveRegistry()` to async
+ * `resolveRegistryAsync()` — the registry now lazy-loads connector
+ * manifests. Every test awaits `enabledIds()` so the resolve happens
+ * under an async frame.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { resolveRegistry, __resetRegistryCacheForTests } from "./registry";
+import { resolveRegistryAsync, __resetRegistryCacheForTests } from "./registry";
 
 type EnvSnapshot = Record<string, string | undefined>;
 
@@ -75,12 +80,14 @@ function clearAll() {
   }
 }
 
-function enabledIds(): string[] {
+async function enabledIds(): Promise<string[]> {
   // Tests mutate process.env directly, bypassing the event bus that
   // normally invalidates the registry cache. Force a reset on every
   // query so the cache never lies.
   __resetRegistryCacheForTests();
-  return resolveRegistry()
+  // PERF-01: registry is now async-resolved; await the resolve.
+  const reg = await resolveRegistryAsync();
+  return reg
     .filter((p) => p.enabled)
     .map((p) => p.manifest.id)
     .sort();
@@ -98,39 +105,39 @@ describe("registry env-var transitions", () => {
     restoreEnv(savedEnv);
   });
 
-  it("activates skills + admin by default (core always-on connectors)", () => {
-    const enabled = enabledIds();
+  it("activates skills + admin by default (core always-on connectors)", async () => {
+    const enabled = await enabledIds();
     expect(enabled).toContain("skills");
     expect(enabled).toContain("admin");
   });
 
-  it("google activates when all three credentials are set", () => {
-    expect(enabledIds()).not.toContain("google");
+  it("google activates when all three credentials are set", async () => {
+    expect(await enabledIds()).not.toContain("google");
     process.env.GOOGLE_CLIENT_ID = "test-client-id";
     process.env.GOOGLE_CLIENT_SECRET = "test-secret";
     process.env.GOOGLE_REFRESH_TOKEN = "test-refresh";
-    expect(enabledIds()).toContain("google");
+    expect(await enabledIds()).toContain("google");
   });
 
-  it("google stays inactive when only partial credentials are set", () => {
+  it("google stays inactive when only partial credentials are set", async () => {
     process.env.GOOGLE_CLIENT_ID = "test-client-id";
     process.env.GOOGLE_CLIENT_SECRET = "test-secret";
     // Missing GOOGLE_REFRESH_TOKEN
-    expect(enabledIds()).not.toContain("google");
+    expect(await enabledIds()).not.toContain("google");
   });
 
-  it("github activates with only GITHUB_TOKEN (default repo is optional)", () => {
+  it("github activates with only GITHUB_TOKEN (default repo is optional)", async () => {
     process.env.GITHUB_TOKEN = "ghp_test";
-    expect(enabledIds()).toContain("github");
+    expect(await enabledIds()).toContain("github");
   });
 
-  it("notion, slack, linear, airtable, apify activate with single credential", () => {
+  it("notion, slack, linear, airtable, apify activate with single credential", async () => {
     process.env.NOTION_API_KEY = "secret_test";
     process.env.SLACK_BOT_TOKEN = "xoxb-test";
     process.env.LINEAR_API_KEY = "lin_api_test";
     process.env.AIRTABLE_API_KEY = "pat_test";
     process.env.APIFY_TOKEN = "apify_test";
-    const enabled = enabledIds();
+    const enabled = await enabledIds();
     expect(enabled).toContain("notion");
     expect(enabled).toContain("slack");
     expect(enabled).toContain("linear");
@@ -138,26 +145,26 @@ describe("registry env-var transitions", () => {
     expect(enabled).toContain("apify");
   });
 
-  it("browser activates when all three Browserbase/OpenRouter credentials are set", () => {
+  it("browser activates when all three Browserbase/OpenRouter credentials are set", async () => {
     process.env.BROWSERBASE_API_KEY = "bb_test";
     process.env.BROWSERBASE_PROJECT_ID = "proj_test";
     process.env.OPENROUTER_API_KEY = "or_test";
-    expect(enabledIds()).toContain("browser");
+    expect(await enabledIds()).toContain("browser");
   });
 
-  it("MYMCP_DISABLE_<CONNECTOR>=true force-disables an otherwise active connector", () => {
+  it("MYMCP_DISABLE_<CONNECTOR>=true force-disables an otherwise active connector", async () => {
     process.env.GITHUB_TOKEN = "ghp_test";
-    expect(enabledIds()).toContain("github");
+    expect(await enabledIds()).toContain("github");
     process.env.MYMCP_DISABLE_GITHUB = "true";
-    expect(enabledIds()).not.toContain("github");
+    expect(await enabledIds()).not.toContain("github");
   });
 
-  it("MYMCP_ENABLED_PACKS=... limits the set to the listed connectors", () => {
+  it("MYMCP_ENABLED_PACKS=... limits the set to the listed connectors", async () => {
     process.env.NOTION_API_KEY = "secret_test";
     process.env.SLACK_BOT_TOKEN = "xoxb-test";
     process.env.LINEAR_API_KEY = "lin_api_test";
     process.env.MYMCP_ENABLED_PACKS = "notion,slack,skills,admin";
-    const enabled = enabledIds();
+    const enabled = await enabledIds();
     expect(enabled).toContain("notion");
     expect(enabled).toContain("slack");
     expect(enabled).toContain("skills");
@@ -166,21 +173,21 @@ describe("registry env-var transitions", () => {
     expect(enabled).not.toContain("linear");
   });
 
-  it("unsetting a credential immediately deactivates the connector", () => {
+  it("unsetting a credential immediately deactivates the connector", async () => {
     process.env.NOTION_API_KEY = "secret_test";
-    expect(enabledIds()).toContain("notion");
+    expect(await enabledIds()).toContain("notion");
     delete process.env.NOTION_API_KEY;
-    expect(enabledIds()).not.toContain("notion");
+    expect(await enabledIds()).not.toContain("notion");
   });
 
-  it("connectorCount progression: 0 creds → creds → disable toggle", () => {
-    const baseline = enabledIds().length;
+  it("connectorCount progression: 0 creds → creds → disable toggle", async () => {
+    const baseline = (await enabledIds()).length;
     process.env.NOTION_API_KEY = "secret_test";
-    const afterAdd = enabledIds().length;
+    const afterAdd = (await enabledIds()).length;
     expect(afterAdd).toBeGreaterThan(baseline);
 
     process.env.MYMCP_DISABLE_NOTION = "true";
-    const afterDisable = enabledIds().length;
+    const afterDisable = (await enabledIds()).length;
     expect(afterDisable).toBe(baseline);
   });
 });

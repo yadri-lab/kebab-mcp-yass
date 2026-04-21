@@ -1,4 +1,4 @@
-import { resolveRegistry } from "@/core/registry";
+import { resolveRegistryAsync } from "@/core/registry";
 import { getInstanceConfigAsync } from "@/core/config";
 import { getRecentLogs } from "@/core/logging";
 import { VERSION } from "@/core/version";
@@ -13,7 +13,8 @@ import { getEnvPresence } from "@/core/env-safety";
  * Runs diagnose() on enabled packs to verify credentials actually work.
  */
 async function getHandler() {
-  const registry = resolveRegistry();
+  // PERF-01: lazy resolve — this handler is already async.
+  const registry = await resolveRegistryAsync();
   const config = await getInstanceConfigAsync();
   const logs = getRecentLogs();
 

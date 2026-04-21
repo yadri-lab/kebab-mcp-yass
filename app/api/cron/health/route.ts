@@ -1,4 +1,4 @@
-import { resolveRegistry } from "@/core/registry";
+import { resolveRegistryAsync } from "@/core/registry";
 import {
   composeRequestPipeline,
   rehydrateStep,
@@ -27,7 +27,8 @@ import {
  * many IPs because the key is per-deployment-per-secret.
  */
 async function cronHealthHandler(_ctx: PipelineContext): Promise<Response> {
-  const registry = resolveRegistry();
+  // PERF-01: lazy resolve. Handler is already async.
+  const registry = await resolveRegistryAsync();
   const results: { pack: string; ok: boolean; message: string }[] = [];
 
   for (const p of registry) {

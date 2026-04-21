@@ -18,6 +18,12 @@ export default defineConfig({
     // first-run tests share OS /tmp paths; run files sequentially to avoid
     // cross-worker races on BOOTSTRAP_PATH.
     fileParallelism: false,
+    // PERF-01 (v0.11 Phase 43): first registry resolve in a fresh vitest
+    // worker pays a 5-8s one-time cost to transform + load all 14
+    // connector manifests through tsx/vite. Subsequent resolves hit the
+    // in-process cache. 15s gives headroom on slower CI runners without
+    // masking genuine test hangs.
+    testTimeout: 15_000,
     // v0.6 NIT-05: tests historically relied on `http://localhost/...`
     // URLs being recognized as loopback. Production now requires explicit
     // opt-in via MYMCP_TRUST_URL_HOST=1. Set it for the test environment

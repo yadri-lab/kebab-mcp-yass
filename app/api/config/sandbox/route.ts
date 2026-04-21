@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
-import { getEnabledPacks } from "@/core/registry";
+import { getEnabledPacksLazy } from "@/core/registry";
 import { withLogging } from "@/core/logging";
 import { checkRateLimit } from "@/core/rate-limit";
 import { withAdminAuth } from "@/core/with-admin-auth";
@@ -37,8 +37,8 @@ async function postHandler(ctx: PipelineContext) {
 
   const { toolName, args = {}, confirm = false } = body;
 
-  // Look up tool in current registry
-  const enabled = getEnabledPacks();
+  // Look up tool in current registry (PERF-01: lazy resolve).
+  const enabled = await getEnabledPacksLazy();
   for (const pack of enabled) {
     for (const tool of pack.manifest.tools) {
       if (tool.name === toolName) {

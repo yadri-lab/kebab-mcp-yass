@@ -1,6 +1,6 @@
 import { AppShell } from "../sidebar";
 import { getInstanceConfigAsync } from "@/core/config";
-import { resolveRegistry } from "@/core/registry";
+import { resolveRegistryAsync } from "@/core/registry";
 import { getRecentLogs } from "@/core/logging";
 import { isFirstRunMode } from "@/core/first-run";
 import { loadDocs } from "@/core/docs";
@@ -47,7 +47,8 @@ export default async function ConfigPage({
   const tenantId =
     rawTenantId && process.env[`MCP_AUTH_TOKEN_${rawTenantId.toUpperCase()}`] ? rawTenantId : null;
 
-  const registry = resolveRegistry();
+  // PERF-01: lazy resolve. RSC frame is already async; cost-free to await.
+  const registry = await resolveRegistryAsync();
   const logs = getRecentLogs(100);
 
   const enabled = registry.filter((p) => p.enabled);

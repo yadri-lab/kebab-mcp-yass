@@ -77,10 +77,20 @@ vi.mock("@/core/registry", () => {
     requiredEnvVars: [],
     tools: [testTool],
   } as ConnectorManifest;
+  const state = [{ manifest, enabled: true, disabledReason: null }];
   return {
-    getEnabledPacks: () => [{ manifest, enabled: true, disabledReason: null }],
-    resolveRegistry: () => [{ manifest, enabled: true, disabledReason: null }],
-    logRegistryState: () => {},
+    getEnabledPacks: () => state,
+    // PERF-01: lazy variant added post-Phase-43. admin/call/route.ts
+    // migrated from getEnabledPacks → getEnabledPacksLazy.
+    getEnabledPacksLazy: async () => state,
+    resolveRegistry: () => state,
+    resolveRegistryAsync: async () => state,
+    logRegistryState: async () => {},
+    ALL_CONNECTOR_LOADERS: [],
+    __resetRegistryCacheForTests: () => {},
+    __setLoaderSpyForTests: () => {},
+    __clearLoaderSpyForTests: () => {},
+    __validateRegisterPromptsForTests: () => {},
   };
 });
 

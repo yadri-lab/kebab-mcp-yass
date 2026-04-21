@@ -1,4 +1,4 @@
-import { resolveRegistry } from "@/core/registry";
+import { resolveRegistryAsync } from "@/core/registry";
 import { withAdminAuth } from "@/core/with-admin-auth";
 
 /**
@@ -6,7 +6,8 @@ import { withAdminAuth } from "@/core/with-admin-auth";
  * Used by the setup page for live credential verification.
  */
 async function getHandler() {
-  const registry = resolveRegistry();
+  // PERF-01: lazy resolve. Handler is already async.
+  const registry = await resolveRegistryAsync();
 
   const results = await Promise.all(
     registry.map(async (p) => {

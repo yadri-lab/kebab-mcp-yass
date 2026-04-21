@@ -16,7 +16,13 @@ import { resolve } from "path";
 // Previously this file maintained its own list and three connectors (composio,
 // skills, airtable) silently drifted out of test coverage. Importing the
 // source of truth directly closes that gap.
-import { ALL_CONNECTORS } from "../src/core/registry";
+//
+// PERF-01: post-v0.11 Phase 43, connector manifests load lazily via the
+// `ALL_CONNECTOR_LOADERS` table — the old `ALL_CONNECTORS` array is gone.
+// The contract test INTENTIONALLY loads every manifest (that's what the
+// contract test measures). One-time CI cost, not a request-time cost.
+import { ALL_CONNECTOR_LOADERS } from "../src/core/registry";
+import type { ConnectorManifest } from "../src/core/types";
 const SNAPSHOT_PATH = resolve(__dirname, "contract-snapshot.json");
 
 interface ToolContract {
@@ -26,26 +32,37 @@ interface ToolContract {
   destructive: boolean;
 }
 
-function getCurrentContract(): ToolContract[] {
-  return ALL_CONNECTORS.flatMap((pack) =>
-    pack.tools.map((tool) => ({
-      name: tool.name,
-      pack: pack.id,
-      schemaKeys: Object.keys(tool.schema).sort(),
-      destructive: tool.destructive,
-    }))
-  ).sort((a, b) => a.name.localeCompare(b.name));
+async function loadAllManifests(): Promise<ConnectorManifest[]> {
+  return Promise.all(ALL_CONNECTOR_LOADERS.map((entry) => entry.loader()));
 }
 
-function main() {
-  const current = getCurrentContract();
+async function getCurrentContract(): Promise<{
+  contract: ToolContract[];
+  manifests: ConnectorManifest[];
+}> {
+  const manifests = await loadAllManifests();
+  const contract = manifests
+    .flatMap((pack) =>
+      pack.tools.map((tool) => ({
+        name: tool.name,
+        pack: pack.id,
+        schemaKeys: Object.keys(tool.schema).sort(),
+        destructive: tool.destructive,
+      }))
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { contract, manifests };
+}
+
+async function main() {
+  const { contract: current, manifests } = await getCurrentContract();
 
   console.log(
-    `[Contract Test] Found ${current.length} tools across ${ALL_CONNECTORS.length} connectors\n`
+    `[Contract Test] Found ${current.length} tools across ${manifests.length} connectors\n`
   );
 
   // Print summary
-  for (const pack of ALL_CONNECTORS) {
+  for (const pack of manifests) {
     console.log(`  ${pack.label}: ${pack.tools.length} tools`);
   }
   console.log();
@@ -119,4 +136,7 @@ function main() {
   console.log("[Contract Test] PASS — all tool contracts match snapshot");
 }
 
-main();
+main().catch((err) => {
+  console.error("[Contract Test] unhandled error:", err);
+  process.exit(1);
+});

@@ -1,6 +1,6 @@
 import { createMcpHandler } from "mcp-handler";
 import { withLogging } from "@/core/logging";
-import { getEnabledPacks, logRegistryState } from "@/core/registry";
+import { getEnabledPacksLazy, logRegistryState } from "@/core/registry";
 import { on } from "@/core/events";
 import { VERSION } from "@/core/version";
 import { getDisabledTools } from "@/core/tool-toggles";
@@ -26,8 +26,27 @@ type GlobalWithFlag = typeof globalThis & { [TRANSPORT_SUBSCRIBED]?: boolean };
   const g = globalThis as GlobalWithFlag;
   if (!g[TRANSPORT_SUBSCRIBED]) {
     g[TRANSPORT_SUBSCRIBED] = true;
-    logRegistryState();
-    on("env.changed", logRegistryState);
+    // PERF-01: logRegistryState() is now async (awaits resolveRegistryAsync
+    // internally to honor the lazy connector loaders). Fire-and-forget is
+    // intentional — startup log ordering is not a hot-path constraint.
+    // fire-and-forget OK: startup log; failure is logged below and does not affect transport correctness
+    void logRegistryState().catch((err) =>
+      console.info(
+        `[Kebab MCP] initial logRegistryState failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    );
+    on("env.changed", () => {
+      // fire-and-forget OK: re-log after env change; observational only
+      void logRegistryState().catch((err) =>
+        console.info(
+          `[Kebab MCP] logRegistryState on env.changed failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        )
+      );
+    });
   }
 }
 
@@ -57,10 +76,14 @@ async function buildHandler(
   tenantId?: string | null,
   requestId?: string | null
 ) {
+  // PERF-01: resolve lazily. buildHandler() is invoked per request by the
+  // transport pipeline, so awaiting getEnabledPacksLazy() here is safe — the
+  // async frame is already established. After the first call the registry
+  // cache is warm and subsequent resolves are O(1).
+  const enabledPacks = await getEnabledPacksLazy();
+
   return createMcpHandler(
     (server) => {
-      const enabledPacks = getEnabledPacks();
-
       for (const pack of enabledPacks) {
         for (const tool of pack.manifest.tools) {
           const desc = tool.deprecated

@@ -5,7 +5,7 @@ import {
   createSkillVersioned,
 } from "@/connectors/skills/store";
 import { refreshNow } from "@/connectors/skills/lib/remote-fetcher";
-import { getEnabledPacks } from "@/core/registry";
+import { getEnabledPacksLazy } from "@/core/registry";
 import { withAdminAuth } from "@/core/with-admin-auth";
 import type { PipelineContext } from "@/core/pipeline";
 
@@ -47,7 +47,7 @@ async function postHandler(ctx: PipelineContext) {
   try {
     // Reject tool-name collision against other packs.
     const newId = slugPreview(parsed.data.name);
-    const collision = findToolCollision(`skill_${newId}`);
+    const collision = await findToolCollision(`skill_${newId}`);
     if (collision) {
       return NextResponse.json(
         {
@@ -88,8 +88,9 @@ function slugPreview(name: string): string {
   );
 }
 
-function findToolCollision(toolName: string): string | null {
-  for (const p of getEnabledPacks()) {
+async function findToolCollision(toolName: string): Promise<string | null> {
+  // PERF-01: lazy resolve — await the async registry.
+  for (const p of await getEnabledPacksLazy()) {
     if (p.manifest.id === "skills") continue;
     if (p.manifest.tools.some((t) => t.name === toolName)) return p.manifest.id;
   }
