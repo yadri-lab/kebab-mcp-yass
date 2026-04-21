@@ -4,6 +4,79 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.11 — Multi-tenant real
 
+### Phase 43 — Performance & CI hardening (PERF-01/02/04/05 + CI-01..04)
+
+Landed 4 perf wins + 4 CI gates in 8 atomic commits. PERF-03
+(`serverExternalPackages`) was evaluated and deferred with a documented
+rationale — Turbopack's current trace handling tripled the nft.json
+footprint when the flag was enabled, defeating the intent.
+
+- **PERF-01** `src/core/registry.ts` — lazy-load 14 connector manifests
+  via `ALL_CONNECTOR_LOADERS` table. Disabled connectors (missing env
+  vars, MYMCP_DISABLE_*, MYMCP_ENABLED_PACKS) never execute their
+  manifest module. `resolveRegistryAsync()` is the primary entry point;
+  concurrent resolves dedupe via an in-flight Map; `resolveRegistry()`
+  (sync) throws when cold so no caller silently gets a stub. 11 callers
+  migrated (`app/api/[transport]/route.ts`, `app/config/page.tsx`,
+  admin/status, admin/verify, admin/call, health deep branch, cron/health,
+  config/sandbox, config/skills, config/tool-schema, setup/test).
+  `loadConnectorManifest(id)` added for the setup wizard's
+  `testConnection()` on DRAFT credentials.
+- **PERF-02** `app/config/tabs.tsx` — 9 tabs load via `next/dynamic()`;
+  Overview stays eager. `/config` first-load JS drops 670,098 → 556,171
+  bytes (−17.0%). Per-tab SSR config documented inline (ssr: false for
+  Playground, Logs, Storage, Health; ssr: true for Connectors, Tools,
+  Skills, Documentation, Settings).
+- **PERF-04** `next.config.ts` — `experimental.optimizePackageImports:
+  ["zod", "@opentelemetry/api"]`. Barrel-optimization effect on client
+  bundles was negligible (Turbopack already concatenates; effect is
+  primarily server-side) but the setting stays enabled for future edge
+  routes and OTel-heavy paths.
+- **PERF-05** `.size-limit.json` + `scripts/check-bundle-size.ts` —
+  per-route first-load JS budget gate reading
+  `.next/diagnostics/route-bundle-stats.json`. Custom script (not the
+  `size-limit` CLI) because Turbopack's flat, hash-named chunk layout
+  defeats per-route globs. Budgets at `ceil(actual * 1.10 / 10 KB)`:
+  `/` = 560 KB, `/config` = 600 KB, `/welcome` = 610 KB. Current usage
+  ~90% of cap across all 3 routes.
+- **CI-01** `.github/workflows/ci.yml` — `strategy.matrix.node-version:
+  [20, 22]` with `fail-fast: false`. Catches Node-20-only bugs +
+  Node-22-only syntax pre-merge.
+- **CI-02** `vitest.config.ts` — `coverage.thresholds.lines: 33 → 46`
+  (floor(actual) ratchet). The v0.11 milestone 80% goal is NOT met;
+  filed to FOLLOW-UP for a dedicated v0.12 coverage phase. The "Verify
+  coverage thresholds" echo step in ci.yml was a placeholder — now
+  enforced internally by vitest v8 provider.
+- **CI-03** `.github/workflows/ci.yml` — removed `continue-on-error:
+  true` on the knip step. Standalone cleanup commit
+  (`chore(knip): b1fb3d1`) landed first with lint-staged + wait-on in
+  the allowlist + husky plugin disabled; main-branch green.
+- **CI-04** `.github/dependabot.yml` — split into 2 npm ecosystem
+  blocks. Security block: daily, 10 PR cap, `applies-to:
+  security-updates` group. Version-updates block: weekly, 5 PR cap,
+  grouped by dep-family (typescript, testing, nextjs-core). Ensures
+  CVE fixes are never queued behind minor bumps.
+
+**Deferred (filed to FOLLOW-UP):**
+
+- PERF-03 `serverExternalPackages` — regressed nft.json entries 417 →
+  1574 (+277%) under Turbopack. Retry when Turbopack ships a
+  `traceExternalPackages: false` option or equivalent.
+- `/config` < 350 KB milestone goal — 543 KB actual; residual 543 KB is
+  Next/React/Tailwind shell cost. Further reduction requires
+  architectural work (RSC shell migration, Tailwind replacement).
+- 80% coverage — 46.47% actual; requires dedicated v0.12 coverage phase.
+
+**Commits (8 atomic on main):**
+- `0a65680` chore(43): baseline bundle sizes + cold-start measurements
+- `96b0550` perf(registry): lazy-load connector manifests (PERF-01)
+- `2720d35` perf(dashboard): next/dynamic per /config tab (PERF-02)
+- `53a00fa` perf(next): optimizePackageImports for zod + @opentelemetry/api (PERF-04)
+- `b1fb3d1` chore(knip): allowlist lint-staged + wait-on (CI-03 prep)
+- `b76925a` ci: bundle-size gate via per-route stats (PERF-05)
+- `fcb7bda` ci: Node 20 + 22 matrix, coverage ratchet, size:check, un-gated knip (CI-01, CI-02)
+- `9a71a48` ci(dependabot): split security-updates vs version-update (CI-04)
+
 ### Phase 42 — Tenant scoping completion (TEN-01..06)
 
 Closes the "multi-tenant real" narrative opened by Phase 37b. Five files
