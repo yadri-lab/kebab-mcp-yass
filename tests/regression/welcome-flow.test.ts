@@ -26,6 +26,11 @@ import { resolve } from "node:path";
 import { POST as welcomeInitPOST } from "../../app/api/welcome/init/route";
 import { proxy } from "../../proxy";
 import type { NextRequest } from "next/server";
+// Phase 45 Task 1: `extractTokenFromInput` moved to `src/core/welcome-url-parser.ts`
+// so this regression test imports the real function rather than a
+// parallel re-implementation. If BUG-01 reappears, the import-site
+// fires red directly (the parallel copy at lines 79–113 is deleted).
+import { extractTokenFromInput } from "../../src/core/welcome-url-parser";
 
 // ─── Env save/restore helpers ─────────────────────────────────────────
 
@@ -74,27 +79,6 @@ function makeNextRequest(url: string, opts?: { cookie?: string }): NextRequest {
     nextUrl,
     cookies: { get: (k: string) => cookieMap.get(k) },
   }) as unknown as NextRequest;
-}
-
-// ─── Parallel re-implementation of extractTokenFromInput ─────────────
-// The real function is module-scoped inside welcome-client.tsx. This
-// parallel copy is kept in sync with the commented contract in
-// `AlreadyInitializedPanel` (see welcome-client.tsx). If the behavior
-// changes, both must be updated. Follow-up: extract to src/core/.
-
-function extractTokenFromInput(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      const t = parsed.searchParams.get("token")?.trim();
-      if (t) return t;
-    } catch {
-      // fall-through
-    }
-  }
-  return trimmed;
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────

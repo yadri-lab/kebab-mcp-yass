@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KebabLogo } from "../components/kebab-logo";
 import { McpClientSnippets } from "../components/mcp-client-snippets";
+import { extractTokenFromInput } from "@/core/welcome-url-parser";
 
 type ClaimStatus = "loading" | "new" | "claimer" | "claimed-by-other" | "already-initialized";
 
@@ -2074,26 +2075,10 @@ function MultiClientNote() {
  * Without this form, the link back to /config produces a bare 401 at
  * the very end of an otherwise-smooth flow.
  */
-/**
- * Accept either the bare 64-char hex token OR the full MCP URL that
- * the welcome Connect step hands out (`https://…/api/mcp?token=…`).
- * Users save whichever is most convenient and shouldn't have to
- * remember which form the form field wants.
- */
-function extractTokenFromInput(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      const t = parsed.searchParams.get("token")?.trim();
-      if (t) return t;
-    } catch {
-      // fall through — pasted garbage, treat as literal
-    }
-  }
-  return trimmed;
-}
+// Note: extractTokenFromInput lives in `src/core/welcome-url-parser.ts`
+// (extracted in Phase 45 Task 1 / UX-02a). It's imported at the top of
+// this file so the regression suite can reach it directly instead of
+// maintaining a parallel re-implementation.
 
 function AlreadyInitializedPanel() {
   const [tokenInput, setTokenInput] = useState("");
