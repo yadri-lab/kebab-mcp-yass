@@ -38,7 +38,18 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/**/test-utils.ts"],
       thresholds: {
-        lines: 33,
+        // CI-02 (v0.11 Phase 43): raised from 33 (pre-Phase-43 placeholder)
+        // to `floor(actual)` = 46 after measuring against the post-Phase-43
+        // codebase. Actual `npm run test:coverage` reports lines=46.45%.
+        //
+        // Milestone goal is 80% — this is intentionally a RATCHET, not the
+        // target. Every PR that adds net-new code must keep the ratio
+        // above 46% or add tests. Plan to ratchet upward in v0.12 once the
+        // TS-strict migration + coverage-pressure backlog is tackled.
+        //
+        // NOTE: 80% goal from v0.11 roadmap lines 244-252 is NOT met in
+        // Phase 43; documented in 43-03-SUMMARY.md + FOLLOW-UP.md.
+        lines: 46,
       },
     },
   },
