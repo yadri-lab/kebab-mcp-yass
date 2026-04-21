@@ -24,11 +24,13 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      # SUPPLY-02 (SV6-4): fail CI on any high-severity vulnerability.
-      # Currently 0 high vulns (3 moderate from langsmith via stagehand,
-      # tracked separately). Moderate is non-blocking; high is fatal.
-      - name: npm audit (high+)
-        run: npm audit --audit-level=high
+      # SCM-03 (v0.11 Phase 44): audit gate policy. FAIL on direct-dep
+      # moderate+ (unless allowlisted in scripts/audit-gate.mjs with
+      # reason + reviewBy), FAIL on any high/critical, WARN on
+      # transitive-dep moderate. Supersedes the earlier SUPPLY-02
+      # `npm audit --audit-level=high` gate.
+      - name: audit gate (scripted policy)
+        run: node scripts/audit-gate.mjs
       - run: npm run lint
       - run: npm run format:check
       # CI-03 (v0.11 Phase 43): knip now blocks on new dead code. The
