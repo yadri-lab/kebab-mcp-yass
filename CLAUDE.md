@@ -49,6 +49,88 @@ app/config/                      — Unified dashboard (connectors, tools, skill
 4. `route.ts` iterates enabled connectors, registers tools via `server.tool()`
 5. Dashboard, health, admin API all read from the same registry
 
+## Durable bootstrap pattern
+
+Kebab MCP runs on Vercel serverless lambdas, which means any in-memory
+state (`MCP_AUTH_TOKEN`, signing secret, first-run mode flag) is lost on
+cold start. The framework persists this state to Upstash KV and
+rehydrates on-demand at every auth-gated entry point.
+
+### The rehydrate contract
+
+Every auth-gated API route handler MUST do one of:
+
+1. Wrap the handler in `withBootstrapRehydrate(handler)` from
+   `src/core/with-bootstrap-rehydrate.ts` (declarative, preferred —
+   the HOC calls `rehydrateBootstrapAsync()` before the inner handler
+   and also fires the one-shot v0.10 tenant-prefix migration on the
+   first invocation per process).
+2. Call `rehydrateBootstrapAsync()` at function entry (explicit —
+   legacy pattern, most routes migrated to the HOC during Phase 37
+   DUR-01).
+3. Mark itself exempt with a `// BOOTSTRAP_EXEMPT: <reason>` comment
+   in the first 10 lines of the file. The only legitimate exemptions
+   are `/api/health` (public liveness) and the handful of callback
+   endpoints (`/api/auth/google/callback`, `/api/webhook/[name]`,
+   `/api/cron/health`) documented under `.planning/phases/37-durability-primitives/`.
+
+A contract test (`tests/contract/route-rehydrate-coverage.test.ts`)
+fails the build if a new auth-gated route is added without the wrapper
+or an explicit exemption. Do NOT silence the test — if a new route
+truly does not need rehydrate, document why with the exempt tag.
+
+### When rehydrate fails
+
+`rehydrateBootstrapAsync()` is idempotent and short-circuits if the
+in-memory bootstrap cache is already populated (warm lambda). On a cold
+lambda with KV unreachable, it logs at `[FIRST-RUN]` and returns — the
+env stays unchanged, and subsequent auth checks 401. This is
+intentional: we refuse to serve an unauthenticated request rather than
+serve a misconfigured one.
+
+### Middleware seam
+
+The request-entry middleware (`proxy.ts`) also rehydrates via
+`ensureBootstrapRehydratedFromUpstash()` from
+`src/core/first-run-edge.ts` — an Edge-runtime-safe variant that hits
+Upstash REST directly (no `node:fs`). This guarantees that by the
+time any handler runs, the bootstrap auth cache is populated if KV
+has it. Route handlers still call `rehydrateBootstrapAsync()` as
+defense-in-depth, via the `withBootstrapRehydrate` HOC.
+
+### Fire-and-forget rule
+
+KV writes in route handlers MUST be awaited. Fire-and-forget
+`void persistBootstrapToKv(...)` is banned — Vercel's reaper can kill
+in-flight promises before they resolve, which was the root cause of
+one of the 2026-04-20 session's shipped bugs (see `BUG-07` in
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)). The contract
+test `tests/contract/fire-and-forget.test.ts` enforces this via grep.
+
+If you genuinely need fire-and-forget (metrics, logs, recovery
+cleanup where the caller cannot block), annotate the callsite with a
+`// fire-and-forget OK: <reason>` comment — the grep test treats
+annotated lines as allowed.
+
+### Upstash env var variants
+
+Both `UPSTASH_REDIS_REST_*` (manual Upstash setup) and `KV_REST_API_*`
+(Vercel Marketplace Upstash KV) are recognized by `getUpstashCreds()`
+in `src/core/upstash-env.ts`. Do **not** read these env vars directly
+— route all access through the helper. Contract test:
+`tests/contract/upstash-env-single-reader.test.ts`.
+
+If both variants are set, `UPSTASH_REDIS_REST_*` wins (explicit
+configuration over Marketplace default). The `UpstashCreds.source`
+field exposes the active variant for observability hints.
+
+### Reference
+
+Case studies for every bug that motivated this pattern:
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). The durability
+integration test lives at
+[`tests/integration/welcome-durability.test.ts`](tests/integration/welcome-durability.test.ts).
+
 ## Adding a Tool
 
 1. Create `src/connectors/<connector>/tools/my-tool.ts` with `{ schema, handler }` exports
