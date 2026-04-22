@@ -17,18 +17,25 @@ export const ErrorCode = {
 export type ErrorCodeType = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
- * Thrown by `getRequiredConfig()` (src/core/config-facade.ts) when a
- * mandatory config key is missing / empty. Distinct from McpToolError
- * — this is a wiring error, not a tool runtime error. Catchable at the
- * pipeline layer to surface a 500 with a generic message while logging
- * the env var name server-side.
+ * Thrown by `getRequiredConfig()` (src/core/config-facade.ts) and
+ * `getRequiredEnv()` (src/core/env-utils.ts) when a mandatory config
+ * key is missing / empty. Distinct from McpToolError — this is a wiring
+ * error, not a tool runtime error. Catchable at the pipeline layer to
+ * surface a 500 with a generic message while logging the env var name
+ * server-side.
  *
- * Phase 48 / FACADE-01.
+ * Phase 48 / FACADE-01 introduced the (message, key?) shape.
+ * Phase 49 / TYPE-03 added the optional `connector` third arg so
+ * connector-scoped callers (via `getRequiredEnv`) can surface which
+ * connector owns the missing env var — enables richer 500 responses and
+ * actionable logs without losing backward compatibility with existing
+ * `getRequiredConfig()` callers.
  */
 export class McpConfigError extends Error {
   constructor(
     message: string,
-    public readonly key?: string
+    public readonly key?: string,
+    public readonly connector?: string
   ) {
     super(message);
     this.name = "McpConfigError";
