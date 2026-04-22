@@ -16,11 +16,11 @@ interface ListIssuesData {
 }
 
 export async function handleLinearListIssues(params: {
-  team?: string;
-  project?: string;
-  state?: string;
-  assignee?: string;
-  limit?: number;
+  team?: string | undefined;
+  project?: string | undefined;
+  state?: string | undefined;
+  assignee?: string | undefined;
+  limit?: number | undefined;
 }) {
   const limit = Math.min(params.limit ?? 25, 100);
 

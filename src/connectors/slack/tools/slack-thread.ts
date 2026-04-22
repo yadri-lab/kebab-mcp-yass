@@ -10,7 +10,7 @@ export const slackThreadSchema = {
 export async function handleSlackThread(params: {
   channel: string;
   thread_ts: string;
-  limit?: number;
+  limit?: number | undefined;
 }) {
   const messages = await readThread(params.channel, params.thread_ts, params.limit);
 

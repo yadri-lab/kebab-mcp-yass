@@ -12,7 +12,7 @@ export const linkedinFeedSchema = {
   max_posts: z.number().optional().describe("Max posts to return (default: 20, max: 30)"),
 };
 
-type LinkedinFeedParams = { max_posts?: number };
+type LinkedinFeedParams = { max_posts?: number | undefined };
 
 function extractArgsForFeed(max: number) {
   return {

@@ -107,9 +107,9 @@ export function Sidebar({
   serverName = "Kebab MCP",
   setupMode = false,
 }: {
-  displayName?: string;
-  serverName?: string;
-  setupMode?: boolean;
+  displayName?: string | undefined;
+  serverName?: string | undefined;
+  setupMode?: boolean | undefined;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();

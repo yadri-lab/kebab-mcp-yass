@@ -30,8 +30,8 @@ export const webExtractSchema = {
 type WebExtractParams = {
   url: string;
   instruction: string;
-  scroll_count?: number;
-  context_name?: string;
+  scroll_count?: number | undefined;
+  context_name?: string | undefined;
 };
 
 /**

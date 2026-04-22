@@ -57,10 +57,10 @@ interface GmailDraftResponse {
 function buildEmailHeaders(opts: {
   to: string;
   subject: string;
-  cc?: string;
-  bcc?: string;
-  inReplyTo?: string;
-  references?: string;
+  cc?: string | undefined;
+  bcc?: string | undefined;
+  inReplyTo?: string | undefined;
+  references?: string | undefined;
 }): string[] {
   const hdrs = [
     `To: ${opts.to}`,
@@ -129,8 +129,8 @@ function extractAttachments(payload: GmailMessagePart | undefined): EmailFull["a
 // --- List emails (metadata only) ---
 
 export async function listEmails(opts: {
-  maxResults?: number;
-  query?: string;
+  maxResults?: number | undefined;
+  query?: string | undefined;
 }): Promise<EmailSummary[]> {
   const maxResults = opts.maxResults || 10;
   const q = opts.query || "";
@@ -188,7 +188,7 @@ export async function readEmail(messageId: string): Promise<EmailFull> {
 
 export async function searchEmails(opts: {
   query: string;
-  maxResults?: number;
+  maxResults?: number | undefined;
 }): Promise<EmailFull[]> {
   const maxResults = Math.min(opts.maxResults || 5, 10);
   const listData = await googleFetchJSON<GmailMessageList>(
@@ -214,11 +214,11 @@ export async function sendEmail(opts: {
   to: string;
   subject: string;
   body: string;
-  cc?: string;
-  bcc?: string;
-  threadId?: string;
-  inReplyTo?: string;
-  references?: string;
+  cc?: string | undefined;
+  bcc?: string | undefined;
+  threadId?: string | undefined;
+  inReplyTo?: string | undefined;
+  references?: string | undefined;
 }): Promise<{ id: string; threadId: string }> {
   const hdrs = buildEmailHeaders(opts);
   const raw = Buffer.from(hdrs.join("\r\n") + "\r\n\r\n" + opts.body).toString("base64url");
@@ -238,7 +238,7 @@ export async function sendEmail(opts: {
 export async function replyToEmail(opts: {
   messageId: string;
   body: string;
-  cc?: string;
+  cc?: string | undefined;
 }): Promise<{ id: string; threadId: string }> {
   const original = await readEmail(opts.messageId);
   const subject = original.subject.startsWith("Re:") ? original.subject : `Re: ${original.subject}`;
@@ -278,8 +278,8 @@ export async function createDraft(opts: {
   to: string;
   subject: string;
   body: string;
-  cc?: string;
-  bcc?: string;
+  cc?: string | undefined;
+  bcc?: string | undefined;
 }): Promise<{ id: string; messageId: string }> {
   const hdrs = buildEmailHeaders(opts);
   const raw = Buffer.from(hdrs.join("\r\n") + "\r\n\r\n" + opts.body).toString("base64url");

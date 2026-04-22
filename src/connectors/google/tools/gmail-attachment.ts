@@ -11,7 +11,7 @@ export const gmailAttachmentSchema = {
 
 export async function handleGmailAttachment(params: {
   message_id: string;
-  attachment_id?: string;
+  attachment_id?: string | undefined;
 }) {
   let attId = params.attachment_id;
 

@@ -22,7 +22,11 @@ interface ParsedSkill {
   name: string;
   description: string;
   content: string;
-  arguments: { name: string; description?: string; required?: boolean }[];
+  arguments: {
+    name: string;
+    description?: string | undefined;
+    required?: boolean | undefined;
+  }[];
 }
 
 interface FrontmatterArg {
@@ -58,7 +62,11 @@ function buildSkillFromContent(
   const description =
     typeof meta.description === "string" ? (meta.description as string).trim() : "";
 
-  const args: { name: string; description?: string; required?: boolean }[] = [];
+  const args: {
+    name: string;
+    description?: string | undefined;
+    required?: boolean | undefined;
+  }[] = [];
   if (Array.isArray(meta.arguments)) {
     for (const a of meta.arguments as FrontmatterArg[]) {
       if (a && typeof a === "object" && typeof a.name === "string") {

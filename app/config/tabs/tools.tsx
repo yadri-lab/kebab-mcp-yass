@@ -9,9 +9,9 @@ interface ToolRow {
   description: string;
   packId: string;
   packLabel: string;
-  deprecated?: string;
-  destructive?: boolean;
-  disabled?: boolean;
+  deprecated?: string | undefined;
+  destructive?: boolean | undefined;
+  disabled?: boolean | undefined;
 }
 
 export function ToolsTab({
@@ -20,7 +20,7 @@ export function ToolsTab({
 }: {
   connectors: ConnectorSummary[];
   /** Server-fetched disabled tool names — avoids client-side loading spinner. */
-  initialDisabledTools?: string[];
+  initialDisabledTools?: string[] | undefined;
 }) {
   const packs = connectors;
   const [search, setSearch] = useState("");

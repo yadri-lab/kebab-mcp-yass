@@ -12,7 +12,10 @@ export const gmailInboxSchema = {
     ),
 };
 
-export async function handleGmailInbox(params: { max_results?: number; query?: string }) {
+export async function handleGmailInbox(params: {
+  max_results?: number | undefined;
+  query?: string | undefined;
+}) {
   const emails = await listEmails({
     maxResults: Math.min(params.max_results || 10, 20),
     query: params.query || "",

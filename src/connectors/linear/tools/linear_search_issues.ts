@@ -12,7 +12,10 @@ interface SearchData {
   };
 }
 
-export async function handleLinearSearchIssues(params: { query: string; limit?: number }) {
+export async function handleLinearSearchIssues(params: {
+  query: string;
+  limit?: number | undefined;
+}) {
   const limit = Math.min(params.limit ?? 20, 50);
 
   const data = await linearQuery<SearchData>(

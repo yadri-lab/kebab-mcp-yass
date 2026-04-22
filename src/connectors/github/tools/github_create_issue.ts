@@ -15,11 +15,11 @@ export const githubCreateIssueSchema = {
 
 export async function handleGithubCreateIssue(params: {
   title: string;
-  body?: string;
-  labels?: string[];
-  assignees?: string[];
-  milestone?: number;
-  repo?: string;
+  body?: string | undefined;
+  labels?: string[] | undefined;
+  assignees?: string[] | undefined;
+  milestone?: number | undefined;
+  repo?: string | undefined;
 }) {
   const repo = resolveRepo(params.repo);
 

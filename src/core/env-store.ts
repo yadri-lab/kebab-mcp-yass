@@ -222,8 +222,8 @@ interface VercelCreateDeploymentResponse {
  */
 export async function triggerVercelRedeploy(): Promise<{
   ok: boolean;
-  deploymentId?: string;
-  error?: string;
+  deploymentId?: string | undefined;
+  error?: string | undefined;
 }> {
   const token = process.env.VERCEL_TOKEN || "";
   const projectId = process.env.VERCEL_PROJECT_ID || "";
@@ -332,7 +332,7 @@ class VercelEnvStore implements EnvStore {
   kind = "vercel" as const;
   private token: string;
   private projectId: string;
-  private teamId?: string;
+  private teamId: string | undefined;
 
   constructor() {
     this.token = process.env.VERCEL_TOKEN || "";

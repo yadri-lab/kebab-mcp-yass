@@ -6,7 +6,7 @@ export const notionSearchSchema = {
   limit: z.number().optional().describe("Max results (default: 10)"),
 };
 
-export async function handleNotionSearch(params: { query: string; limit?: number }) {
+export async function handleNotionSearch(params: { query: string; limit?: number | undefined }) {
   const pages = await searchNotion(params.query, params.limit);
 
   if (pages.length === 0) {

@@ -13,12 +13,12 @@ export const calendarUpdateSchema = {
 
 export async function handleCalendarUpdate(params: {
   event_id: string;
-  calendar_id?: string;
-  summary?: string;
-  start?: string;
-  end?: string;
-  description?: string;
-  location?: string;
+  calendar_id?: string | undefined;
+  summary?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
+  description?: string | undefined;
+  location?: string | undefined;
 }) {
   const event = await updateEvent({
     eventId: params.event_id,

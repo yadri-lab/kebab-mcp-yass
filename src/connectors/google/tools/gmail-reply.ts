@@ -9,7 +9,11 @@ export const gmailReplySchema = {
   cc: z.string().optional().describe("CC recipients (comma-separated)"),
 };
 
-export async function handleGmailReply(params: { message_id: string; body: string; cc?: string }) {
+export async function handleGmailReply(params: {
+  message_id: string;
+  body: string;
+  cc?: string | undefined;
+}) {
   const result = await replyToEmail({
     messageId: params.message_id,
     body: params.body,

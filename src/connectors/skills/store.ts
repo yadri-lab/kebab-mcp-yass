@@ -246,13 +246,18 @@ export function updateSkill(id: string, patch: SkillUpdateInput): Promise<Skill 
     const idx = all.findIndex((s) => s.id === id);
     if (idx === -1) return null;
     const prev = all[idx];
+    // Phase 49 / exactOptionalPropertyTypes: spread `parsed` selectively —
+    // parsed has optional fields as `T | undefined`, but Skill has them as
+    // required strings. Use `??` to keep the previous value when parsed's
+    // field is undefined.
     const next: Skill = {
       ...prev,
-      ...parsed,
       id: prev.id,
       createdAt: prev.createdAt,
       updatedAt: new Date().toISOString(),
-      // preserve or update source carefully
+      name: parsed.name ?? prev.name,
+      description: parsed.description ?? prev.description,
+      content: parsed.content ?? prev.content,
       source: parsed.source ?? prev.source,
       arguments: parsed.arguments ?? prev.arguments,
     };

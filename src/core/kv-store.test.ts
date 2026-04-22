@@ -131,9 +131,12 @@ describe("kvScanAll", () => {
     await kv.set("y:1", "c");
 
     // Create a wrapper without scan
+    // Phase 49 / exactOptionalPropertyTypes: drop scan property entirely
+    // (rather than setting it to undefined) to match the KVStore interface's
+    // `scan?` semantics under the strict flag.
+    const { scan: _omit, ...rest } = kv;
     const noScanKv = {
-      ...kv,
-      scan: undefined,
+      ...rest,
       // Bind list to original kv
       list: kv.list.bind(kv),
       get: kv.get.bind(kv),
@@ -156,7 +159,10 @@ describe("kvScanAll cycle guard", () => {
       set: async () => {},
       delete: async () => {},
       list: async () => [],
-      scan: async (_cursor: string, _opts?: { match?: string; count?: number }) => {
+      scan: async (
+        _cursor: string,
+        _opts?: { match?: string | undefined; count?: number | undefined }
+      ) => {
         callCount++;
         return { cursor: String(callCount), keys: [`key-${callCount}`] };
       },

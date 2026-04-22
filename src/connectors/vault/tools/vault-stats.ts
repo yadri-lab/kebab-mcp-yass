@@ -8,7 +8,7 @@ export const vaultStatsSchema = {
     .describe("Restrict stats to a specific folder (default: entire vault)"),
 };
 
-export async function handleVaultStats(params: { folder?: string }) {
+export async function handleVaultStats(params: { folder?: string | undefined }) {
   const tree = await vaultTree(params.folder);
 
   // Count notes per folder

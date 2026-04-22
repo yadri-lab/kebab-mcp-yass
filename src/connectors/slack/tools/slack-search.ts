@@ -8,7 +8,7 @@ export const slackSearchSchema = {
   count: z.number().optional().describe("Max results (default: 10)"),
 };
 
-export async function handleSlackSearch(params: { query: string; count?: number }) {
+export async function handleSlackSearch(params: { query: string; count?: number | undefined }) {
   const results = await searchMessages(params.query, params.count);
 
   if (results.length === 0) {

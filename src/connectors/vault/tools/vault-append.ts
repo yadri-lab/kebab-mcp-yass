@@ -13,7 +13,7 @@ export const vaultAppendSchema = {
 export async function handleVaultAppend(params: {
   path: string;
   content: string;
-  separator?: string;
+  separator?: string | undefined;
 }) {
   const separator = params.separator ?? "\n\n";
 

@@ -38,7 +38,7 @@ export type AutoMagicState = {
   autoMagic: boolean;
   envWritten: boolean;
   redeployTriggered: boolean;
-  redeployError?: string;
+  redeployError?: string | undefined;
 };
 
 /** Full wizard state. Extends the minimal shape from wizard-steps.ts. */
@@ -68,7 +68,7 @@ export type WelcomeAction =
   | { type: "TOKEN_SAVED_SET"; tokenSaved: boolean }
   | { type: "PERMANENT_SET"; permanent: boolean }
   | { type: "TEST_STARTED" }
-  | { type: "TEST_RESOLVED"; ok: boolean; error?: string }
+  | { type: "TEST_RESOLVED"; ok: boolean; error?: string | undefined }
   | { type: "ERROR_SET"; error: string | null }
   | { type: "BUSY_SET"; busy: boolean };
 

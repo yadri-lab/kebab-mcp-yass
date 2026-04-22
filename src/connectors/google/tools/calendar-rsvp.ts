@@ -12,7 +12,7 @@ export const calendarRsvpSchema = {
 export async function handleCalendarRsvp(params: {
   event_id: string;
   response: "accepted" | "declined" | "tentative";
-  calendar_id?: string;
+  calendar_id?: string | undefined;
 }) {
   const ok = await rsvpEvent({
     eventId: params.event_id,

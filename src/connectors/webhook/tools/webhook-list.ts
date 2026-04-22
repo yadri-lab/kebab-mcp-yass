@@ -6,7 +6,7 @@ export async function handleWebhookList() {
   const kv = getContextKVStore();
   const keys = await kv.list("webhook:last:");
 
-  const entries: Array<{ name: string; receivedAt?: string }> = [];
+  const entries: Array<{ name: string; receivedAt?: string | undefined }> = [];
   for (const key of keys) {
     const name = key.replace(/^webhook:last:/, "");
     const raw = await kv.get(key);

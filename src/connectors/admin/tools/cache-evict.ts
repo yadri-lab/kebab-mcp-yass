@@ -12,7 +12,9 @@ export const cacheEvictSchema = {
     .describe("Which cache to clear: registry, kv, logs, or all (default: all)"),
 };
 
-export async function handleCacheEvict(params: { scope?: "registry" | "kv" | "logs" | "all" }) {
+export async function handleCacheEvict(params: {
+  scope?: "registry" | "kv" | "logs" | "all" | undefined;
+}) {
   const scope = params.scope ?? "all";
   const cleared: string[] = [];
 

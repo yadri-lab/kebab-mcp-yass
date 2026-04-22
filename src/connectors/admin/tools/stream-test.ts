@@ -21,8 +21,8 @@ async function* generateChunks(count: number, delayMs: number): AsyncGenerator<s
 }
 
 export async function handleStreamTest(args: {
-  chunks?: number;
-  delayMs?: number;
+  chunks?: number | undefined;
+  delayMs?: number | undefined;
 }): Promise<ToolResult> {
   const chunks = args.chunks ?? 5;
   const delayMs = args.delayMs ?? 100;

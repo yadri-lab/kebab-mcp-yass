@@ -87,9 +87,14 @@ export interface ConnectorSummary {
   reason: string;
   toolCount: number;
   requiredEnvVars: string[];
-  guide?: string;
-  core?: boolean;
-  tools: { name: string; description: string; deprecated?: string; destructive: boolean }[];
+  guide?: string | undefined;
+  core?: boolean | undefined;
+  tools: {
+    name: string;
+    description: string;
+    deprecated?: string | undefined;
+    destructive: boolean;
+  }[];
 }
 
 export function ConfigTabs({
@@ -119,10 +124,10 @@ export function ConfigTabs({
   vaultEnabled: boolean;
   hasAuthToken: boolean;
   version: string;
-  commitSha?: string;
-  tenantId?: string | null;
+  commitSha?: string | undefined;
+  tenantId?: string | null | undefined;
   /** Server-fetched disabled tool names — avoids client-side loading spinner. */
-  disabledTools?: string[];
+  disabledTools?: string[] | undefined;
 }) {
   let tab: React.ReactNode;
   let section: string;

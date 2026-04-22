@@ -6,7 +6,7 @@ export const calendarEventsSchema = {
   days: z.number().optional().describe("Number of days to look ahead (default: 7)"),
 };
 
-export async function handleCalendarEvents(params: { days?: number }) {
+export async function handleCalendarEvents(params: { days?: number | undefined }) {
   const now = new Date();
   const timeMax = new Date(now.getTime() + (params.days || 7) * 86400000).toISOString();
 

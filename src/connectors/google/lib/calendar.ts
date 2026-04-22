@@ -42,8 +42,8 @@ export interface CalendarEvent {
   start: string;
   end: string;
   calendar: string;
-  location?: string;
-  hangoutLink?: string;
+  location?: string | undefined;
+  hangoutLink?: string | undefined;
 }
 
 export interface CalendarInfo {
@@ -64,8 +64,8 @@ export async function listAllCalendars(): Promise<CalendarInfo[]> {
 // --- List events ---
 
 export async function listEventsAllCalendars(opts: {
-  timeMin?: string;
-  timeMax?: string;
+  timeMin?: string | undefined;
+  timeMax?: string | undefined;
 }): Promise<CalendarEvent[]> {
   const now = new Date();
   const timeMin = opts.timeMin || now.toISOString();
@@ -112,9 +112,9 @@ export async function createEvent(opts: {
   summary: string;
   start: string;
   end: string;
-  calendarId?: string;
-  description?: string;
-  location?: string;
+  calendarId?: string | undefined;
+  description?: string | undefined;
+  location?: string | undefined;
 }): Promise<CalendarEvent> {
   const calId = opts.calendarId || "primary";
   const isAllDay = !opts.start.includes("T");
@@ -167,12 +167,12 @@ export async function deleteEvent(eventId: string, calendarId?: string): Promise
 
 export async function updateEvent(opts: {
   eventId: string;
-  calendarId?: string;
-  summary?: string;
-  start?: string;
-  end?: string;
-  description?: string;
-  location?: string;
+  calendarId?: string | undefined;
+  summary?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
+  description?: string | undefined;
+  location?: string | undefined;
 }): Promise<CalendarEvent> {
   const calId = opts.calendarId || "primary";
 
@@ -307,7 +307,7 @@ export async function findFreeTime(opts: {
 
 export async function rsvpEvent(opts: {
   eventId: string;
-  calendarId?: string;
+  calendarId?: string | undefined;
   response: "accepted" | "declined" | "tentative";
 }): Promise<boolean> {
   const calId = opts.calendarId || "primary";

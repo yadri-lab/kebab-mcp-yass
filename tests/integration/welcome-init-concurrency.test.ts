@@ -321,7 +321,7 @@ describe("CORR-01 — two concurrent POST /api/welcome/init (Upstash-atomic)", (
       };
     });
 
-    const outcomes: Array<{ statuses: [number, number]; winnerToken?: string }> = [];
+    const outcomes: Array<{ statuses: [number, number]; winnerToken?: string | undefined }> = [];
 
     for (let i = 0; i < 5; i++) {
       resetTestFilesystem();

@@ -12,7 +12,10 @@ export const backupImportSchema = {
     ),
 };
 
-export async function handleBackupImport(args: { data: string; mode?: "merge" | "replace" }) {
+export async function handleBackupImport(args: {
+  data: string;
+  mode?: "merge" | "replace" | undefined;
+}) {
   let parsed: unknown;
   try {
     parsed = JSON.parse(args.data);

@@ -21,7 +21,11 @@ export const vaultRecentSchema = {
     ),
 };
 
-export async function handleVaultRecent(params: { n?: number; folder?: string; since?: string }) {
+export async function handleVaultRecent(params: {
+  n?: number | undefined;
+  folder?: string | undefined;
+  since?: string | undefined;
+}) {
   const limit = params.n ?? 10;
   const results = await vaultRecentCommits(limit, params.folder, params.since);
 

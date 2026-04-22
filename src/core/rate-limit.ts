@@ -90,7 +90,7 @@ export function __resetInMemoryRateLimitForTests(): void {
  */
 export async function checkRateLimit(
   identifier: string,
-  options: { scope?: string; limit?: number } = {}
+  options: { scope?: string | undefined; limit?: number | undefined } = {}
 ): Promise<RateLimitResult> {
   const scope = options.scope || "mcp";
   const defaultLimit = Math.max(1, getConfigInt("MYMCP_RATE_LIMIT_RPM", 60));

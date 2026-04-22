@@ -19,8 +19,8 @@ export const gmailLabelSchema = {
 
 export async function handleGmailLabel(params: {
   message_id: string;
-  add?: string;
-  remove?: string;
+  add?: string | undefined;
+  remove?: string | undefined;
 }) {
   const addLabels = params.add ? params.add.split(",").map((l) => l.trim()) : [];
   const removeLabels = params.remove ? params.remove.split(",").map((l) => l.trim()) : [];

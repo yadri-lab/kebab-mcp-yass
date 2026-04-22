@@ -31,7 +31,7 @@ interface SearchIssueData {
 
 export async function handleLinearGetIssue(params: {
   identifier: string;
-  include_comments?: boolean;
+  include_comments?: boolean | undefined;
 }) {
   const includeComments = params.include_comments !== false;
 

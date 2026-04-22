@@ -5,7 +5,7 @@ const NOTION_VERSION = "2022-06-28";
 
 async function notionFetch<T>(
   path: string,
-  opts: { method?: string; body?: unknown } = {}
+  opts: { method?: string | undefined; body?: unknown | undefined } = {}
 ): Promise<T> {
   const token = getConfig("NOTION_API_KEY");
   if (!token) throw new Error("NOTION_API_KEY not configured");
@@ -317,7 +317,7 @@ export async function updatePage(
 export async function createPage(opts: {
   parentId: string;
   title: string;
-  content?: string;
+  content?: string | undefined;
 }): Promise<{ id: string; url: string }> {
   const children: unknown[] = [];
 

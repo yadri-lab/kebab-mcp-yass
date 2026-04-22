@@ -314,8 +314,8 @@ function StepFooter({
   primary,
   secondary,
 }: {
-  primary: { label: string; enabled: boolean; onClick?: () => void };
-  secondary?: { label: string; onClick: () => void };
+  primary: { label: string; enabled: boolean; onClick?: (() => void) | undefined };
+  secondary?: { label: string; onClick: () => void } | undefined;
 }) {
   return (
     <div className="mt-8 flex items-center justify-between gap-3 flex-wrap">
@@ -473,7 +473,7 @@ function TokenPersistencePanel({
 }: {
   autoMagicSuccess: boolean;
   autoMagicPartial: boolean;
-  autoMagicError?: string;
+  autoMagicError?: string | undefined;
   durableBackend: boolean;
   permanent: boolean;
   vercelEnvUrl: string;

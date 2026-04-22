@@ -17,12 +17,12 @@ export const githubListIssuesSchema = {
 };
 
 export async function handleGithubListIssues(params: {
-  repo?: string;
-  state?: "open" | "closed" | "all";
-  labels?: string;
-  assignee?: string;
-  milestone?: string;
-  limit?: number;
+  repo?: string | undefined;
+  state?: "open" | "closed" | "all" | undefined;
+  labels?: string | undefined;
+  assignee?: string | undefined;
+  milestone?: string | undefined;
+  limit?: number | undefined;
 }) {
   const repo = resolveRepo(params.repo);
   const perPage = Math.min(params.limit ?? 20, 100);

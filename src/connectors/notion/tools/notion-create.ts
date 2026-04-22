@@ -13,7 +13,7 @@ export const notionCreateSchema = {
 export async function handleNotionCreate(params: {
   database_id: string;
   title: string;
-  content?: string;
+  content?: string | undefined;
 }) {
   const page = await createPage({
     parentId: params.database_id,

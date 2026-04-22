@@ -4,8 +4,8 @@ import { useState } from "react";
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "confirming"; action: "export" | "import"; file?: File }
-  | { kind: "auth-prompt"; action: "export" | "import"; file?: File }
+  | { kind: "confirming"; action: "export" | "import"; file?: File | undefined }
+  | { kind: "auth-prompt"; action: "export" | "import"; file?: File | undefined }
   | { kind: "running"; action: "export" | "import" }
   | { kind: "import-preview"; diff: ImportDiff; file: File; token: string }
   | { kind: "done"; action: "export" | "import"; message: string }

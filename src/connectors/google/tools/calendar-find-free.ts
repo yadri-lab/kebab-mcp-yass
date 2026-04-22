@@ -13,8 +13,8 @@ export const calendarFindFreeSchema = {
 
 export async function handleCalendarFindFree(params: {
   duration_minutes: number;
-  days?: number;
-  start_date?: string;
+  days?: number | undefined;
+  start_date?: string | undefined;
 }) {
   const now = new Date();
   const timeMin = params.start_date || now.toISOString();

@@ -65,7 +65,7 @@ export interface ImportOptions {
    * "merge" (default): additive — only writes keys from the backup.
    * "replace": deletes all existing keys not in the backup, then writes all backup keys.
    */
-  mode?: "merge" | "replace";
+  mode?: "merge" | "replace" | undefined;
   /**
    * Phase 42 / TEN-04: target scope.
    * - "tenant" (default): writes via `getContextKVStore()` — current
@@ -74,7 +74,7 @@ export interface ImportOptions {
    * - "all": writes via raw `getKVStore()` — restores every tenant's
    *   data. Root-operator path only.
    */
-  scope?: "tenant" | "all";
+  scope?: "tenant" | "all" | undefined;
 }
 
 export interface ExportOptions {

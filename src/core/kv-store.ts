@@ -66,9 +66,9 @@ export interface KVStore {
    * concern there). Callers should feature-check or treat TTL as a
    * hint.
    */
-  set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+  set(key: string, value: string, ttlSeconds?: number | undefined): Promise<void>;
   delete(key: string): Promise<void>;
-  list(prefix?: string): Promise<string[]>;
+  list(prefix?: string | undefined): Promise<string[]>;
   /**
    * Atomically increment a counter key and (optionally) set its TTL.
    * Returns the post-increment value.
@@ -81,7 +81,7 @@ export interface KVStore {
    * Used by the rate limiter to avoid the classic get-then-set race
    * (two concurrent callers both reading `N` and both writing `N+1`).
    */
-  incr?(key: string, opts?: { ttlSeconds?: number }): Promise<number>;
+  incr?(key: string, opts?: { ttlSeconds?: number | undefined }): Promise<number>;
   /**
    * Atomic set-if-not-exists (SETNX). Returns `{ ok: true }` when the
    * key was written or `{ ok: false, existing }` when the key already
@@ -100,7 +100,7 @@ export interface KVStore {
   setIfNotExists?(
     key: string,
     value: string,
-    opts?: { ttlSeconds?: number }
+    opts?: { ttlSeconds?: number | undefined }
   ): Promise<{ ok: true } | { ok: false; existing: string }>;
   /**
    * Cursor-based key scanning. Safer than `list()` for large key sets
@@ -114,7 +114,7 @@ export interface KVStore {
    */
   scan?(
     cursor: string,
-    opts?: { match?: string; count?: number }
+    opts?: { match?: string | undefined; count?: number | undefined }
   ): Promise<{ cursor: string; keys: string[] }>;
   /**
    * Multi-get: fetch multiple keys in a single round-trip.
@@ -132,7 +132,7 @@ export interface KVStore {
     key: string,
     value: string,
     maxLength: number,
-    opts?: { ttlSeconds?: number }
+    opts?: { ttlSeconds?: number | undefined }
   ): Promise<void>;
   /** Read a range from a list (head-indexed, inclusive). */
   lrange?(key: string, start: number, stop: number): Promise<string[]>;
@@ -243,7 +243,7 @@ class FilesystemKV implements KVStore {
   async setIfNotExists(
     key: string,
     value: string,
-    _opts?: { ttlSeconds?: number }
+    _opts?: { ttlSeconds?: number | undefined }
   ): Promise<{ ok: true } | { ok: false; existing: string }> {
     this.cache = null;
     return this.enqueue(async () => {
@@ -319,7 +319,7 @@ class FilesystemKV implements KVStore {
   // TECH-06 lazy prune: after incrementing, scan for `ratelimit:*` keys
   // whose bucket timestamp is older than 2× ttlSeconds ago. This runs
   // inside the write queue so it's serialized. O(keys) but fine for dev.
-  async incr(key: string, opts?: { ttlSeconds?: number }): Promise<number> {
+  async incr(key: string, opts?: { ttlSeconds?: number | undefined }): Promise<number> {
     this.cache = null;
     return this.enqueue(async () => {
       const map = await this.readAll();
@@ -429,7 +429,7 @@ class UpstashKV implements KVStore {
   async setIfNotExists(
     key: string,
     value: string,
-    opts?: { ttlSeconds?: number }
+    opts?: { ttlSeconds?: number | undefined }
   ): Promise<{ ok: true } | { ok: false; existing: string }> {
     const cmd: (string | number)[] = ["SET", key, value, "NX"];
     if (opts?.ttlSeconds && opts.ttlSeconds > 0) {
@@ -498,7 +498,7 @@ class UpstashKV implements KVStore {
    * (single counter key) atomicity of INCR alone is sufficient to
    * eliminate the get-then-set race.
    */
-  async incr(key: string, opts?: { ttlSeconds?: number }): Promise<number> {
+  async incr(key: string, opts?: { ttlSeconds?: number | undefined }): Promise<number> {
     const commands: (string | number)[][] = [["INCR", key]];
     if (opts?.ttlSeconds && opts.ttlSeconds > 0) {
       commands.push(["EXPIRE", key, Math.ceil(opts.ttlSeconds)]);
@@ -530,7 +530,7 @@ class UpstashKV implements KVStore {
     key: string,
     value: string,
     maxLength: number,
-    opts?: { ttlSeconds?: number }
+    opts?: { ttlSeconds?: number | undefined }
   ): Promise<void> {
     const commands: (string | number)[][] = [
       ["LPUSH", key, value],
@@ -717,8 +717,8 @@ class TenantKVStore implements KVStore {
 
   // HIGH-2: scan and mget are only defined when the inner store supports them.
   // This prevents callers from seeing these methods as available when they aren't.
-  scan?: KVStore["scan"];
-  mget?: KVStore["mget"];
+  scan?: NonNullable<KVStore["scan"]>;
+  mget?: NonNullable<KVStore["mget"]>;
 
   constructor(inner: KVStore, tenantId: string | null) {
     this.inner = inner;
@@ -728,7 +728,7 @@ class TenantKVStore implements KVStore {
     if (typeof inner.scan === "function") {
       this.scan = async (
         cursor: string,
-        opts?: { match?: string; count?: number }
+        opts?: { match?: string | undefined; count?: number | undefined }
       ): Promise<{ cursor: string; keys: string[] }> => {
         // Prefix the match pattern for the tenant namespace
         const prefixedMatch = opts?.match ? this.pk(opts.match) : this.pk("*");
@@ -757,7 +757,7 @@ class TenantKVStore implements KVStore {
     return this.inner.get(this.pk(key));
   }
 
-  set(key: string, value: string, ttlSeconds?: number) {
+  set(key: string, value: string, ttlSeconds?: number | undefined) {
     return this.inner.set(this.pk(key), value, ttlSeconds);
   }
 
@@ -765,22 +765,27 @@ class TenantKVStore implements KVStore {
     return this.inner.delete(this.pk(key));
   }
 
-  list(prefix?: string) {
+  list(prefix?: string | undefined) {
     return this.inner.list(this.pk(prefix ?? ""));
   }
 
-  incr(key: string, opts?: { ttlSeconds?: number }) {
+  incr(key: string, opts?: { ttlSeconds?: number | undefined }) {
     return this.inner.incr?.(this.pk(key), opts) ?? Promise.reject(new Error("incr not supported"));
   }
 
-  setIfNotExists(key: string, value: string, opts?: { ttlSeconds?: number }) {
+  setIfNotExists(key: string, value: string, opts?: { ttlSeconds?: number | undefined }) {
     return (
       this.inner.setIfNotExists?.(this.pk(key), value, opts) ??
       Promise.reject(new Error("setIfNotExists not supported"))
     );
   }
 
-  lpushCapped(key: string, value: string, maxLength: number, opts?: { ttlSeconds?: number }) {
+  lpushCapped(
+    key: string,
+    value: string,
+    maxLength: number,
+    opts?: { ttlSeconds?: number | undefined }
+  ) {
     return (
       this.inner.lpushCapped?.(this.pk(key), value, maxLength, opts) ??
       Promise.reject(new Error("lpushCapped not supported"))

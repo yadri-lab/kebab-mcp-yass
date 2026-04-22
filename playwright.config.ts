@@ -21,6 +21,10 @@ try {
   // No .env file — tests use fallback tokens
 }
 
+// Phase 49 / exactOptionalPropertyTypes: webServer + storageState are
+// omitted entirely in the CI/e2e branches rather than set to undefined
+// — Playwright's TestConfig types don't accept `undefined` as a value
+// under the strict flag, so we build the config conditionally.
 export default defineConfig({
   // Root testDir unused — each project below declares its own testDir.
   // Kept for back-compat with bare `npx playwright test` invocations
@@ -34,14 +38,16 @@ export default defineConfig({
   },
   // Don't start a dev server automatically — caller must provide one.
   // Run `npm run dev` in a separate terminal, or set PLAYWRIGHT_BASE_URL.
-  webServer: process.env.CI
-    ? undefined
+  ...(process.env.CI
+    ? {}
     : {
-        command: "npm run dev",
-        port: 3000,
-        reuseExistingServer: true,
-        timeout: 60_000,
-      },
+        webServer: {
+          command: "npm run dev",
+          port: 3000,
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+      }),
   projects: [
     // Visual regression project — snapshot-based, read-only. Unchanged.
     {
@@ -64,7 +70,6 @@ export default defineConfig({
       retries: process.env.CI ? 1 : 0,
       use: {
         browserName: "chromium",
-        storageState: undefined,
       },
     },
   ],

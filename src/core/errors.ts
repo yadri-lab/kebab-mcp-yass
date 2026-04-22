@@ -48,22 +48,30 @@ export class McpToolError extends Error {
   readonly userMessage: string;
   readonly retryable: boolean;
   /** Generic recovery hint safe to surface to the MCP client / LLM. */
-  readonly recovery?: string;
+  readonly recovery: string | undefined;
   /**
    * Detailed recovery hint containing env var names or internal details.
    * Logged server-side only — never sent to the MCP client.
    */
-  readonly internalRecovery?: string;
+  readonly internalRecovery: string | undefined;
 
+  // Phase 49 / exactOptionalPropertyTypes: the optional opts fields are
+  // widened to `| undefined` because callers (connector-errors.ts +
+  // tool handlers) legitimately pass `cause: opts?.cause` where
+  // opts?.cause is `Error | undefined`. Widening preserves the
+  // "undefined is a meaningful no-value signal" semantic for these
+  // fields. The class itself ALWAYS stores a union (string | undefined),
+  // not an optional property — downstream consumers that check presence
+  // via `!== undefined` keep working identically.
   constructor(opts: {
     code: ErrorCodeType;
     toolName: string;
     message: string;
-    userMessage?: string;
-    retryable?: boolean;
-    cause?: Error;
-    recovery?: string;
-    internalRecovery?: string;
+    userMessage?: string | undefined;
+    retryable?: boolean | undefined;
+    cause?: Error | undefined;
+    recovery?: string | undefined;
+    internalRecovery?: string | undefined;
   }) {
     super(opts.message, { cause: opts.cause });
     this.name = "McpToolError";

@@ -7,7 +7,10 @@ export const driveSearchSchema = {
   max_results: z.number().optional().describe("Max results (default: 10, max: 20)"),
 };
 
-export async function handleDriveSearch(params: { query: string; max_results?: number }) {
+export async function handleDriveSearch(params: {
+  query: string;
+  max_results?: number | undefined;
+}) {
   const files = await searchDrive(params);
 
   if (files.length === 0) {

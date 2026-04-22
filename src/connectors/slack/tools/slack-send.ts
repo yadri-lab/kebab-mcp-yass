@@ -13,7 +13,7 @@ export const slackSendSchema = {
 export async function handleSlackSend(params: {
   channel: string;
   text: string;
-  thread_ts?: string;
+  thread_ts?: string | undefined;
 }) {
   const result = await sendMessage(params.channel, params.text, params.thread_ts);
   return {

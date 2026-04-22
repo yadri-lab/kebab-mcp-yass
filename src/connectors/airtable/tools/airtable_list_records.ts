@@ -25,11 +25,11 @@ interface ListRecordsResponse {
 export async function handleAirtableListRecords(params: {
   base_id: string;
   table: string;
-  view?: string;
-  filter_formula?: string;
-  sort_field?: string;
-  sort_direction?: "asc" | "desc";
-  limit?: number;
+  view?: string | undefined;
+  filter_formula?: string | undefined;
+  sort_field?: string | undefined;
+  sort_direction?: "asc" | "desc" | undefined;
+  limit?: number | undefined;
 }) {
   const maxRecords = Math.min(params.limit ?? 25, 100);
   const url = new URL(

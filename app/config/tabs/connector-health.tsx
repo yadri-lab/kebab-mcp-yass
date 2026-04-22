@@ -66,7 +66,7 @@ function Badge({
 }: {
   status: "ok" | "degraded" | "down" | "no-data";
   label: string;
-  lastCheck?: string;
+  lastCheck?: string | undefined;
 }) {
   const colors: Record<typeof status, string> = {
     ok: "bg-green/15 text-green border-green/30",

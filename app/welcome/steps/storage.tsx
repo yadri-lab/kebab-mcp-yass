@@ -464,8 +464,13 @@ function StepFooter({
   primary,
   secondary,
 }: {
-  primary: { label: string; enabled: boolean; onClick?: () => void; href?: string };
-  secondary?: { label: string; onClick: () => void };
+  primary: {
+    label: string;
+    enabled: boolean;
+    onClick?: (() => void) | undefined;
+    href?: string | undefined;
+  };
+  secondary?: { label: string; onClick: () => void } | undefined;
 }) {
   return (
     <div className="mt-8 flex items-center justify-between gap-3 flex-wrap">

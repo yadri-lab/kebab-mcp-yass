@@ -17,8 +17,8 @@ export const notionUpdateSchema = {
 
 export async function handleNotionUpdate(params: {
   page_id: string;
-  properties?: Record<string, string | number | boolean>;
-  append_content?: string;
+  properties?: Record<string, string | number | boolean> | undefined;
+  append_content?: string | undefined;
 }) {
   const result = await updatePage(params.page_id, params.properties, params.append_content);
 

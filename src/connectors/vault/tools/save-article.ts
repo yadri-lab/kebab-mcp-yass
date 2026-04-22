@@ -15,9 +15,9 @@ export const saveArticleSchema = {
 
 export async function handleSaveArticle(params: {
   url: string;
-  title?: string;
-  tags?: string[];
-  folder?: string;
+  title?: string | undefined;
+  tags?: string[] | undefined;
+  folder?: string | undefined;
 }) {
   // Fetch article content via Jina Reader with timeout and size limit
   // Auto-detect Medium URLs and inject session cookie

@@ -13,7 +13,10 @@ export const apifyLinkedinCompanyPostsSchema = {
     .describe("Max number of posts to fetch (default: 20)"),
 };
 
-export async function handleApifyLinkedinCompanyPosts(params: { url: string; maxPosts?: number }) {
+export async function handleApifyLinkedinCompanyPosts(params: {
+  url: string;
+  maxPosts?: number | undefined;
+}) {
   const maxPosts = params.maxPosts ?? 20;
   const items = await runActor(APIFY_LINKEDIN_COMPANY_POSTS_ACTOR, {
     companyUrls: [params.url],

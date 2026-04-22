@@ -13,8 +13,8 @@ export async function handleGmailSend(params: {
   to: string;
   subject: string;
   body: string;
-  cc?: string;
-  bcc?: string;
+  cc?: string | undefined;
+  bcc?: string | undefined;
 }) {
   const result = await sendEmail(params);
   return {

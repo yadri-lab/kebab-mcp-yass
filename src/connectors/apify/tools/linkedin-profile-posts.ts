@@ -13,7 +13,10 @@ export const apifyLinkedinProfilePostsSchema = {
     .describe("Max number of posts to fetch (default: 20)"),
 };
 
-export async function handleApifyLinkedinProfilePosts(params: { url: string; maxPosts?: number }) {
+export async function handleApifyLinkedinProfilePosts(params: {
+  url: string;
+  maxPosts?: number | undefined;
+}) {
   const maxPosts = params.maxPosts ?? 20;
   const items = await runActor(APIFY_LINKEDIN_PROFILE_POSTS_ACTOR, {
     profileUrls: [params.url],

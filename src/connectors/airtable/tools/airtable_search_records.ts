@@ -22,7 +22,7 @@ export async function handleAirtableSearchRecords(params: {
   table: string;
   search_field: string;
   query: string;
-  limit?: number;
+  limit?: number | undefined;
 }) {
   const maxRecords = Math.min(params.limit ?? 25, 100);
   const formula = `SEARCH(LOWER("${params.query.replace(/"/g, '\\"')}"), LOWER({${params.search_field}}))`;

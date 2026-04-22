@@ -26,9 +26,9 @@ export async function handleCalendarCreate(params: {
   summary: string;
   start: string;
   end: string;
-  description?: string;
-  location?: string;
-  calendar_id?: string;
+  description?: string | undefined;
+  location?: string | undefined;
+  calendar_id?: string | undefined;
 }) {
   const event = await createEvent({
     summary: params.summary,

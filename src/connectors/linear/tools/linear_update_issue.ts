@@ -36,12 +36,12 @@ interface UpdateIssueData {
 
 export async function handleLinearUpdateIssue(params: {
   identifier: string;
-  title?: string;
-  description?: string;
-  priority?: "no_priority" | "urgent" | "high" | "medium" | "low";
-  state?: string;
-  assignee?: string | null;
-  labels?: string[];
+  title?: string | undefined;
+  description?: string | undefined;
+  priority?: "no_priority" | "urgent" | "high" | "medium" | "low" | undefined;
+  state?: string | undefined;
+  assignee?: string | null | undefined;
+  labels?: string[] | undefined;
 }) {
   // Resolve identifier to ID
   const searchData = await linearQuery<SearchData>(

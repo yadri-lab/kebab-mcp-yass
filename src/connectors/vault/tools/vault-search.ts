@@ -10,9 +10,9 @@ export const vaultSearchSchema = {
 
 export async function handleVaultSearch(params: {
   query: string;
-  folder?: string;
-  limit?: number;
-  page?: number;
+  folder?: string | undefined;
+  limit?: number | undefined;
+  page?: number | undefined;
 }) {
   const { results, totalCount, method } = await vaultSearch(
     params.query,

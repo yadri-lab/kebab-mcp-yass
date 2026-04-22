@@ -26,7 +26,7 @@ export const webActSchema = {
 type WebActParams = {
   url: string;
   actions: string[];
-  context_name?: string;
+  context_name?: string | undefined;
 };
 
 /**

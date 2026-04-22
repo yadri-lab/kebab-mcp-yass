@@ -21,8 +21,8 @@ export const composioActionSchema = {
 
 export async function handleComposioAction(params: {
   action: string;
-  params?: Record<string, unknown>;
-  connected_account_id?: string;
+  params?: Record<string, unknown> | undefined;
+  connected_account_id?: string | undefined;
 }) {
   const result = await executeAction(
     params.action,

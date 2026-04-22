@@ -10,7 +10,13 @@ import { toMsg } from "@/core/error-utils";
 
 type UpdateStatus =
   | { state: "loading" }
-  | { state: "ready"; available: boolean; behind: number; remote: string; latest?: string | null }
+  | {
+      state: "ready";
+      available: boolean;
+      behind: number;
+      remote: string;
+      latest?: string | null | undefined;
+    }
   | { state: "disabled"; reason: string }
   | { state: "error"; error: string };
 
@@ -38,8 +44,8 @@ export function OverviewTab({
   logs: ToolLog[];
   config: InstanceConfig;
   version: string;
-  commitSha?: string;
-  tenantId?: string | null;
+  commitSha?: string | undefined;
+  tenantId?: string | null | undefined;
 }) {
   const [tokenRevealed, setTokenRevealed] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);

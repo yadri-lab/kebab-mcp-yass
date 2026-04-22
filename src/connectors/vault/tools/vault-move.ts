@@ -8,7 +8,11 @@ export const vaultMoveSchema = {
   message: z.string().optional().describe("Git commit message"),
 };
 
-export async function handleVaultMove(params: { from: string; to: string; message?: string }) {
+export async function handleVaultMove(params: {
+  from: string;
+  to: string;
+  message?: string | undefined;
+}) {
   const commitMsg = params.message || `Move ${params.from} → ${params.to} via Kebab MCP`;
 
   // Step 1: Read source (gets content + SHA in one call)

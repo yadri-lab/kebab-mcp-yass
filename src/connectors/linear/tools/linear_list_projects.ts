@@ -22,7 +22,10 @@ interface ListProjectsData {
   projects: { nodes: LinearProject[] };
 }
 
-export async function handleLinearListProjects(params: { team?: string; limit?: number }) {
+export async function handleLinearListProjects(params: {
+  team?: string | undefined;
+  limit?: number | undefined;
+}) {
   const limit = Math.min(params.limit ?? 25, 100);
   const filter = params.team ? { teams: { some: { key: { eq: params.team.toUpperCase() } } } } : {};
 

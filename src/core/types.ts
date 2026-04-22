@@ -121,11 +121,11 @@ export interface ConnectorManifest {
    * `{ active: boolean, reason?: string }` — `reason` is shown on the dashboard
    * when the pack is inactive.
    */
-  isActive?: (env: NodeJS.ProcessEnv) => { active: boolean; reason?: string };
+  isActive?: ((env: NodeJS.ProcessEnv) => { active: boolean; reason?: string }) | undefined;
   /** All tools in this pack */
   tools: ToolDefinition[];
   /** Optional async health check — verifies credentials actually work */
-  diagnose?: () => Promise<{ ok: boolean; message: string }>;
+  diagnose?: (() => Promise<{ ok: boolean; message: string }>) | undefined;
   /**
    * Optional pre-install credential test used by the /welcome and
    * /config setup flows. Receives the credential draft the user typed
@@ -135,20 +135,22 @@ export interface ConnectorManifest {
    * BEFORE the credentials have been persisted — so implementations
    * must read from the `credentials` argument, not from env.
    */
-  testConnection?: (credentials: Record<string, string>) => Promise<TestConnectionResult>;
+  testConnection?:
+    | ((credentials: Record<string, string>) => Promise<TestConnectionResult>)
+    | undefined;
   /**
    * Optional markdown guide shown in `/config → Packs` for per-pack credential
    * instructions that go beyond a simple key/value form (e.g., per-source
    * cookies for the paywall pack).
    */
-  guide?: string;
+  guide?: string | undefined;
   /**
    * When true, this connector is considered framework-core (e.g., Skills,
    * Admin) — still registered and exposing tools, but hidden from the
    * user-facing Connectors page since it isn't a user-configurable
    * integration.
    */
-  core?: boolean;
+  core?: boolean | undefined;
   /**
    * Optional hook for registering non-tool MCP primitives (prompts,
    * resources) on the MCP server instance. Called by the transport
@@ -160,7 +162,7 @@ export interface ConnectorManifest {
    * framework-level primitive independent of any one transport
    * implementation.
    */
-  registerPrompts?: (server: unknown) => void | Promise<void>;
+  registerPrompts?: ((server: unknown) => void | Promise<void>) | undefined;
 }
 
 /** Resolved state of a pack at runtime */

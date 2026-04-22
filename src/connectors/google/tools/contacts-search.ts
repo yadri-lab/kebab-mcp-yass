@@ -6,7 +6,10 @@ export const contactsSearchSchema = {
   max_results: z.number().optional().describe("Max results (default: 10, max: 30)"),
 };
 
-export async function handleContactsSearch(params: { query: string; max_results?: number }) {
+export async function handleContactsSearch(params: {
+  query: string;
+  max_results?: number | undefined;
+}) {
   const contacts = await searchContacts(params.query, params.max_results);
 
   if (contacts.length === 0) {

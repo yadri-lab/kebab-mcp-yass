@@ -23,13 +23,13 @@ export const githubUpdateIssueSchema = {
 
 export async function handleGithubUpdateIssue(params: {
   issue_number: number;
-  title?: string;
-  body?: string;
-  state?: "open" | "closed";
-  labels?: string[];
-  assignees?: string[];
-  milestone?: number | null;
-  repo?: string;
+  title?: string | undefined;
+  body?: string | undefined;
+  state?: "open" | "closed" | undefined;
+  labels?: string[] | undefined;
+  assignees?: string[] | undefined;
+  milestone?: number | null | undefined;
+  repo?: string | undefined;
 }) {
   const repo = resolveRepo(params.repo);
 

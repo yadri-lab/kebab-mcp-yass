@@ -66,7 +66,7 @@ export function useStoragePolling(opts: UseStoragePollingOptions = {}): UseStora
     try {
       const res = await fetch("/api/storage/status", {
         credentials: "include",
-        signal,
+        signal: signal ?? null,
       });
       if (!res.ok) {
         setFailures((n) => n + 1);

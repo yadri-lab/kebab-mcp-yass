@@ -89,19 +89,19 @@ export interface ToolLog {
   tool: string;
   durationMs: number;
   status: "success" | "error";
-  error?: string;
-  errorCode?: string;
-  retryable?: boolean;
+  error?: string | undefined;
+  errorCode?: string | undefined;
+  retryable?: boolean | undefined;
   /** Actionable recovery hint from connector-specific errors. */
-  recovery?: string;
+  recovery?: string | undefined;
   /** Number of streamed chunks (present when tool returned a stream). */
-  streamChunks?: number;
+  streamChunks?: number | undefined;
   /** Total byte size of streamed content. */
-  streamBytes?: number;
+  streamBytes?: number | undefined;
   timestamp: string;
-  tokenId?: string;
+  tokenId?: string | undefined;
   /** Request ID for correlating tool calls to HTTP requests. */
-  requestId?: string;
+  requestId?: string | undefined;
 }
 
 // ── ISO-01 / Phase 48 — per-tenant ring buffer ────────────────────

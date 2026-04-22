@@ -27,13 +27,13 @@ export interface DriveFile {
   mimeType: string;
   modifiedTime: string;
   webViewLink: string;
-  size?: string;
-  owners?: string[];
+  size?: string | undefined;
+  owners?: string[] | undefined;
 }
 
 export async function searchDrive(opts: {
   query: string;
-  maxResults?: number;
+  maxResults?: number | undefined;
 }): Promise<DriveFile[]> {
   const limit = Math.min(opts.maxResults || 10, 20);
   const q = `(name contains '${opts.query.replace(/'/g, "\\'")}' or fullText contains '${opts.query.replace(/'/g, "\\'")}') and trashed = false`;

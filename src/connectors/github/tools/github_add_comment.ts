@@ -13,7 +13,7 @@ export const githubAddCommentSchema = {
 export async function handleGithubAddComment(params: {
   issue_number: number;
   body: string;
-  repo?: string;
+  repo?: string | undefined;
 }) {
   const repo = resolveRepo(params.repo);
 

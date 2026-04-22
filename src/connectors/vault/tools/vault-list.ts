@@ -5,7 +5,7 @@ export const vaultListSchema = {
   folder: z.string().optional().describe("Folder path to list, e.g. Veille/ (default: vault root)"),
 };
 
-export async function handleVaultList(params: { folder?: string }) {
+export async function handleVaultList(params: { folder?: string | undefined }) {
   const entries = await vaultList(params.folder);
 
   return {

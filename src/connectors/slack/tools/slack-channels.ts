@@ -5,7 +5,7 @@ export const slackChannelsSchema = {
   limit: z.number().optional().describe("Max channels to return (default: 50)"),
 };
 
-export async function handleSlackChannels(params: { limit?: number }) {
+export async function handleSlackChannels(params: { limit?: number | undefined }) {
   const channels = await listChannels(params.limit);
 
   if (channels.length === 0) {

@@ -41,11 +41,11 @@ interface CreateIssueData {
 export async function handleLinearCreateIssue(params: {
   title: string;
   team: string;
-  description?: string;
-  priority?: "no_priority" | "urgent" | "high" | "medium" | "low";
-  state?: string;
-  assignee?: string;
-  labels?: string[];
+  description?: string | undefined;
+  priority?: "no_priority" | "urgent" | "high" | "medium" | "low" | undefined;
+  state?: string | undefined;
+  assignee?: string | undefined;
+  labels?: string[] | undefined;
 }) {
   const teamId = await resolveTeamId(params.team);
 

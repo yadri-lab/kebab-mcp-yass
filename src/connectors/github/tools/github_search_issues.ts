@@ -15,7 +15,10 @@ interface GitHubSearchResult {
   items: GitHubIssue[];
 }
 
-export async function handleGithubSearchIssues(params: { query: string; limit?: number }) {
+export async function handleGithubSearchIssues(params: {
+  query: string;
+  limit?: number | undefined;
+}) {
   const perPage = Math.min(params.limit ?? 20, 100);
   const searchQuery = encodeURIComponent(params.query);
 

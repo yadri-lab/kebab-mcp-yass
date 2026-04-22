@@ -79,8 +79,8 @@ export interface SlackMessage {
   text: string;
   ts: string;
   date: string;
-  threadTs?: string;
-  replyCount?: number;
+  threadTs?: string | undefined;
+  replyCount?: number | undefined;
 }
 
 // --- List channels ---

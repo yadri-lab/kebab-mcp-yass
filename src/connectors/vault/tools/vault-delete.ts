@@ -6,7 +6,7 @@ export const vaultDeleteSchema = {
   message: z.string().optional().describe("Git commit message for the deletion"),
 };
 
-export async function handleVaultDelete(params: { path: string; message?: string }) {
+export async function handleVaultDelete(params: { path: string; message?: string | undefined }) {
   const result = await vaultDelete(params.path, params.message);
 
   return {

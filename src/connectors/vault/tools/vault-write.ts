@@ -19,9 +19,9 @@ export const vaultWriteSchema = {
 export async function handleVaultWrite(params: {
   path: string;
   content: string;
-  message?: string;
-  frontmatter?: Record<string, unknown>;
-  sha?: string;
+  message?: string | undefined;
+  frontmatter?: Record<string, unknown> | undefined;
+  sha?: string | undefined;
 }) {
   let content = params.content;
 

@@ -27,7 +27,7 @@ export interface RequestContextData {
    * (e.g., "SLACK_BOT_TOKEN"). When set, `getCredential(key)` returns
    * these values before falling through to the boot-env snapshot.
    */
-  credentials?: Record<string, string>;
+  credentials?: Record<string, string> | undefined;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContextData>();

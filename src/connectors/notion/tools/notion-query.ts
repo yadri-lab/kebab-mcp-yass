@@ -18,9 +18,9 @@ export const notionQuerySchema = {
 
 export async function handleNotionQuery(params: {
   database_id: string;
-  filter?: Record<string, string | number | boolean>;
-  sort?: string;
-  limit?: number;
+  filter?: Record<string, string | number | boolean> | undefined;
+  sort?: string | undefined;
+  limit?: number | undefined;
 }) {
   const pages = await queryDatabase(params.database_id, params.filter, params.sort, params.limit);
 

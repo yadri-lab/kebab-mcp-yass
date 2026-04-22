@@ -272,8 +272,8 @@ export class UpstashLogStore implements LogStore {
   kind = "upstash" as const;
   private listKey: string;
   private maxEntries: number;
-  private maxAgeSeconds?: number;
-  private kvOverride?: KVStore;
+  private maxAgeSeconds: number | undefined;
+  private kvOverride: KVStore | undefined;
   /** Exposed for testing. */
   _circuit: CircuitBreakerState = {
     consecutiveFailures: 0,

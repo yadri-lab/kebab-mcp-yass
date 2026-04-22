@@ -6,7 +6,7 @@ export const slackReadSchema = {
   limit: z.number().optional().describe("Max messages to return (default: 20)"),
 };
 
-export async function handleSlackRead(params: { channel: string; limit?: number }) {
+export async function handleSlackRead(params: { channel: string; limit?: number | undefined }) {
   const messages = await readMessages(params.channel, params.limit);
 
   if (messages.length === 0) {

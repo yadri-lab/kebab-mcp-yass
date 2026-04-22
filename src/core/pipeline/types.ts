@@ -28,7 +28,7 @@ export interface PipelineContext {
    * arg). `unknown` because the shape varies per-route; handler authors
    * cast to the expected type.
    */
-  routeParams?: unknown;
+  routeParams?: unknown | undefined;
   /**
    * Tenant id resolved from the request. `null` = default tenant
    * (single-tenant deploy or x-mymcp-tenant header absent).
@@ -51,15 +51,15 @@ export interface PipelineContext {
    */
   requestId: string;
   /** Set by `authStep(kind)` so downstream steps can discriminate. */
-  authKind?: "mcp" | "admin" | "cron";
+  authKind?: "mcp" | "admin" | "cron" | undefined;
   /**
    * Per-request credentials snapshot. Seeded by `hydrateCredentialsStep`;
    * consumed by the handler when it wraps its work in
    * `runWithCredentials(ctx.credentials, ...)`.
    */
-  credentials?: Record<string, string>;
+  credentials?: Record<string, string> | undefined;
   /** Populated by `bodyParseStep`. JSON-parsed when possible, raw string on parse failure. */
-  parsedBody?: unknown;
+  parsedBody?: unknown | undefined;
   /**
    * Free-form extension slot — step authors must prefer the typed slots
    * above. Documented for completeness; aim to land new fields as typed

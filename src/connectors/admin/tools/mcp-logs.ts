@@ -12,8 +12,8 @@ export const mcpLogsSchema = {
 };
 
 export async function handleMcpLogs(params: {
-  count?: number;
-  filter?: "all" | "errors" | "success";
+  count?: number | undefined;
+  filter?: "all" | "errors" | "success" | undefined;
 }) {
   const durableEnabled = getConfig("MYMCP_DURABLE_LOGS") === "true";
   const filter = params.filter ?? "all";

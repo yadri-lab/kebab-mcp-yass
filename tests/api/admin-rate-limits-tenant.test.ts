@@ -93,7 +93,11 @@ vi.mock("@/core/kv-store", () => {
       const all: string[] = [];
       let cursor = "0";
       do {
-        const r = await kv.scan(cursor, { match, count: 100 });
+        // exactOptionalPropertyTypes: omit match when undefined rather than passing it.
+        const r = await kv.scan(
+          cursor,
+          match !== undefined ? { match, count: 100 } : { count: 100 }
+        );
         all.push(...r.keys);
         cursor = r.cursor;
       } while (cursor !== "0");

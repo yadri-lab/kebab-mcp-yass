@@ -19,7 +19,10 @@ interface DueNote {
   snippet: string;
 }
 
-export async function handleVaultDue(params: { before?: string; folder?: string }) {
+export async function handleVaultDue(params: {
+  before?: string | undefined;
+  folder?: string | undefined;
+}) {
   const cutoff = params.before || new Date().toISOString().split("T")[0];
 
   // Get all markdown files

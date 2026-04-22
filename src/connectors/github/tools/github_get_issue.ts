@@ -18,8 +18,8 @@ export const githubGetIssueSchema = {
 
 export async function handleGithubGetIssue(params: {
   issue_number: number;
-  repo?: string;
-  include_comments?: boolean;
+  repo?: string | undefined;
+  include_comments?: boolean | undefined;
 }) {
   const repo = resolveRepo(params.repo);
   const includeComments = params.include_comments !== false;
