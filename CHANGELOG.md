@@ -4,6 +4,63 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.12 — Welcome hardening + v1.0 readiness
 
+### Phase 50 — Rebrand + risk-weighted coverage + docs + MCP resources (2026-04-22)
+
+**v1.0 blocker cleared: MyMCP → Kebab rename complete.**
+
+**Branding (BRAND-01..04):**
+
+- `KEBAB_*` env vars take priority; `MYMCP_*` fallback with one boot-time deprecation warning per variable per process (dedupe via module-level `Set<string>`). `src/core/config-facade.ts` `resolveAlias()` step wires the aliasing between request-context override and live process.env.
+- Admin cookie: `kebab_admin_token` primary, `mymcp_admin_token` accepted during 2-release transition. `setAdminCookies(headers, token)` emits TWO Set-Cookie headers with identical attributes (HttpOnly + SameSite=Strict + Secure + Path=/ + Max-Age). `readAdminCookie(cookieHeader)` reads kebab first, legacy second (once-per-process warning on legacy hit). `proxy.ts` (Edge middleware) updated with dual-write + dual-read; `app/welcome/page.tsx` `isAdminAuthed()` reads both.
+- OTel spans use `kebab.tool.name` / `kebab.connector.id` / `kebab.kv.key_prefix` / `kebab.request.id` by default. `KEBAB_EMIT_LEGACY_OTEL_ATTRS=1` (or `MYMCP_EMIT_LEGACY_OTEL_ATTRS=1`) restores `mymcp.*` aliases alongside. Central `brandSpanAttrs()` + `brandSpanName()` helpers in `src/core/tracing.ts`; all emission sites routed through them. Callers (auth, first-run, kv-store) pass unprefixed logical names and attribute keys.
+- `src/core/constants/brand.ts` — single source of truth for `BRAND.envPrefix` / `BRAND.cookieName` / `BRAND.otelAttrPrefix` + the `LEGACY_BRAND` mirror. `deprecationMsg(legacyKey, modernKey)` formats the single-line boot warning.
+- `tests/contract/no-stray-mymcp.test.ts` — contract test scanning `src/**/*.ts` + `app/**/*.{ts,tsx}` for `/\bmymcp\b/i` or `MYMCP_` literals outside a 53-entry allowlist. Allowlist covers brand constants, alias/fallback paths, cross-session state (headers `x-mymcp-tenant`, cookies `mymcp_oauth` / `mymcp.storage.ack.v3`, KV key `mymcp:firstrun:bootstrap`, Tailwind `prose-mymcp`, `Symbol.for("mymcp.transport.subscribed")`), external export formats (skills `source: "mymcp"`), and connector manifest UI copy. Budget guard: current + 1 headroom prevents silent allowlist creep.
+
+**Coverage (COV-01..04) — risk-weighted, not 80% global:**
+
+- Priority-path floor `≥ 65%` line coverage — verified at Phase 50 close:
+  - `src/core/auth.ts` 97.84% · `src/core/first-run.ts` 93.96% · `src/core/signing-secret.ts` 96.82% · `src/core/kv-store.ts` 71.26% · `src/core/rate-limit.ts` 83.63% · `src/core/credential-store.ts` 65.38% · `src/core/pipeline.ts` 100% · `src/core/pipeline/*` 97.89%.
+- Global ratchet raised `46 → 50` in `vitest.config.ts`. Actual `55.01%` at phase close (+8.6 percentage points aggregate since Phase 43). Conservative floor chosen to avoid fighting connector-module churn.
+- `src/core/proxy.ts` (Edge middleware): Phase 40's grep-contract (`proxy-async-rehydrate.test.ts`) complemented with `tests/core/proxy-behavioral.test.ts` — 7 real behavioral scenarios covering rehydrate / cookie-auth / early-return / unauthorized / legacy-cookie / first-time-setup / showcase-mode.
+- Connector lib backfill (6 new test files, 37 tests): `vault/lib/github` (17 — validateVaultPath + read/write/list + 4xx/5xx), `apify/lib/client` (9 — happy + 408/504/400 with redacted token), `slack/lib/slack-api` (7 — shape mapping + 3 error classifications), `google/lib/calendar` (4 — list + events multi-cal). All 4 connector-lib families now exceed the ≥ 60% local floor per `CONTRIBUTING.md`.
+- `CONTRIBUTING.md` gains the risk-weighted coverage philosophy section — rejects the 80% metric chase, documents the 9 priority paths + ratchet discipline + connector lib policy + when-to-add-tests guidance.
+
+**Documentation (DOCS-01..03):**
+
+- `docs/API.md` — new — route-by-route reference (318 lines, all 42 endpoints) grouped by 9 concerns (`[transport]`, `health`, `admin/*`, `welcome/*`, `setup/*`, `config/*`, `auth/google/*`, `storage/*`, `webhook + cron`). Per-route: method, auth, request/response shape, pipeline steps, rate limit, tenant behavior. Phase 50 annotations throughout.
+- `docs/CONNECTOR-AUTHORING.md` — new — zero-to-live walkthrough (359 lines, 8 steps + appendix). Manifest → tool handler → registry → .env → tests → resources → dev server → publish. Uses `getConfig` facade + `toMsg` helper + `McpToolError` + brand-aware OTel attrs. Appendix: pagination, rate-limit step, credential rotation via KV, tenant-scoped vs operator-wide, Phase 50 OTel conventions. `docs/CONNECTORS.md` gains top-of-file link.
+- `README.md` — Documentation index reordered by reader journey (discover → deploy → use → author → contribute), adds `docs/API.md` + `docs/CONNECTOR-AUTHORING.md`. Instance-settings table: `KEBAB_*` as primary column with `MYMCP_*` as "Legacy name" column + pointer to migration guide.
+
+**MCP ecosystem (MCP-01..02):**
+
+- `src/core/resources.ts` — new — MCP `resources/*` capability registry. `ResourceProvider` interface (`scheme` + `list()` + `read(uri)`), `registerResources(server, providers)` wires `ListResourcesRequestSchema` + `ReadResourceRequestSchema` on `server.server.setRequestHandler`. List is concat of providers; read dispatches by URI scheme. Partial-failure tolerant (one provider's `list()` throw doesn't nuke the whole enumeration). Duplicate-scheme → first wins with warning. Graceful skip when SDK version lacks the request schemas.
+- `ConnectorManifest.resources?: ResourceProvider` field (optional). App-level transport (`app/api/[transport]/route.ts`) collects every enabled connector's provider and registers after tool registration — empty array → zero overhead.
+- Obsidian Vault pilot — `src/connectors/vault/resources.ts` exposes every `.md` file under `vault://<path>` URI. Uses existing `vaultTree()` + `vaultRead()` + `validateVaultPath()` (path-traversal guard from v0.6).
+- `tests/core/resources-registry.test.ts` (10 tests) + `tests/connectors/vault-resources.test.ts` (9 tests) — unit + round-trip coverage.
+
+**Carry-over cleanups (bundled in one chore commit):**
+
+- `scripts/audit-gate.mjs` no-undef lint errors (Phase 44 carry-over): added `scripts/**/*.mjs` + `*.mjs` override to `eslint.config.mjs` with Node globals + `sourceType: "module"`. `npm run lint` now 0 errors.
+- `tests/integration/welcome-durability.test.ts` NODE_ENV TS2540 (Phase 42 carry-over): cast through `process.env as Record<string, string | undefined>`. `npx tsc --noEmit` clean.
+- vitest 4 `poolOptions` deprecation (Phase 45 carry-over): migrated `pool: "forks" + poolOptions.forks` → `pool: "forks" + forks` (top-level) per vitest 4 migration guide. `npm test` emits 0 deprecation warnings.
+
+**Deviations (Rule 3 auto-fixes documented in commits):**
+
+- `proxy.ts` added to `ALLOWED_DIRECT_ENV_READS` + ESLint FACADE-03 override (Edge runtime predates the facade module graph — not routable through `getConfig()` without blowing the Edge bundle).
+- `KEBAB_ENABLED_PACKS` migration folded into Task 5: `MYMCP_ENABLED_PACKS` readers in `src/core/config.ts` + `src/core/registry.ts` + 3 test files + `scripts/registry-test.ts` all updated (facade alias still accepts MYMCP_*). Without this, every `npm test` run tripped the Phase 50 BRAND-01 deprecation warning via the registry smoke test.
+- Task 7 ships as a single atomic commit instead of 4 sub-commits (Judgment call — connector-lib test shapes proved uniform enough to commit coherently; revertibility preserved via file-level granularity).
+- Task 8 ships no new per-path test files — priority paths were already at 78% average line coverage from Phases 41/46/49 over-delivery, so adding redundant tests for paths at 93-100% would be net-negative churn without confidence gain.
+
+### Migration guide (v0.11 → v0.12)
+
+**Env vars:** No action required. Set `KEBAB_*` for new deployments. Existing `MYMCP_*` continues to work through v0.13 (support removed in v0.14) — one deprecation warning per variable per process.
+
+**Cookie:** No action required. Existing sessions continue to authenticate via `mymcp_admin_token`. New sessions write both cookies. Logout clears both.
+
+**OTel consumers:** If your dashboards filter on `mymcp.tool.name`, set `KEBAB_EMIT_LEGACY_OTEL_ATTRS=1` to restore the old attribute names alongside the new ones, then migrate dashboards at your leisure. Span NAMES are single-valued and always emit `kebab.*` (e.g., `kebab.auth.check`, `kebab.kv.write`, `kebab.bootstrap.rehydrate`) — the legacy flag only duplicates attribute KEYS.
+
+**Codebase forks:** `src/core/constants/brand.ts` is the single source of truth. All new code should reference `BRAND.envPrefix` / `BRAND.cookieName` / `BRAND.otelAttrPrefix`; never hardcode. `tests/contract/no-stray-mymcp.test.ts` prevents regressions. Grandfathered paths (cross-session state — headers, cookies, KV keys — and external export formats) are on the allowlist with per-entry rationale.
+
 ### Phase 49 — Type tightening (T19) (2026-04-22)
 
 **Goal:** close the class of type-drift that shipped 2 silent `any` leaks
