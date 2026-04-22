@@ -4,6 +4,152 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased] — v0.12 — Welcome hardening + v1.0 readiness
 
+### Phase 49 — Type tightening (T19) (2026-04-22)
+
+**Goal:** close the class of type-drift that shipped 2 silent `any` leaks
+through previous milestones. Ratchet TypeScript strictness to catch the
+remaining 4 well-known holes. Dedupe the 60+ `err instanceof Error ?
+err.message : String(err)` ternary callsites through a single canonical
+helper. Replace 8 `getConfig("X")!` non-null-bang sites with a typed
+`getRequiredEnv(key, connectorName)` throwing `McpConfigError`.
+Unblocks v1.0 code-quality gate.
+
+**TypeScript strictness (TYPE-01):** 4 new compiler flags enabled in
+`tsconfig.json`, each in its own commit for `git bisect` friendliness.
+Landing order cheapest → most-valuable (per INVENTORY.md baseline):
+
+- `noImplicitOverride: true` — 2 errors fixed (React error-boundary
+  overrides). Trivial `override` keyword additions.
+- `verbatimModuleSyntax: true` — 10 errors fixed across 10 connector
+  tool files (GitHub + Linear). Mechanical `import type` additions
+  now that `isolatedModules: true` was already in effect.
+- `exactOptionalPropertyTypes: true` — 117 baseline errors. Systematic
+  pattern: zod's `.optional()` yields `T | undefined`, but handler
+  signatures previously declared `?: T`. Widened ~90 handler
+  parameters + key shared types (McpToolError opts, ConnectorManifest,
+  ToolLog, PipelineContext, KVStore interface, ImportOptions,
+  SlackMessage, ConnectorSummary, AutoMagicState, WelcomeAction,
+  Phase/UI state unions, 4 browser-tool Params aliases, CalendarEvent
+  + DriveFile, RequestContextData, Sidebar + AppShell props).
+  2 semantic-correctness call-site fixes (skills/store selective
+  spread; TenantKVStore scan via `NonNullable<KVStore["scan"]>`).
+  3 omit-vs-undefined config-shape fixes (useStoragePolling signal
+  coerced to `?? null`; playwright.config.ts webServer +
+  storageState spread conditionally; admin-rate-limits-tenant test
+  omits match when undefined).
+- `noUncheckedIndexedAccess: true` — 229 baseline errors (145 in
+  src/app + 84 in tests). **Highest-value flag** — would have
+  caught the 2 silent `any` leaks audited in POST-V0.11-AUDIT §A.6.
+  Landed LAST to keep the earlier bisect-friendly commits stable.
+  Guard-based fixes only in production code (NO blanket `!` reintroductions):
+  extract + validate tuple parts before narrowing
+  (`app/api/admin/rate-limits/route.ts`); line-binding `const next =
+  lines[i]; if (next === undefined) break;` in iterative parsers
+  (`markdown-lite.ts`, `env-store.ts`); hoist bucket references
+  post-lookup + ensure-path assignment (`logging.ts`); regex-group
+  narrowing via `match?.[1] ?? ""` (frontmatter, url-safety,
+  vault/lib/github, paywall); `if (!page) throw` gates in browser
+  tool handlers. Tests use `!` assertions where the surrounding
+  `expect(arr).toHaveLength(N)` already proved the invariant.
+
+`npx tsc --noEmit` green on main with all 4 flags active (only
+pre-existing Phase 42 carry-over `tests/integration/welcome-durability
+.test.ts:328 TS2540` remains — unchanged by this phase).
+
+**Error-handling dedupe (TYPE-02):** new `toMsg(e: unknown): string`
+helper in `src/core/error-utils.ts` with 12 unit tests covering Error
+/ subclass / string / number / null / undefined / object / Symbol /
+toString / boolean / unicode / empty-Error. Regex-driven codemod at
+`scripts/codemod-to-msg.ts` (tracked in VCS for future re-runs)
+rewrote 63 STRICT-shape sites + 2 WEIRD-shape sites (`err instanceof
+Error ? err.message : err` — returns raw err, unsafe) across 45 files
+in `src/` + `app/`. Depth-aware import insertion (relative for
+`src/core/**`, `@/core/error-utils` alias for everywhere else) +
+preservation of `"use client"` / `"use strict"` / shebang directives.
+28 LITERAL-fallback sites (`err instanceof Error ? err.message :
+"Cannot reach Notion"`) intentionally NOT codemodded — rewriting
+would regress their bespoke user-facing strings to `"[object Object]"`
+/ `"undefined"`. Filed to FOLLOW-UP as T-LITFB audit.
+
+**Typed required env (TYPE-03):** new `getRequiredEnv(key,
+connectorName)` helper in `src/core/env-utils.ts`. Delegates to
+`getConfig()` (preserving the Phase 48 SEC-02 tenant-isolation seam)
+and throws `McpConfigError` with an actionable per-connector message
+naming both the env var AND the connector ("Connector browser
+requires BROWSERBASE_API_KEY. Set it in the dashboard or .env and
+redeploy."). 8 unit tests covering present / missing / empty-string /
+message content / structured `.key` + `.connector` fields / actionable
+message / whitespace-only (valid).
+
+`McpConfigError` extended backward-compatibly with an optional
+third `connector` constructor arg. Existing `getRequiredConfig()`
+callers (Phase 48 FACADE-01) continue to work unchanged.
+
+8 `getConfig("X")!` non-null-bang sites migrated (7 in
+`src/connectors/browser/lib/browserbase.ts`, 1 in
+`src/connectors/composio/manifest.ts`). Note: the plan said
+"8 `process.env.X!` bangs" — Phase 48's FACADE-02 migration had
+already routed those through `getConfig()`. Same site count, same
+files, same outcome. Missing env now throws `McpConfigError` naming
+both the connector + env var instead of "undefined is not a string"
+from the SDK downstream.
+
+**Regression fence (TYPE-04):** new contract test
+`tests/contract/no-err-ternary.test.ts` (Windows-safe — uses
+`fs.readdirSync`, NOT `rg`/`grep` subprocess; precedent:
+`fire-and-forget.test.ts`). Detects both STRICT and WEIRD shapes;
+tests/** + `**/*.test.ts` grandfathered at the walker level (roadmap
+D-04). Tight 2-entry allowlist (`src/core/error-utils.ts` as the
+canonical shape, `scripts/codemod-to-msg.ts` as the regex string
+literal) with a defensive "stale entry" check so dead allowlist rows
+can't hide a future regression. Flip-test validated: synthetic pattern
+injection → test fails with actionable `file:line: line-content`
+output; revert → test passes.
+
+**Fork-maintainer notes:**
+
+- **New catch block?** Use `toMsg(err)` from `@/core/error-utils`
+  instead of the legacy ternary. The TYPE-04 contract test will fail
+  CI otherwise.
+- **New connector needs a required env var?** Prefer
+  `getRequiredEnv("KEY", "connector-name")` from `@/core/env-utils`
+  over `getConfig("KEY")!` / `process.env.KEY!`. Missing env now
+  produces an actionable error at the connector-testConnection /
+  first-call boundary, not a cryptic SDK-side crash.
+- **4 strict flags active on main:**
+  `tsconfig.json` ships noUncheckedIndexedAccess +
+  exactOptionalPropertyTypes + verbatimModuleSyntax +
+  noImplicitOverride. New PRs touching production code must satisfy
+  all 4. The `git log -- tsconfig.json` shows one bisect-friendly
+  commit per flag.
+- **Zod schemas** with optional fields now produce handler-args types
+  with `?: T | undefined` in tool-handler signatures. When defining a
+  new handler, match the `?: T | undefined` shape (or rely on the
+  `defineTool()` inference instead of re-declaring).
+
+**Aggregate diff:** 9 atomic commits (evidence folded into first
+helper commit; 2 helper commits + 2 codemod/migration commits + 1
+contract test + 4 flag-enable commits + 1 CHANGELOG). Commit list:
+`9cec16e` (toMsg helper) → `e5bceb2` (codemod 65 sites) → `5c39ce9`
+(env-utils helper + McpConfigError extension) → `64e56c9` (migrate 8
+bangs) → `28810c5` (no-err-ternary contract test) → `e260342`
+(noImplicitOverride) → `ff39a3e` (verbatimModuleSyntax) → `82d05de`
+(exactOptionalPropertyTypes + 93 files) → `5ad651e`
+(noUncheckedIndexedAccess + 70 files).
+
+**Test count:** 793 baseline → 815 unit (+12 error-utils, +8 env-utils,
++2 no-err-ternary contract) + 37 UI + 44 registry + contract + doc-counts
+all green. `npm run lint` clean (no new errors beyond the pre-existing
+Phase 44 `scripts/audit-gate.mjs` carry-over).
+
+**Explicitly deferred (out of scope):**
+- `as` cast audit → T-AS backlog, separate phase
+- Zod → Valibot migration — not this milestone
+- React strict-mode style tightening — not this milestone
+- T-LITFB audit: the 28 literal-fallback sites left by the codemod —
+  each should be evaluated individually for whether the bespoke user-
+  facing string adds more value than `toMsg(err) ?? 'literal'` would
+
 ### Phase 48 — In-memory tenant isolation + config facade (2026-04-22)
 
 **Goal:** close the last two tenant-isolation + global-state gaps carried from
