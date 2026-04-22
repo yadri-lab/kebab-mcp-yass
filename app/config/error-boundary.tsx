@@ -28,7 +28,7 @@ export class TabErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorB
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo): void {
+  override componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error(
       `[Kebab MCP] Error in ${this.props.section ?? "tab"}:`,
       error,
@@ -40,7 +40,7 @@ export class TabErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorB
     this.setState({ hasError: false, error: null });
   };
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         <div
