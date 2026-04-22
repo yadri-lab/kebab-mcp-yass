@@ -1,4 +1,6 @@
-# Connector Authoring Guide
+# Connector Authoring — Conventions Reference
+
+> **New to connectors?** Start with [CONNECTOR-AUTHORING.md](CONNECTOR-AUTHORING.md) for a step-by-step walkthrough from zero to live. This doc is the conventions + gotchas reference for experienced contributors.
 
 Practical notes for anyone building or maintaining a Kebab MCP connector.
 Focused on conventions that are **not enforced by types** today, plus
