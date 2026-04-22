@@ -114,10 +114,11 @@ describe("fire-and-forget contract (DUR-04 + DUR-05)", () => {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (line === undefined) continue;
         if (!VOID_CALL_RE.test(line)) continue;
 
         // Accept marker on same line or immediately-previous line.
-        const prev = i > 0 ? lines[i - 1] : "";
+        const prev = i > 0 ? (lines[i - 1] ?? "") : "";
         if (line.includes(MARKER) || prev.includes(MARKER)) continue;
 
         violations.push({ file: rel, line: i + 1, text: line.trim() });

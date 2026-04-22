@@ -35,7 +35,7 @@ function extractCookie(res: Response): string | null {
   if (!setCookie) return null;
   // Take the value before the first ;.
   const m = setCookie.match(/^([^;]+)/);
-  return m ? m[1] : null;
+  return m?.[1] ?? null;
 }
 
 beforeEach(async () => {

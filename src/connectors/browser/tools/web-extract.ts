@@ -44,6 +44,7 @@ export async function handleWebExtractV2(params: WebExtractParams) {
 
   try {
     const page = stagehand.context.pages()[0];
+    if (!page) throw new Error("Stagehand returned no page (unexpected state)");
 
     await page.goto(params.url, {
       waitUntil: "domcontentloaded",

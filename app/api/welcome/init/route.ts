@@ -82,8 +82,12 @@ async function welcomeInitHandler(ctx: PipelineContext): Promise<Response> {
   if (!m) {
     return NextResponse.json({ error: "Missing claim cookie" }, { status: 403 });
   }
-  const decoded = decodeURIComponent(m[1]);
-  const claimId = decoded.split(".")[0];
+  const raw = m[1];
+  if (!raw) {
+    return NextResponse.json({ error: "Missing claim cookie" }, { status: 403 });
+  }
+  const decoded = decodeURIComponent(raw);
+  const claimId = decoded.split(".")[0] ?? "";
 
   const { token } = bootstrapToken(claimId);
 

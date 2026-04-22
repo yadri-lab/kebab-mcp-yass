@@ -84,6 +84,7 @@ describe("upstash-env-single-reader contract (DUR-06)", () => {
       const lines = source.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (line === undefined) continue;
         if (UPSTASH_ENV_RE.test(line)) {
           violations.push({ file: rel, line: i + 1, text: line.trim() });
         }

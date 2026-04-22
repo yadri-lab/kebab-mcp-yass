@@ -226,8 +226,8 @@ describe("KV cross-instance bootstrap persistence", () => {
     expect(stubKv.set).toHaveBeenCalledTimes(0);
     await flushBootstrapToKv();
     expect(stubKv.set).toHaveBeenCalledTimes(1);
-    expect(stubKv.set.mock.calls[0][0]).toBe("mymcp:firstrun:bootstrap");
-    const stored = JSON.parse(stubKv.set.mock.calls[0][1] as string);
+    expect(stubKv.set.mock.calls[0]?.[0]).toBe("mymcp:firstrun:bootstrap");
+    const stored = JSON.parse(stubKv.set.mock.calls[0]?.[1] as string);
     expect(stored.claimId).toBe(c.claimId);
     expect(stored.token).toMatch(/^[0-9a-f]{64}$/);
   });

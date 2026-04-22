@@ -126,8 +126,10 @@ export async function exportBackup(opts?: ExportOptions): Promise<BackupData> {
       const batch = keys.slice(i, i + BATCH_SIZE);
       const values = await kv.mget(batch);
       for (let j = 0; j < batch.length; j++) {
-        if (values[j] !== null) {
-          entries[batch[j]] = values[j]!;
+        const k = batch[j];
+        const v = values[j];
+        if (k !== undefined && v !== null && v !== undefined) {
+          entries[k] = v;
         }
       }
     }
@@ -138,8 +140,10 @@ export async function exportBackup(opts?: ExportOptions): Promise<BackupData> {
       const batch = keys.slice(i, i + BATCH_SIZE);
       const values = await Promise.all(batch.map((key) => kv.get(key)));
       for (let j = 0; j < batch.length; j++) {
-        if (values[j] !== null) {
-          entries[batch[j]] = values[j]!;
+        const k = batch[j];
+        const v = values[j];
+        if (k !== undefined && v !== null && v !== undefined) {
+          entries[k] = v;
         }
       }
     }

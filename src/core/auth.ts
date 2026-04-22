@@ -80,7 +80,8 @@ export function extractToken(request: Request): string | null {
   const cookieHeader = request.headers.get("cookie");
   if (cookieHeader) {
     const match = cookieHeader.match(/(?:^|;\s*)mymcp_admin_token=([^;]+)/);
-    if (match) return decodeURIComponent(match[1]).trim();
+    const raw = match?.[1];
+    if (raw) return decodeURIComponent(raw).trim();
   }
 
   return null;

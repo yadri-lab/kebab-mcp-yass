@@ -7,14 +7,15 @@ try {
   const envFile = readFileSync(resolve(__dirname, ".env"), "utf-8");
   for (const line of envFile.split("\n")) {
     const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (match && !process.env[match[1]]) {
-      let value = match[2];
+    const key = match?.[1];
+    let value = match?.[2];
+    if (match && key && value !== undefined && !process.env[key]) {
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))
       )
         value = value.slice(1, -1);
-      process.env[match[1]] = value;
+      process.env[key] = value;
     }
   }
 } catch {

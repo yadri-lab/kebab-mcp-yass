@@ -51,9 +51,9 @@ body`);
     expect(Array.isArray(meta.arguments)).toBe(true);
     const args = meta.arguments as { name: string; required: boolean }[];
     expect(args).toHaveLength(2);
-    expect(args[0].name).toBe("notes");
-    expect(args[0].required).toBe(true);
-    expect(args[1].required).toBe(false);
+    expect(args[0]?.name).toBe("notes");
+    expect(args[0]?.required).toBe(true);
+    expect(args[1]?.required).toBe(false);
   });
 
   it("handles CRLF line endings", () => {

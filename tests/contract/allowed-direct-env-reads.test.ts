@@ -83,6 +83,7 @@ describe("allowed-direct-env-reads contract (FACADE-03)", () => {
       const lines = contents.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        if (line === undefined) continue;
         if (commentRe.test(line)) continue;
         if (assignRe.test(line)) continue; // SEC-02 owns assignments
         if (readRe.test(line)) {

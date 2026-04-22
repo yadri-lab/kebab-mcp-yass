@@ -246,6 +246,7 @@ export function updateSkill(id: string, patch: SkillUpdateInput): Promise<Skill 
     const idx = all.findIndex((s) => s.id === id);
     if (idx === -1) return null;
     const prev = all[idx];
+    if (!prev) return null;
     // Phase 49 / exactOptionalPropertyTypes: spread `parsed` selectively —
     // parsed has optional fields as `T | undefined`, but Skill has them as
     // required strings. Use `??` to keep the previous value when parsed's
@@ -404,6 +405,7 @@ export function rollbackSkill(skillId: string, version: number): Promise<Skill |
     if (!entry) return null;
 
     const prev = all[idx];
+    if (!prev) return null;
     const now = new Date().toISOString();
     const updated: Skill = {
       ...prev,

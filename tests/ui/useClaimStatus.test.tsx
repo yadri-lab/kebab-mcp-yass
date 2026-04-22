@@ -30,7 +30,7 @@ describe("useClaimStatus", () => {
     // current welcome-client path); the important contract is one fetch
     // against the claim endpoint on mount.
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    const [url] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const [url] = vi.mocked(globalThis.fetch).mock.calls[0]!;
     expect(String(url)).toMatch(/\/api\/welcome\/claim/);
   });
 

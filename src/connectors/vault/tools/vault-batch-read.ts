@@ -68,9 +68,10 @@ export async function handleVaultBatchRead(params: { paths: string[] }) {
     if (result.status === "fulfilled") {
       return result.value;
     }
+    const p = params.paths[i] ?? "";
     return {
-      path: params.paths[i],
-      name: params.paths[i].split("/").pop() || params.paths[i],
+      path: p,
+      name: p.split("/").pop() || p,
       size: 0,
       sha: "",
       frontmatter: null,

@@ -47,7 +47,7 @@ async function main() {
     // or legacy: ratelimit:<scope>:<idHash>:<minuteBucket>
     if (!shouldDelete && key.startsWith("ratelimit:")) {
       const parts = key.split(":");
-      const bucketStr = parts[parts.length - 1];
+      const bucketStr = parts[parts.length - 1] ?? "";
       const bucket = parseInt(bucketStr, 10);
       if (Number.isFinite(bucket) && bucket < currentMinuteBucket) {
         shouldDelete = true;
@@ -74,7 +74,7 @@ async function main() {
         } catch {
           // If we can't parse, try extracting timestamp from key
           const parts = key.split(":");
-          const lastPart = parts[parts.length - 1];
+          const lastPart = parts[parts.length - 1] ?? "";
           const ts = parseInt(lastPart, 10);
           if (Number.isFinite(ts) && ts > 0 && ts < healthCutoff) {
             shouldDelete = true;

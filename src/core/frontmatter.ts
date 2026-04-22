@@ -57,7 +57,8 @@ export function parseFrontmatter(raw: string): FrontmatterResult {
     };
   }
 
-  const [, frontText, body] = match;
+  const frontText = match[1] ?? "";
+  const body = match[2] ?? "";
   const warnings: string[] = [];
 
   if (frontText.length > MAX_FRONTMATTER_BYTES) {

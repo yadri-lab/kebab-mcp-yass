@@ -119,7 +119,7 @@ describe("streaming tool results", () => {
     const result = await wrapped({});
 
     expect(result.isError).toBe(true);
-    const text = result.content[0].text;
+    const text = result.content[0]!.text;
     expect(text).toContain("Stream truncated: exceeded 10 MB size limit");
   });
 
@@ -153,7 +153,7 @@ describe("streaming tool results", () => {
       const result = await wrapped({});
 
       expect(result.isError).toBe(true);
-      const text = result.content[0].text;
+      const text = result.content[0]!.text;
       expect(text).toContain("Stream truncated: exceeded 55 s duration limit");
     } finally {
       vi.spyOn(Date, "now").mockRestore();

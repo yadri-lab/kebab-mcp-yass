@@ -37,7 +37,7 @@ export default async function ConfigPage({
 }) {
   const params = await searchParams;
   const tab = params.tab || "overview";
-  const meta = PAGE_META[tab] || PAGE_META.overview;
+  const meta = PAGE_META[tab] || PAGE_META.overview || { title: "Dashboard", subtitle: "" };
   const config = await getInstanceConfigAsync();
 
   // Tenant scoping: read from cookie (set by admin) or query param.

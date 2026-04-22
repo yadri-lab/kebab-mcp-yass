@@ -154,7 +154,7 @@ describe("checkRateLimit — MemoryKV atomic path", () => {
     const spy = vi.spyOn(memKv, "incr");
     await checkRateLimit("ttl-user", { scope: "ttl", limit: 5 });
     expect(spy).toHaveBeenCalledTimes(1);
-    const opts = spy.mock.calls[0][1];
+    const opts = spy.mock.calls[0]?.[1];
     expect(opts?.ttlSeconds).toBe(120);
   });
 });

@@ -186,8 +186,9 @@ async function readClaimCookie(request: Request): Promise<string | null> {
   if (!cookieHeader) return null;
   const re = new RegExp(`(?:^|;\\s*)${FIRST_RUN_COOKIE_NAME}=([^;]+)`);
   const m = cookieHeader.match(re);
-  if (!m) return null;
-  return decodeCookie(decodeURIComponent(m[1]));
+  const raw = m?.[1];
+  if (!raw) return null;
+  return decodeCookie(decodeURIComponent(raw));
 }
 
 function pruneExpired(): void {

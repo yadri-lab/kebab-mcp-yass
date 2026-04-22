@@ -39,7 +39,7 @@ describe("webhook_last tool", () => {
   it("returns error when no payload exists", async () => {
     const result = await handleWebhookLast({ name: "nonexistent" });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("No webhook payload found");
+    expect(result.content[0]!.text).toContain("No webhook payload found");
   });
 
   it("returns stored payload", async () => {
@@ -51,7 +51,7 @@ describe("webhook_last tool", () => {
     mockKV["webhook:last:stripe"] = JSON.stringify(entry);
     const result = await handleWebhookLast({ name: "stripe" });
     expect(result.isError).toBeUndefined();
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.payload.event).toBe("test");
     expect(parsed.receivedAt).toBe("2026-04-15T00:00:00Z");
   });
@@ -64,7 +64,7 @@ describe("webhook_list tool", () => {
 
   it("returns empty list when no webhooks", async () => {
     const result = await handleWebhookList();
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.count).toBe(0);
     expect(parsed.webhooks).toEqual([]);
   });
@@ -74,7 +74,7 @@ describe("webhook_list tool", () => {
     mockKV["webhook:last:github"] = JSON.stringify({ receivedAt: "2026-04-15T02:00:00Z" });
 
     const result = await handleWebhookList();
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.count).toBe(2);
     const names = parsed.webhooks.map((w: { name: string }) => w.name).sort();
     expect(names).toEqual(["github", "stripe"]);
@@ -89,7 +89,7 @@ describe("webhook_history tool", () => {
   it("returns error when no history exists", async () => {
     const result = await handleWebhookHistory({ name: "nonexistent", limit: 10 });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("No webhook history found");
+    expect(result.content[0]!.text).toContain("No webhook history found");
   });
 
   it("returns history entries newest first", async () => {
@@ -107,7 +107,7 @@ describe("webhook_history tool", () => {
     mockKV["webhook:history:stripe:2000"] = JSON.stringify(entry2);
 
     const result = await handleWebhookHistory({ name: "stripe", limit: 10 });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.count).toBe(2);
     // Newest first
     expect(parsed.entries[0].payload.event).toBe("second");
@@ -120,7 +120,7 @@ describe("webhook_history tool", () => {
     mockKV["webhook:history:stripe:3000"] = JSON.stringify({ payload: "c" });
 
     const result = await handleWebhookHistory({ name: "stripe", limit: 2 });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.count).toBe(2);
   });
 });
@@ -186,14 +186,14 @@ describe("webhook API route", () => {
     expect(body.ok).toBe(true);
 
     // Verify KV storage — last pointer
-    const stored = JSON.parse(mockKV["webhook:last:stripe"]);
+    const stored = JSON.parse(mockKV["webhook:last:stripe"]!);
     expect(stored.payload.event).toBe("payment.completed");
     expect(stored.contentType).toBe("application/json");
 
     // Verify history entry was also stored
     const historyKeys = Object.keys(mockKV).filter((k) => k.startsWith("webhook:history:stripe:"));
     expect(historyKeys.length).toBe(1);
-    const historyEntry = JSON.parse(mockKV[historyKeys[0]]);
+    const historyEntry = JSON.parse(mockKV[historyKeys[0]!]!);
     expect(historyEntry.payload.event).toBe("payment.completed");
   });
 

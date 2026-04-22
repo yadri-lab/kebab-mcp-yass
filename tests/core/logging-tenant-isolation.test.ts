@@ -82,8 +82,8 @@ describe("logging ring buffer — per-tenant isolation (ISO-01, ISO-03)", () => 
     const alpha = getRecentLogs(200, { tenantId: "alpha" });
     expect(alpha).toHaveLength(100);
     // Oldest 5 should have rolled off: tool-0..tool-4 evicted; newest is tool-104
-    expect(alpha[0].tool).toBe("tool-5");
-    expect(alpha[alpha.length - 1].tool).toBe("tool-104");
+    expect(alpha[0]!.tool).toBe("tool-5");
+    expect(alpha[alpha.length - 1]!.tool).toBe("tool-104");
 
     const beta = getRecentLogs(200, { tenantId: "beta" });
     expect(beta).toHaveLength(0);
@@ -135,8 +135,8 @@ describe("logging ring buffer — per-tenant isolation (ISO-01, ISO-03)", () => 
     const stats = getToolStats();
     expect(stats.totalCalls).toBe(3);
     expect(stats.errorCount).toBe(1);
-    expect(stats.byTool["shared-tool"].calls).toBe(3);
-    expect(stats.byTool["shared-tool"].errors).toBe(1);
+    expect(stats.byTool["shared-tool"]!.calls).toBe(3);
+    expect(stats.byTool["shared-tool"]!.errors).toBe(1);
   });
 
   it("Test 7 — __resetRingBufferForTests clears all buckets", async () => {

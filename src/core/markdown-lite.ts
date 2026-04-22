@@ -49,16 +49,26 @@ export function renderMarkdown(src: string): string {
   const out: string[] = [];
   let i = 0;
 
+  // Phase 49 noUncheckedIndexedAccess: the `i < lines.length` guard
+  // already proves `lines[i]` is defined, but the type system can't see
+  // through the `i++` mutations inside inner loops. Narrow via local
+  // `line` binding + `line !== undefined` guard at each iteration.
   while (i < lines.length) {
     const line = lines[i];
+    if (line === undefined) {
+      i++;
+      continue;
+    }
 
     // Fenced code block
     if (/^```/.test(line)) {
       const lang = line.slice(3).trim();
       const buf: string[] = [];
       i++;
-      while (i < lines.length && !/^```/.test(lines[i])) {
-        buf.push(lines[i]);
+      while (i < lines.length) {
+        const next = lines[i];
+        if (next === undefined || /^```/.test(next)) break;
+        buf.push(next);
         i++;
       }
       i++; // skip closing fence
@@ -73,11 +83,13 @@ export function renderMarkdown(src: string): string {
     // Heading
     const h = line.match(/^(#{1,3})\s+(.*)$/);
     if (h) {
-      const level = h[1].length + 1; // h1 in source → h2 in output (the article title is h2)
+      const hashes = h[1] ?? "";
+      const inner = h[2] ?? "";
+      const level = hashes.length + 1; // h1 in source → h2 in output (the article title is h2)
       out.push(
         `<h${level} class="font-semibold text-text mt-5 mb-2 ${
           level === 2 ? "text-lg" : level === 3 ? "text-base" : "text-sm uppercase tracking-wide"
-        }">${renderInline(h[2])}</h${level}>`
+        }">${renderInline(inner)}</h${level}>`
       );
       i++;
       continue;
@@ -86,8 +98,10 @@ export function renderMarkdown(src: string): string {
     // Unordered list
     if (/^\s*-\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*-\s+/, ""))}</li>`);
+      while (i < lines.length) {
+        const next = lines[i];
+        if (next === undefined || !/^\s*-\s+/.test(next)) break;
+        items.push(`<li>${renderInline(next.replace(/^\s*-\s+/, ""))}</li>`);
         i++;
       }
       out.push(`<ul class="list-disc pl-5 space-y-1">${items.join("")}</ul>`);
@@ -97,8 +111,10 @@ export function renderMarkdown(src: string): string {
     // Ordered list
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>`);
+      while (i < lines.length) {
+        const next = lines[i];
+        if (next === undefined || !/^\s*\d+\.\s+/.test(next)) break;
+        items.push(`<li>${renderInline(next.replace(/^\s*\d+\.\s+/, ""))}</li>`);
         i++;
       }
       out.push(`<ol class="list-decimal pl-5 space-y-1">${items.join("")}</ol>`);
@@ -113,12 +129,16 @@ export function renderMarkdown(src: string): string {
 
     // Paragraph: gather consecutive non-blank, non-special lines
     const paraLines: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !/^(#{1,3}\s|```|\s*-\s|\s*\d+\.\s)/.test(lines[i])
-    ) {
-      paraLines.push(lines[i]);
+    while (i < lines.length) {
+      const next = lines[i];
+      if (
+        next === undefined ||
+        next.trim() === "" ||
+        /^(#{1,3}\s|```|\s*-\s|\s*\d+\.\s)/.test(next)
+      ) {
+        break;
+      }
+      paraLines.push(next);
       i++;
     }
     if (paraLines.length > 0) {

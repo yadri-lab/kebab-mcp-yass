@@ -66,8 +66,9 @@ function envMaxAgeSeconds(): number | undefined {
  */
 export function extractHttpStatus(err: Error): number | null {
   const match = err.message.match(/\b([1-5]\d{2})\b/);
-  if (!match) return null;
-  const code = parseInt(match[1], 10);
+  const hit = match?.[1];
+  if (!hit) return null;
+  const code = parseInt(hit, 10);
   return code >= 100 && code < 600 ? code : null;
 }
 
@@ -365,7 +366,8 @@ export class UpstashLogStore implements LogStore {
         if (!is5xx || attempt >= RETRY_DELAYS_MS.length) {
           break;
         }
-        await sleep(RETRY_DELAYS_MS[attempt]);
+        const delayMs = RETRY_DELAYS_MS[attempt];
+        if (delayMs !== undefined) await sleep(delayMs);
       }
     }
 
@@ -414,7 +416,8 @@ export class UpstashLogStore implements LogStore {
     let hi = all.length;
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
-      if (all[mid].ts >= ts) {
+      const entry = all[mid];
+      if (entry && entry.ts >= ts) {
         lo = mid + 1;
       } else {
         hi = mid;

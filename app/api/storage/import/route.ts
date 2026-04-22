@@ -163,12 +163,21 @@ async function postHandler(ctx: PipelineContext) {
   const writeErrors: string[] = [];
   if (Object.keys(settingsToWrite).length > 0) {
     try {
-      await saveInstanceConfig({
-        displayName: settingsToWrite.MYMCP_DISPLAY_NAME,
-        timezone: settingsToWrite.MYMCP_TIMEZONE,
-        locale: settingsToWrite.MYMCP_LOCALE,
-        contextPath: settingsToWrite.MYMCP_CONTEXT_PATH,
-      });
+      // Phase 49 / exactOptionalPropertyTypes: build partial conditionally.
+      const partial: {
+        displayName?: string;
+        timezone?: string;
+        locale?: string;
+        contextPath?: string;
+      } = {};
+      if (settingsToWrite.MYMCP_DISPLAY_NAME !== undefined)
+        partial.displayName = settingsToWrite.MYMCP_DISPLAY_NAME;
+      if (settingsToWrite.MYMCP_TIMEZONE !== undefined)
+        partial.timezone = settingsToWrite.MYMCP_TIMEZONE;
+      if (settingsToWrite.MYMCP_LOCALE !== undefined) partial.locale = settingsToWrite.MYMCP_LOCALE;
+      if (settingsToWrite.MYMCP_CONTEXT_PATH !== undefined)
+        partial.contextPath = settingsToWrite.MYMCP_CONTEXT_PATH;
+      await saveInstanceConfig(partial);
     } catch (err) {
       writeErrors.push(`Settings write failed: ${toMsg(err)}`);
     }

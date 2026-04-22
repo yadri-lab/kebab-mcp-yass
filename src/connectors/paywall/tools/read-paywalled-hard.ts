@@ -66,6 +66,7 @@ export async function handleReadPaywalledHard(params: { url: string }): Promise<
     ]);
 
     const page = stagehand.context.pages()[0];
+    if (!page) throw new Error("Stagehand returned no page (unexpected state)");
     await page.goto(url, { waitUntil: "domcontentloaded", timeoutMs: 30_000 });
 
     // Give SPAs a moment to hydrate the article body.

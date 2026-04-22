@@ -23,7 +23,12 @@ export async function handleGmailAttachment(params: {
         content: [{ type: "text" as const, text: "No attachments found on this message." }],
       };
     }
-    attId = email.attachments[0].id;
+    attId = email.attachments[0]?.id;
+    if (!attId) {
+      return {
+        content: [{ type: "text" as const, text: "No attachments found on this message." }],
+      };
+    }
   }
 
   const att = await getAttachment(params.message_id, attId);

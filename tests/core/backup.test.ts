@@ -275,7 +275,7 @@ describe("backup admin tools", () => {
     mockKV["test"] = "data";
     const { handleBackupExport } = await import("@/connectors/admin/tools/backup-export");
     const result = await handleBackupExport();
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.version).toBe(2);
     expect(parsed.entries.test).toBe("data");
   });
@@ -284,7 +284,7 @@ describe("backup admin tools", () => {
     const { handleBackupImport } = await import("@/connectors/admin/tools/backup-import");
     const backup = JSON.stringify({ version: 1, entries: { k: "v" } });
     const result = await handleBackupImport({ data: backup });
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed.ok).toBe(true);
     expect(mockKV["k"]).toBe("v");
   });

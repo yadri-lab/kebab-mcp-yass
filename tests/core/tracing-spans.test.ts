@@ -72,8 +72,8 @@ describe("OTel span emission (OBS-04)", () => {
     await rehydrateBootstrapAsync();
     const rehydrate = spans.filter((s) => s.name === "mymcp.bootstrap.rehydrate");
     expect(rehydrate.length).toBeGreaterThanOrEqual(1);
-    expect(rehydrate[0].attributes["mymcp.bootstrap.source"]).toBe("cold");
-    expect(rehydrate[0].attributes["mymcp.status"]).toBe("ok");
+    expect(rehydrate[0]!.attributes["mymcp.bootstrap.source"]).toBe("cold");
+    expect(rehydrate[0]!.attributes["mymcp.status"]).toBe("ok");
   });
 
   it("mymcp.kv.write span wraps KVStore.set with key_prefix (first 2 segments only)", async () => {

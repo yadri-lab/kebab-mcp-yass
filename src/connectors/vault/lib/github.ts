@@ -389,11 +389,12 @@ async function treeGrep(
       const content = Buffer.from(data.content, "base64").toString("utf-8");
       const contentLower = content.toLowerCase();
 
-      if (queryTerms.every((term) => contentLower.includes(term))) {
+      const firstTerm = queryTerms[0];
+      if (firstTerm && queryTerms.every((term) => contentLower.includes(term))) {
         // Extract matching context (first match, 100 chars around it)
-        const idx = contentLower.indexOf(queryTerms[0]);
+        const idx = contentLower.indexOf(firstTerm);
         const start = Math.max(0, idx - 50);
-        const end = Math.min(content.length, idx + queryTerms[0].length + 50);
+        const end = Math.min(content.length, idx + firstTerm.length + 50);
         const fragment =
           (start > 0 ? "..." : "") +
           content.slice(start, end).trim() +
@@ -493,7 +494,7 @@ export async function vaultRecentCommits(
       seen.add(file.filename);
       results.push({
         path: file.filename,
-        message: commit.commit.message.split("\n")[0],
+        message: commit.commit.message.split("\n")[0] ?? "",
         date: commit.commit.author.date,
         author: commit.commit.author.name,
       });

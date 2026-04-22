@@ -65,7 +65,7 @@ function Badge({
     bad: { bg: "#7f1d1d", fg: "#fca5a5" },
     dim: { bg: "#1f2937", fg: "#9ca3af" },
   };
-  const c = colors[tone];
+  const c = colors[tone] ?? { bg: "#1f2937", fg: "#9ca3af" };
   return (
     <span
       style={{

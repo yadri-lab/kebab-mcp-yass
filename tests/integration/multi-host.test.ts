@@ -216,7 +216,7 @@ describe("Phase 39 / HOST-04 / Scenario C — N-replica rate-limit convergence",
     const snap = sharedKv.snapshot();
     const bucketEntries = [...snap.entries()].filter(([k]) => k.startsWith("ratelimit:"));
     expect(bucketEntries.length).toBe(1);
-    const [, count] = bucketEntries[0];
+    const [, count] = bucketEntries[0]!;
     expect(parseInt(count, 10)).toBe(N);
   });
 

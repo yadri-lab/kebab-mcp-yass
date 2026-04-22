@@ -99,8 +99,8 @@ describe("FilesystemLogStore", () => {
     const recent = await store.recent(20);
     // All entries should still be readable across segments.
     expect(recent).toHaveLength(10);
-    expect(recent[0].message).toBe("xxxxxxxxxx9");
-    expect(recent[recent.length - 1].message).toBe("xxxxxxxxxx0");
+    expect(recent[0]?.message).toBe("xxxxxxxxxx9");
+    expect(recent[recent.length - 1]?.message).toBe("xxxxxxxxxx0");
   });
 
   it("cascades through N segments and deletes overflow (TECH-02)", async () => {
@@ -121,7 +121,7 @@ describe("FilesystemLogStore", () => {
     const recent = await store.recent(100);
     expect(recent.length).toBeGreaterThan(0);
     // Newest entry is always the last written
-    expect(recent[0].message).toBe("entry-9");
+    expect(recent[0]?.message).toBe("entry-9");
   });
 
   it("honors maxEntries cap when concatenating segments", async () => {

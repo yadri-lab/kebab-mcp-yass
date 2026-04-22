@@ -216,7 +216,7 @@ export function logToolCall(log: ToolLog) {
 function percentile(sortedValues: number[], p: number): number {
   if (sortedValues.length === 0) return 0;
   const idx = Math.ceil(sortedValues.length * p) - 1;
-  return sortedValues[Math.max(0, Math.min(idx, sortedValues.length - 1))];
+  return sortedValues[Math.max(0, Math.min(idx, sortedValues.length - 1))] ?? 0;
 }
 
 export function getToolStats(): {
@@ -241,20 +241,26 @@ export function getToolStats(): {
   for (const buf of buffers.values()) allLogs.push(...buf);
 
   for (const log of allLogs) {
-    if (!byTool[log.tool]) {
-      byTool[log.tool] = { calls: 0, errors: 0, durations: [] };
+    // Phase 49 noUncheckedIndexedAccess: hoist the bucket ref so we
+    // can narrow post-lookup.
+    let toolBucket = byTool[log.tool];
+    if (!toolBucket) {
+      toolBucket = { calls: 0, errors: 0, durations: [] };
+      byTool[log.tool] = toolBucket;
     }
-    byTool[log.tool].calls++;
-    byTool[log.tool].durations.push(log.durationMs);
+    toolBucket.calls++;
+    toolBucket.durations.push(log.durationMs);
     allDurations.push(log.durationMs);
-    if (log.status === "error") byTool[log.tool].errors++;
+    if (log.status === "error") toolBucket.errors++;
 
     if (log.tokenId) {
-      if (!byToken[log.tokenId]) {
-        byToken[log.tokenId] = { calls: 0, errors: 0 };
+      let tokenBucket = byToken[log.tokenId];
+      if (!tokenBucket) {
+        tokenBucket = { calls: 0, errors: 0 };
+        byToken[log.tokenId] = tokenBucket;
       }
-      byToken[log.tokenId].calls++;
-      if (log.status === "error") byToken[log.tokenId].errors++;
+      tokenBucket.calls++;
+      if (log.status === "error") tokenBucket.errors++;
     }
   }
 

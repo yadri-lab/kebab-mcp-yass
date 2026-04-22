@@ -69,7 +69,7 @@ export async function handleSaveArticle(params: {
   if (!title) {
     // Jina Reader prepends "Title: ..." at the top of its output
     const jinaTitleMatch = markdown.match(/^Title:\s*(.+)$/m);
-    if (jinaTitleMatch) {
+    if (jinaTitleMatch && jinaTitleMatch[1]) {
       const raw = jinaTitleMatch[1].trim();
       // Skip if Jina returned just a hostname or empty-ish title
       if (raw && raw !== new URL(params.url).hostname && raw.length > 3) {
@@ -79,7 +79,7 @@ export async function handleSaveArticle(params: {
     if (!title) {
       // Try first H1 heading
       const headingMatch = markdown.match(/^#\s+(.+)$/m);
-      if (headingMatch) {
+      if (headingMatch && headingMatch[1]) {
         const h1 = headingMatch[1].trim();
         if (h1 && h1 !== new URL(params.url).hostname && h1.length > 3) {
           title = h1;
@@ -89,7 +89,7 @@ export async function handleSaveArticle(params: {
     if (!title) {
       // Try og:title or <title> patterns sometimes present in Jina output
       const ogMatch = markdown.match(/og:title['":\s]+(.+?)[\n"']/i);
-      if (ogMatch) {
+      if (ogMatch && ogMatch[1]) {
         title = ogMatch[1].trim();
       }
     }

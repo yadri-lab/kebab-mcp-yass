@@ -109,7 +109,7 @@ describe("recovery hint flows through withLogging", () => {
     expect(result.isError).toBe(true);
     expect(result.errorCode).toBe(ErrorCode.AUTH_FAILED);
     // The response text should contain the generic recovery hint
-    const text = result.content[0].text;
+    const text = result.content[0]!.text;
     expect(text).toContain("Recovery:");
     expect(text).toContain("dashboard");
     // Must NOT leak env var names to the client
@@ -146,7 +146,7 @@ describe("recovery hint flows through withLogging", () => {
     const result = await wrapped({});
 
     expect(result.isError).toBe(true);
-    const text = result.content[0].text;
+    const text = result.content[0]!.text;
     expect(text).not.toContain("Recovery:");
   });
 });

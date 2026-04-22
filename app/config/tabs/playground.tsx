@@ -156,10 +156,12 @@ export function PlaygroundTab() {
     });
     const map: Record<string, { label: string; tools: ToolInfo[] }> = {};
     for (const t of filtered) {
-      if (!map[t.connector]) {
-        map[t.connector] = { label: t.connectorLabel, tools: [] };
+      let bucket = map[t.connector];
+      if (!bucket) {
+        bucket = { label: t.connectorLabel, tools: [] };
+        map[t.connector] = bucket;
       }
-      map[t.connector].tools.push(t);
+      bucket.tools.push(t);
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
   }, [tools, toolSearch]);

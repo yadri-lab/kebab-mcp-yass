@@ -18,6 +18,7 @@
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
     "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

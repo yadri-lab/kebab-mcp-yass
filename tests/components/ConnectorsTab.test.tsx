@@ -95,7 +95,7 @@ describe("ConnectorsTab", () => {
 
     // Click the Google Workspace card to expand it — use getAllByText since
     // it may render twice (collapsed + expanded)
-    fireEvent.click(screen.getAllByText("Google Workspace")[0]);
+    fireEvent.click(screen.getAllByText("Google Workspace")[0]!);
 
     // The tools list should now be visible (inside an expanded section)
     await waitFor(() => {

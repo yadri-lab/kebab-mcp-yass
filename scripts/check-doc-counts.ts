@@ -69,11 +69,11 @@ function scanFile(
   const toolsRe = /\b(\d{1,4})(\+?)\s+tools?\b/gi;
   const connRe = /\b(\d{1,3})\s+connectors?\b/gi;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] ?? "";
     let m: RegExpExecArray | null;
     toolsRe.lastIndex = 0;
     while ((m = toolsRe.exec(line)) !== null) {
-      const claimed = parseInt(m[1], 10);
+      const claimed = parseInt(m[1] ?? "0", 10);
       const plus = m[2] === "+";
       // Per-connector mentions ("18 tools" inside the Google section) are
       // legitimate. Only flag drift on the global hero-style claim. Heuristic:
@@ -93,7 +93,7 @@ function scanFile(
     }
     connRe.lastIndex = 0;
     while ((m = connRe.exec(line)) !== null) {
-      const claimed = parseInt(m[1], 10);
+      const claimed = parseInt(m[1] ?? "0", 10);
       if (claimed !== expectedConnectors) {
         drifts.push({
           file: path,

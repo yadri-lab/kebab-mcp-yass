@@ -129,7 +129,7 @@ describe("request-id — withLogging", () => {
     const logs = getRecentLogs(1);
     expect(logs.length).toBeGreaterThan(0);
     const lastLog = logs[logs.length - 1];
-    expect(lastLog.requestId).toBe("req-abc-456");
+    expect(lastLog!.requestId).toBe("req-abc-456");
   });
 
   it("omits requestId from ToolLog when not provided", async () => {
@@ -144,7 +144,7 @@ describe("request-id — withLogging", () => {
 
     const logs = getRecentLogs(5);
     const lastLog = logs[logs.length - 1];
-    expect(lastLog.tool).toBe("test_tool_no_rid");
-    expect(lastLog.requestId).toBeUndefined();
+    expect(lastLog!.tool).toBe("test_tool_no_rid");
+    expect(lastLog!.requestId).toBeUndefined();
   });
 });

@@ -61,8 +61,8 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   const savesDisabled = storageMode === "static" || storageMode === "kv-degraded";
 
   const getValue = useCallback(
-    (key: string) => {
-      if (key in edits) return edits[key];
+    (key: string): string => {
+      if (key in edits) return edits[key] ?? "";
       return envVars[key] || "";
     },
     [edits, envVars]

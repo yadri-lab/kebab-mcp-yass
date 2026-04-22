@@ -430,7 +430,7 @@ export function SkillsTab() {
                 >
                   {skill.source.type}
                 </span>
-                {versionMap[skill.id] != null && versionMap[skill.id] > 0 && (
+                {(versionMap[skill.id] ?? 0) > 0 && (
                   <span className="text-[11px] font-medium px-2 py-0.5 rounded-full text-text-muted bg-bg-muted">
                     v{versionMap[skill.id]}
                   </span>

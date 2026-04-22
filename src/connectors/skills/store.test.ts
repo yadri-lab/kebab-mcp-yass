@@ -46,7 +46,7 @@ describe("skills store CRUD", () => {
     expect(s.id).toBeTruthy();
     const all = await listSkills();
     expect(all).toHaveLength(1);
-    expect(all[0].name).toBe("Weekly Review");
+    expect(all[0]?.name).toBe("Weekly Review");
   });
 
   it("updates an existing skill", async () => {

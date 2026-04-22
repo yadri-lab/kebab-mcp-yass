@@ -78,14 +78,25 @@ async function getHandler(ctx: PipelineContext) {
         let tenantId: string;
         let scope: string;
         let bucket: number;
+        // Phase 49 noUncheckedIndexedAccess: extract and validate all
+        // parts before narrowing. `continue` guards the `!` / guarded
+        // path so downstream assignments operate on strings, not
+        // `string | undefined`.
         if (parts.length === 5) {
-          tenantId = parts[1];
-          scope = parts[2];
-          bucket = parseInt(parts[4], 10);
+          const p1 = parts[1];
+          const p2 = parts[2];
+          const p4 = parts[4];
+          if (p1 === undefined || p2 === undefined || p4 === undefined) continue;
+          tenantId = p1;
+          scope = p2;
+          bucket = parseInt(p4, 10);
         } else if (parts.length === 4) {
+          const p1 = parts[1];
+          const p3 = parts[3];
+          if (p1 === undefined || p3 === undefined) continue;
           tenantId = "default";
-          scope = parts[1];
-          bucket = parseInt(parts[3], 10);
+          scope = p1;
+          bucket = parseInt(p3, 10);
         } else {
           continue;
         }
@@ -99,7 +110,9 @@ async function getHandler(ctx: PipelineContext) {
         if (parts.length !== 6 || parts[2] !== "ratelimit") continue;
         const tenantId = parts[1];
         const scope = parts[3];
-        const bucket = parseInt(parts[5], 10);
+        const p5 = parts[5];
+        if (tenantId === undefined || scope === undefined || p5 === undefined) continue;
+        const bucket = parseInt(p5, 10);
         if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
         activeKeys.push({ key, tenantId, scope, rawKey: key });
       }
@@ -113,9 +126,12 @@ async function getHandler(ctx: PipelineContext) {
       for (const key of keys) {
         const parts = key.split(":");
         if (parts.length !== 4) continue;
-        const bucket = parseInt(parts[3], 10);
+        const scope = parts[1];
+        const p3 = parts[3];
+        if (scope === undefined || p3 === undefined) continue;
+        const bucket = parseInt(p3, 10);
         if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
-        activeKeys.push({ key, tenantId, scope: parts[1] });
+        activeKeys.push({ key, tenantId, scope });
       }
     }
 
@@ -136,7 +152,9 @@ async function getHandler(ctx: PipelineContext) {
     }
 
     for (let i = 0; i < activeKeys.length; i++) {
-      const { tenantId, scope } = activeKeys[i];
+      const entry = activeKeys[i];
+      if (!entry) continue;
+      const { tenantId, scope } = entry;
       const raw = values[i];
       const count = raw ? parseInt(raw, 10) || 0 : 0;
       if (count === 0) continue;

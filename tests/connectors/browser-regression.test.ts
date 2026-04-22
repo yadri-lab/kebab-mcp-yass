@@ -153,8 +153,8 @@ describe("browser connector regression — 4 tools × 2 flag states (Phase 44 SC
             url: "https://example.com/",
             scroll_count: 0,
           });
-          expect(result.content[0].type).toBe("text");
-          expect(result.content[0].text).toContain("Fake Page Title");
+          expect(result.content[0]?.type).toBe("text");
+          expect(result.content[0]?.text).toContain("Fake Page Title");
           // Stagehand was constructed with the right env
           expect(stagehandConstructorArgs.length).toBeGreaterThanOrEqual(1);
           const args = stagehandConstructorArgs[0] as { env: string };
@@ -187,8 +187,8 @@ describe("browser connector regression — 4 tools × 2 flag states (Phase 44 SC
             url: "https://example.com/",
             instruction: "Extract all posts",
           });
-          expect(result.content[0].type).toBe("text");
-          expect(result.content[0].text).toContain("posts");
+          expect(result.content[0]?.type).toBe("text");
+          expect(result.content[0]?.text).toContain("posts");
           expect(lastStagehand?.extract).toHaveBeenCalledWith("Extract all posts");
           expect(lastPage?.goto).toHaveBeenCalled();
           expect(lastStagehand?.close).toHaveBeenCalled();
@@ -215,8 +215,8 @@ describe("browser connector regression — 4 tools × 2 flag states (Phase 44 SC
             url: "https://example.com/",
             actions: ["click start", "type hello"],
           });
-          expect(result.content[0].type).toBe("text");
-          expect(result.content[0].text).toContain("click start");
+          expect(result.content[0]?.type).toBe("text");
+          expect(result.content[0]?.text).toContain("click start");
           expect(lastStagehand?.act).toHaveBeenCalledWith("click start");
           expect(lastStagehand?.act).toHaveBeenCalledWith("type hello");
           expect(lastStagehand?.close).toHaveBeenCalled();
@@ -252,7 +252,7 @@ describe("browser connector regression — 4 tools × 2 flag states (Phase 44 SC
 
           const { handleLinkedinFeed } = await import("@/connectors/browser/tools/linkedin-feed");
           const result = await handleLinkedinFeed({ max_posts: 20 });
-          expect(result.content[0].type).toBe("text");
+          expect(result.content[0]?.type).toBe("text");
           expect(lastStagehand?.extract).toHaveBeenCalled();
           // The URL passed to goto should be the LinkedIn feed URL
           expect(lastPage?.goto).toHaveBeenCalledWith(
@@ -276,7 +276,7 @@ describe("browser connector regression — 4 tools × 2 flag states (Phase 44 SC
           const { handleLinkedinFeed } = await import("@/connectors/browser/tools/linkedin-feed");
           const result = await handleLinkedinFeed({ max_posts: 20 });
           expect(result.isError).toBe(true);
-          expect(result.content[0].text).toContain("rate limited");
+          expect(result.content[0]?.text).toContain("rate limited");
           // No Stagehand spin-up because rate-limit short-circuited
           expect(stagehandConstructorArgs.length).toBe(0);
           vi.doUnmock("@/connectors/browser/lib/browserbase");

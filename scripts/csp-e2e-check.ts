@@ -106,7 +106,7 @@ async function main() {
     if (!scriptNonceMatch) {
       throw new Error('FAIL: HTML does not contain <script nonce="...">');
     }
-    const htmlNonce = scriptNonceMatch[1];
+    const htmlNonce = scriptNonceMatch[1] ?? "";
     console.log(`[CSP-E2E] Found nonce in HTML: ${htmlNonce.slice(0, 8)}...`);
 
     // 5. Assert CSP header contains the same nonce
@@ -117,7 +117,7 @@ async function main() {
     if (!cspNonceMatch) {
       throw new Error("FAIL: CSP header does not contain nonce");
     }
-    const cspNonce = cspNonceMatch[1];
+    const cspNonce = cspNonceMatch[1] ?? "";
     console.log(`[CSP-E2E] Found nonce in CSP: ${cspNonce.slice(0, 8)}...`);
 
     if (htmlNonce !== cspNonce) {

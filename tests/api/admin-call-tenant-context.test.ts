@@ -144,7 +144,7 @@ describe("POST /api/admin/call — tenant context (SEC-03)", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { result: { content: { text: string }[] } };
-    const inner = JSON.parse(body.result.content[0].text) as { tenantAtCall: string };
+    const inner = JSON.parse(body.result.content[0]!.text) as { tenantAtCall: string };
     expect(inner.tenantAtCall).toBe("alpha");
 
     // Tenant-scoped key was written.
@@ -166,7 +166,7 @@ describe("POST /api/admin/call — tenant context (SEC-03)", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { result: { content: { text: string }[] } };
-    const inner = JSON.parse(body.result.content[0].text) as { tenantAtCall: string | null };
+    const inner = JSON.parse(body.result.content[0]!.text) as { tenantAtCall: string | null };
     expect(inner.tenantAtCall).toBeNull();
 
     expect(store.get("default-key")).toBe("default-write");

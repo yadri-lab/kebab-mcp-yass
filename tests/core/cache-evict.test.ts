@@ -34,9 +34,9 @@ describe("handleCacheEvict", () => {
     expect(emit).toHaveBeenCalledWith("env.changed");
     expect(clearKVReadCache).toHaveBeenCalled();
     expect(clearLogStoreBuffer).toHaveBeenCalled();
-    expect(result.content[0].text).toContain("registry");
-    expect(result.content[0].text).toContain("kv read cache");
-    expect(result.content[0].text).toContain("log store buffer");
+    expect(result.content[0]!.text).toContain("registry");
+    expect(result.content[0]!.text).toContain("kv read cache");
+    expect(result.content[0]!.text).toContain("log store buffer");
   });
 
   it("clears only registry when scoped", async () => {
@@ -44,7 +44,7 @@ describe("handleCacheEvict", () => {
     expect(__resetRegistryCacheForTests).toHaveBeenCalled();
     expect(clearKVReadCache).not.toHaveBeenCalled();
     expect(clearLogStoreBuffer).not.toHaveBeenCalled();
-    expect(result.content[0].text).toBe("Cache cleared: registry.");
+    expect(result.content[0]!.text).toBe("Cache cleared: registry.");
   });
 
   it("clears only KV when scoped", async () => {
@@ -52,7 +52,7 @@ describe("handleCacheEvict", () => {
     expect(__resetRegistryCacheForTests).not.toHaveBeenCalled();
     expect(clearKVReadCache).toHaveBeenCalled();
     expect(clearLogStoreBuffer).not.toHaveBeenCalled();
-    expect(result.content[0].text).toBe("Cache cleared: kv read cache.");
+    expect(result.content[0]!.text).toBe("Cache cleared: kv read cache.");
   });
 
   it("clears only logs when scoped", async () => {
@@ -60,6 +60,6 @@ describe("handleCacheEvict", () => {
     expect(__resetRegistryCacheForTests).not.toHaveBeenCalled();
     expect(clearKVReadCache).not.toHaveBeenCalled();
     expect(clearLogStoreBuffer).toHaveBeenCalled();
-    expect(result.content[0].text).toBe("Cache cleared: log store buffer.");
+    expect(result.content[0]!.text).toBe("Cache cleared: log store buffer.");
   });
 });

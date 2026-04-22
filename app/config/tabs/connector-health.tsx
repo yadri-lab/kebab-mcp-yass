@@ -175,6 +175,7 @@ function ConnectorGrid({ samples }: { samples: HealthSample[] }) {
   }
 
   const latest = samples[samples.length - 1];
+  if (!latest) return null;
   const lastCheckTime = new Date(latest.ts).toLocaleTimeString();
 
   return (

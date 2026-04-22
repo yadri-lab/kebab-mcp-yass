@@ -263,7 +263,7 @@ export const PACKS: ConnectorDef[] = [
 export function normalizeGitHubRepo(value: string): string {
   const cleaned = value.trim().replace(/\/+$/, "");
   const match = cleaned.match(/github\.com\/([^/]+\/[^/]+)/);
-  return match ? match[1] : cleaned;
+  return match?.[1] ?? cleaned;
 }
 
 export function cleanCredential(value: string): string {

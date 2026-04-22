@@ -72,7 +72,9 @@ export async function handleVaultBacklinks(params: { path: string }) {
   const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
   let match;
   while ((match = linkRegex.exec(targetFile.content)) !== null) {
-    const linked = match[1].trim();
+    const raw = match[1];
+    if (!raw) continue;
+    const linked = raw.trim();
     if (!forwardLinks.includes(linked)) {
       forwardLinks.push(linked);
     }

@@ -67,20 +67,21 @@ export async function handleVaultDue(params: {
 
       let resurfaceDate: string;
       if (resurface instanceof Date) {
-        resurfaceDate = resurface.toISOString().split("T")[0];
+        resurfaceDate = resurface.toISOString().split("T")[0] ?? "";
       } else if (typeof resurface === "string") {
         // Handle "when_relevant" — always include these
         if (resurface === "when_relevant") {
           resurfaceDate = "when_relevant";
         } else {
-          resurfaceDate = resurface.split("T")[0];
+          resurfaceDate = resurface.split("T")[0] ?? "";
         }
       } else {
         continue;
       }
 
       // Include if date is on or before cutoff, or if "when_relevant"
-      if (resurfaceDate !== "when_relevant" && resurfaceDate > cutoff) continue;
+      if (cutoff !== undefined && resurfaceDate !== "when_relevant" && resurfaceDate > cutoff)
+        continue;
 
       // Extract snippet (first 150 chars of body)
       const body = content.slice(endIndex + 4).trim();

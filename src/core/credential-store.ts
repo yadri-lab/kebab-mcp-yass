@@ -133,7 +133,9 @@ export async function hydrateCredentialsFromKV(): Promise<void> {
     const values = kv.mget ? await kv.mget(keys) : await Promise.all(keys.map((k) => kv.get(k)));
 
     for (let i = 0; i < keys.length; i++) {
-      const envKey = keys[i].slice(CRED_PREFIX.length);
+      const k = keys[i];
+      if (!k) continue;
+      const envKey = k.slice(CRED_PREFIX.length);
       const value = values[i];
       // Don't overwrite existing env vars — boot env takes precedence.
       if (value && !getConfig(envKey)) {
@@ -181,7 +183,9 @@ export async function readAllCredentialsFromKV(): Promise<Record<string, string>
 
   const result: Record<string, string> = {};
   for (let i = 0; i < keys.length; i++) {
-    const envKey = keys[i].slice(CRED_PREFIX.length);
+    const k = keys[i];
+    if (!k) continue;
+    const envKey = k.slice(CRED_PREFIX.length);
     const value = values[i];
     if (value) result[envKey] = value;
   }

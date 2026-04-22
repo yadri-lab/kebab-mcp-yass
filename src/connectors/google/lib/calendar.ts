@@ -241,8 +241,9 @@ export async function findFreeTime(opts: {
 
   const merged: { start: number; end: number }[] = [];
   for (const b of busy) {
-    if (merged.length > 0 && b.start <= merged[merged.length - 1].end) {
-      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, b.end);
+    const last = merged[merged.length - 1];
+    if (merged.length > 0 && last && b.start <= last.end) {
+      last.end = Math.max(last.end, b.end);
     } else {
       merged.push({ ...b });
     }

@@ -29,8 +29,12 @@ export async function GET(request: Request) {
 
   let storedState: string;
   let codeVerifier: string;
+  const encoded = match[1];
+  if (!encoded) {
+    return new Response("Invalid OAuth session", { status: 400 });
+  }
   try {
-    const parsed = JSON.parse(decodeURIComponent(match[1]));
+    const parsed = JSON.parse(decodeURIComponent(encoded));
     storedState = parsed.state;
     codeVerifier = parsed.codeVerifier;
   } catch {

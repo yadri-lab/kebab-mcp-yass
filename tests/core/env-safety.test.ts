@@ -64,9 +64,9 @@ describe("env-safety (SAFE-01)", () => {
     const { getActiveDestructiveVars } = await import("@/core/env-safety");
     const active = getActiveDestructiveVars();
     expect(active.length).toBe(1);
-    expect(active[0].var.name).toBe("MYMCP_RECOVERY_RESET");
-    expect(active[0].value).toBe("<set>");
-    expect(active[0].allowed).toBe(false);
+    expect(active[0]!.var.name).toBe("MYMCP_RECOVERY_RESET");
+    expect(active[0]!.value).toBe("<set>");
+    expect(active[0]!.allowed).toBe(false);
   });
 
   it("allowed === true when NODE_ENV is in allowedEnvs", async () => {
@@ -75,7 +75,7 @@ describe("env-safety (SAFE-01)", () => {
     const { getActiveDestructiveVars } = await import("@/core/env-safety");
     const active = getActiveDestructiveVars();
     expect(active.length).toBe(1);
-    expect(active[0].allowed).toBe(true);
+    expect(active[0]!.allowed).toBe(true);
   });
 
   it("ignores '0', 'false', '' as active values", async () => {

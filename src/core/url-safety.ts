@@ -136,11 +136,11 @@ function classifyIPv6(host: string): UrlSafetyCode | null {
   // normalizes this to the compact hex form `::ffff:WWWW:XXXX` so we
   // handle both surface forms.
   const mappedDotted = lower.match(/^::ffff:([0-9.]+)$/);
-  if (mappedDotted) {
+  if (mappedDotted && mappedDotted[1]) {
     return classifyIPv4(mappedDotted[1]);
   }
   const mappedHex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
+  if (mappedHex && mappedHex[1] && mappedHex[2]) {
     const hi = parseInt(mappedHex[1], 16);
     const lo = parseInt(mappedHex[2], 16);
     const dotted = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;

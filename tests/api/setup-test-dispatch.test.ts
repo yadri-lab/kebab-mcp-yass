@@ -94,7 +94,7 @@ describe("POST /api/setup/test (v0.6 dispatcher)", () => {
     const json = (await res.json()) as { ok: boolean; message: string };
     expect(json.ok).toBe(true);
     expect(json.message).toMatch(/Acme/);
-    const call = fetchSpy.mock.calls[0];
+    const call = fetchSpy.mock.calls[0]!;
     const init = call[1] as RequestInit;
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer xoxb-abc");

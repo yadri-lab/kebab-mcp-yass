@@ -345,6 +345,7 @@ export async function resolveRegistryAsync(): Promise<ConnectorState[]> {
 
   for (let i = 0; i < ALL_CONNECTOR_LOADERS.length; i++) {
     const entry = ALL_CONNECTOR_LOADERS[i];
+    if (!entry) continue;
     const gate = gateConnector(entry, enabledOverride, process.env);
 
     if (gate.kind === "reject") {

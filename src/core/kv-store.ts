@@ -249,7 +249,7 @@ class FilesystemKV implements KVStore {
     return this.enqueue(async () => {
       const map = await this.readAll();
       if (key in map) {
-        return { ok: false as const, existing: map[key] };
+        return { ok: false as const, existing: map[key] ?? "" };
       }
       map[key] = value;
       await this.writeAll(map);
@@ -337,7 +337,7 @@ class FilesystemKV implements KVStore {
         for (const k of Object.keys(map)) {
           if (!k.startsWith("ratelimit:")) continue;
           const parts = k.split(":");
-          const bucketStr = parts[parts.length - 1];
+          const bucketStr = parts[parts.length - 1] ?? "";
           const bucket = parseInt(bucketStr, 10);
           if (Number.isFinite(bucket) && bucket < staleBefore) {
             delete map[k];
@@ -520,6 +520,7 @@ class UpstashKV implements KVStore {
       throw new Error("Upstash pipeline returned empty response");
     }
     const incrResult = json[0];
+    if (!incrResult) throw new Error("Upstash INCR returned no result");
     if (incrResult.error) throw new Error(`Upstash INCR error: ${incrResult.error}`);
     const n = typeof incrResult.result === "number" ? incrResult.result : Number(incrResult.result);
     if (!Number.isFinite(n)) throw new Error("Upstash INCR returned non-numeric result");

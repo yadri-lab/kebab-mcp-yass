@@ -43,15 +43,21 @@ async function persistKvSettings(
   // When the admin is tenant-scoped (x-mymcp-tenant header present),
   // writes land in the tenant-scoped KV namespace. Root-scope writes
   // go to global (backwards compat).
-  await saveInstanceConfig(
-    {
-      displayName: kvVars.MYMCP_DISPLAY_NAME,
-      timezone: kvVars.MYMCP_TIMEZONE,
-      locale: kvVars.MYMCP_LOCALE,
-      contextPath: kvVars.MYMCP_CONTEXT_PATH,
-    },
-    tenantId
-  );
+  // Phase 49 / exactOptionalPropertyTypes: spread conditionally so we
+  // don't pass `undefined` values as explicit fields — `Partial<T>` under
+  // the strict flag treats "explicit undefined" as type-level presence,
+  // which mismatches the fully-optional shape the saver expects.
+  const partial: {
+    displayName?: string;
+    timezone?: string;
+    locale?: string;
+    contextPath?: string;
+  } = {};
+  if (kvVars.MYMCP_DISPLAY_NAME !== undefined) partial.displayName = kvVars.MYMCP_DISPLAY_NAME;
+  if (kvVars.MYMCP_TIMEZONE !== undefined) partial.timezone = kvVars.MYMCP_TIMEZONE;
+  if (kvVars.MYMCP_LOCALE !== undefined) partial.locale = kvVars.MYMCP_LOCALE;
+  if (kvVars.MYMCP_CONTEXT_PATH !== undefined) partial.contextPath = kvVars.MYMCP_CONTEXT_PATH;
+  await saveInstanceConfig(partial, tenantId);
 }
 
 /**

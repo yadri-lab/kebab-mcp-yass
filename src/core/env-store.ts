@@ -49,7 +49,9 @@ export function parseEnvFile(content: string): {
   for (const line of rawLines) {
     const m = line.match(ENV_LINE);
     if (m) {
+      const key = m[1];
       let value = m[2];
+      if (key === undefined || value === undefined) continue;
       // Strip surrounding quotes if present
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
@@ -57,7 +59,7 @@ export function parseEnvFile(content: string): {
       ) {
         value = value.slice(1, -1);
       }
-      vars[m[1]] = value;
+      vars[key] = value;
     }
   }
   return { vars, rawLines };
@@ -69,10 +71,11 @@ export function serializeEnv(existingLines: string[], updates: Record<string, st
 
   for (const line of existingLines) {
     const m = line.match(ENV_LINE);
-    if (m && pending.has(m[1])) {
-      const v = updates[m[1]];
-      out.push(`${m[1]}=${v}`);
-      pending.delete(m[1]);
+    const key = m?.[1];
+    if (m && key !== undefined && pending.has(key)) {
+      const v = updates[key] ?? "";
+      out.push(`${key}=${v}`);
+      pending.delete(key);
     } else {
       out.push(line);
     }
@@ -80,9 +83,10 @@ export function serializeEnv(existingLines: string[], updates: Record<string, st
 
   // Append new vars at end
   if (pending.size > 0) {
-    if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+    const lastLine = out[out.length - 1];
+    if (out.length > 0 && lastLine !== undefined && lastLine.trim() !== "") out.push("");
     for (const k of pending) {
-      out.push(`${k}=${updates[k]}`);
+      out.push(`${k}=${updates[k] ?? ""}`);
     }
   }
 

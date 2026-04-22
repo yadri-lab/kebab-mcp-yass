@@ -116,8 +116,10 @@ async function postHandler(ctx: PipelineContext) {
     let migrated = 0;
     for (const k of [...toAdd, ...toUpdate]) {
       try {
-        await kv.set(`${CRED_PREFIX}${k}`, sourceVars[k]);
-        process.env[k] = sourceVars[k];
+        const v = sourceVars[k];
+        if (v === undefined) continue;
+        await kv.set(`${CRED_PREFIX}${k}`, v);
+        process.env[k] = v;
         migrated++;
       } catch (err) {
         errors.push({
@@ -184,7 +186,9 @@ async function postHandler(ctx: PipelineContext) {
 
   const sourceVars: Record<string, string> = {};
   for (let i = 0; i < credKeys.length; i++) {
-    const envKey = credKeys[i].slice(CRED_PREFIX.length);
+    const k = credKeys[i];
+    if (!k) continue;
+    const envKey = k.slice(CRED_PREFIX.length);
     const v = credValues[i];
     if (v) sourceVars[envKey] = v;
   }
