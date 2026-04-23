@@ -56,6 +56,17 @@ export default async function ConfigPage({
   const registry = await resolveRegistryAsync();
   const logs = getRecentLogs(100);
 
+  // Phase 53 / OBS-06: discover tenant IDs for the Health tab selector.
+  // Convention (Phase 48): each tenant has its own MCP_AUTH_TOKEN_<UPPER>
+  // env var. Suffix after `MCP_AUTH_TOKEN_` (lowercased) = tenantId.
+  // Scoped admins pass an empty list — TenantSelector renders null for
+  // them regardless.
+  const tenantIds = Object.keys(process.env)
+    .filter((k) => k.startsWith("MCP_AUTH_TOKEN_"))
+    .map((k) => k.slice("MCP_AUTH_TOKEN_".length).toLowerCase())
+    .filter((id) => id.length > 0)
+    .sort();
+
   const enabled = registry.filter((p) => p.enabled);
   const totalTools = enabled.reduce((s, p) => s + p.manifest.tools.length, 0);
 
@@ -120,6 +131,7 @@ export default async function ConfigPage({
         commitSha={commitSha}
         tenantId={tenantId}
         disabledTools={disabledTools}
+        tenantIds={tenantIds}
       />
     </AppShell>
   );

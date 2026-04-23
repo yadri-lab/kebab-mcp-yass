@@ -83,7 +83,14 @@ function Badge({
   );
 }
 
-export function HealthTab() {
+export interface HealthTabProps {
+  /** Phase 53: true when the operator has no tenant cookie (root scope). */
+  rootScope?: boolean;
+  /** Phase 53: tenant IDs from MCP_AUTH_TOKEN_* env var discovery. */
+  tenantIds?: string[];
+}
+
+export function HealthTab(_props: HealthTabProps = {}) {
   const [health, setHealth] = useState<HealthBody | null>(null);
   const [status, setStatus] = useState<AdminStatusBody | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);

@@ -118,6 +118,7 @@ export function ConfigTabs({
   commitSha,
   tenantId,
   disabledTools,
+  tenantIds,
 }: {
   activeTab: string;
   connectors: ConnectorSummary[];
@@ -134,6 +135,8 @@ export function ConfigTabs({
   tenantId?: string | null | undefined;
   /** Server-fetched disabled tool names — avoids client-side loading spinner. */
   disabledTools?: string[] | undefined;
+  /** Phase 53: tenant IDs discovered from MCP_AUTH_TOKEN_* env vars. */
+  tenantIds?: string[] | undefined;
 }) {
   let tab: React.ReactNode;
   let section: string;
@@ -186,7 +189,10 @@ export function ConfigTabs({
       break;
     case "health":
       section = "Health";
-      tab = <HealthTab />;
+      // Phase 53: rootScope derived from tenantId cookie (Phase 48).
+      // tenantIds list populated server-side from MCP_AUTH_TOKEN_*
+      // env vars. Scoped admins get rootScope=false and no tenant list.
+      tab = <HealthTab rootScope={tenantId == null} tenantIds={tenantIds ?? []} />;
       break;
     case "devices":
       section = "Devices";
