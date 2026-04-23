@@ -10,6 +10,25 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// vi.hoisted: declare the mock before it gets hoisted by vi.mock. This keeps
+// `sinceMock` accessible from both the mock factory (which runs at module
+// load) and the test body (where we stub return values per-test).
+const { sinceMock } = vi.hoisted(() => ({ sinceMock: vi.fn() }));
+
+vi.mock("../../src/core/log-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/log-store")>();
+  return {
+    ...actual,
+    getLogStore: () => ({
+      kind: "memory" as const,
+      append: async () => {},
+      recent: async () => [],
+      since: async (ts: number) => sinceMock(ts),
+    }),
+  };
+});
+
 import {
   aggregateRequestsByHour,
   aggregateLatencyByTool,
@@ -192,38 +211,39 @@ describe("getMetricsSource", () => {
   beforeEach(() => {
     __resetRingBufferForTests();
     resetLogStoreCache();
+    sinceMock.mockReset();
     vi.unstubAllEnvs();
   });
 
   it("returns source: 'buffer' when ring buffer has entries", async () => {
     logToolCall(makeLog({ tool: "gmail.search", timestamp: new Date().toISOString() }));
+    sinceMock.mockResolvedValue([]);
     const { logs, source } = await getMetricsSource("__all__");
     expect(source).toBe("buffer");
     expect(logs.length).toBeGreaterThanOrEqual(1);
   });
 
   it("returns source: 'durable' when buffer empty and durable has entries", async () => {
-    // Empty buffer; seed durable directly via log-store since() mock path.
-    // MemoryLogStore on filesystem-fallback path: append before reset.
-    const { getLogStore } = await import("../../src/core/log-store");
-    const store = getLogStore();
-    await store.append({
-      ts: Date.now() - 60_000,
-      level: "info",
-      message: "gmail.search (50ms)",
-      meta: {
-        tool: "gmail.search",
-        durationMs: 50,
-        status: "success",
-        timestamp: new Date().toISOString(),
+    sinceMock.mockResolvedValue([
+      {
+        ts: Date.now() - 60_000,
+        level: "info",
+        message: "gmail.search (50ms)",
+        meta: {
+          tool: "gmail.search",
+          durationMs: 50,
+          status: "success",
+          timestamp: new Date().toISOString(),
+        },
       },
-    });
+    ]);
     const { logs, source } = await getMetricsSource("__all__");
     expect(source).toBe("durable");
     expect(logs.length).toBeGreaterThanOrEqual(1);
   });
 
   it("returns { logs: [], source: 'buffer' } when both stores empty", async () => {
+    sinceMock.mockResolvedValue([]);
     const { logs, source } = await getMetricsSource("__all__");
     expect(logs).toEqual([]);
     expect(source).toBe("buffer");
