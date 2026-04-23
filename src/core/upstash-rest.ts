@@ -21,6 +21,7 @@
  */
 
 import { getConfig } from "./config-facade";
+import { toMsg } from "./error-utils";
 
 const TIMEOUT_MS = 3000;
 
@@ -99,12 +100,11 @@ export async function getUpstashInfo(): Promise<UpstashInfoResult | null> {
     const { usedBytes, usedHuman } = parseUpstashUsedBytes(infoText);
     return { usedBytes, usedHuman, source: "upstash" };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
     return {
       usedBytes: null,
       usedHuman: null,
       source: "unknown",
-      error: sanitize(msg),
+      error: sanitize(toMsg(err)),
     };
   }
 }

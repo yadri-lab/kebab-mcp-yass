@@ -94,7 +94,13 @@ export function useMetricsPoll<T>(
       }
     } catch (err) {
       if (controller.signal.aborted) return;
-      setError(err instanceof Error ? err.message : String(err));
+      // Inline err-message extraction — client-side module, no @/core
+      // alias; avoids pulling error-utils into the client bundle.
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : String(err);
+      setError(msg);
     } finally {
       if (!controller.signal.aborted) {
         setIsLoading(false);
@@ -108,6 +114,7 @@ export function useMetricsPoll<T>(
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    // fire-and-forget OK: refresh() is a UI-driven trigger; failures surface through setError state.
     void fetchOnce();
   }, [fetchOnce]);
 
@@ -129,9 +136,11 @@ export function useMetricsPoll<T>(
       if (cancelled) return;
       await fetchOnce();
       if (cancelled) return;
+      // fire-and-forget OK: setTimeout callback is the re-arm loop; no caller awaits it.
       timerRef.current = setTimeout(() => void tick(), intervalMs);
     };
 
+    // fire-and-forget OK: useEffect can't return a Promise; polling loop owns its own lifecycle via `cancelled`.
     void tick();
 
     return () => {

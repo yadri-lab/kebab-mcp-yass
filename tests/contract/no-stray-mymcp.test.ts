@@ -51,6 +51,9 @@ const ALLOWLIST: readonly string[] = [
   // Admin routes reading legacy env-var names during dashboard render:
   "app/api/admin/health-history/route.ts",
   "app/api/admin/rate-limits/route.ts",
+  // Phase 53: metrics ratelimit route reads MYMCP_RATE_LIMIT_RPM to
+  // show Max column; matches the existing admin/rate-limits pattern.
+  "app/api/admin/metrics/ratelimit/route.ts",
   "app/api/config/context/route.ts",
   "app/api/config/env/route.ts",
   "app/api/config/env-export/route.ts",

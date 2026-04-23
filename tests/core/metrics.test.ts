@@ -62,7 +62,10 @@ describe("aggregateRequestsByHour", () => {
   });
 
   it("assigns 3 current-hour logs to bucket[0]", () => {
-    const now = Date.now();
+    // Pin `now` to the middle of its hour so "60s ago" can't cross the
+    // boundary into the previous hour. Flake-proof.
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000; // :30 into the hour
     const logs: ToolLog[] = [
       makeLog({ timestamp: new Date(now - 60_000).toISOString() }),
       makeLog({ timestamp: new Date(now - 120_000).toISOString() }),
@@ -93,7 +96,8 @@ describe("aggregateRequestsByHour", () => {
   });
 
   it("filters by opts.tool", () => {
-    const now = Date.now();
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000;
     const logs: ToolLog[] = [
       makeLog({ tool: "gmail.search", timestamp: new Date(now - 60_000).toISOString() }),
       makeLog({ tool: "gmail.search", timestamp: new Date(now - 120_000).toISOString() }),
@@ -150,7 +154,8 @@ describe("aggregateLatencyByTool", () => {
 
 describe("aggregateErrorsByConnectorHour", () => {
   it("splits tool on first `.` for connector id", () => {
-    const now = Date.now();
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000;
     const logs: ToolLog[] = [
       makeLog({
         tool: "google.calendar_list",
@@ -167,7 +172,8 @@ describe("aggregateErrorsByConnectorHour", () => {
   });
 
   it("includes connectors with zero errors (total only)", () => {
-    const now = Date.now();
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000;
     const logs: ToolLog[] = [
       makeLog({ tool: "notion.read", timestamp: new Date(now - 60_000).toISOString() }),
     ];
@@ -179,7 +185,8 @@ describe("aggregateErrorsByConnectorHour", () => {
   });
 
   it("groups multiple connectors independently", () => {
-    const now = Date.now();
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000;
     const logs: ToolLog[] = [
       makeLog({
         tool: "google.calendar_list",
@@ -197,7 +204,8 @@ describe("aggregateErrorsByConnectorHour", () => {
   });
 
   it("handles tool names without a dot (unknown connector bucket)", () => {
-    const now = Date.now();
+    const hourStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+    const now = hourStart + 30 * 60_000;
     const logs: ToolLog[] = [
       makeLog({ tool: "bare_tool", timestamp: new Date(now - 60_000).toISOString() }),
     ];

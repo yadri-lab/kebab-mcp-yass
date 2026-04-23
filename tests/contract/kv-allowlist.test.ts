@@ -69,6 +69,12 @@ const ALLOWLIST = new Set<string>([
   // root-operator cross-tenant view via raw getKVStore(). See Phase 42
   // INVENTORY.md §3.
   "app/api/admin/rate-limits/route.ts",
+  // Phase 53 / OBS-10: /api/admin/metrics/ratelimit is the root-scoped
+  // cross-tenant live-bucket view for the dashboard. Intentionally
+  // scans raw KV (no tenant wrapper) so root operators see every
+  // tenant's current bucket in one table. Parallels the escape hatch
+  // on /api/admin/rate-limits.
+  "app/api/admin/metrics/ratelimit/route.ts",
   // Scripts (not runtime server code)
   "scripts/kv-compact.ts",
 ]);
