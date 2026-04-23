@@ -1,6 +1,3 @@
-// Phase 44 SCM-01: V2/V3 dispatch gated on KEBAB_BROWSER_CONNECTOR_V2.
-// See .planning/phases/44-supply-chain/MIGRATION-NOTES.md.
-
 import { z } from "zod";
 import {
   createBrowserSession,
@@ -8,7 +5,6 @@ import {
   validateContextName,
   sanitizeError,
 } from "../lib/browserbase";
-import { getBrowserConnectorVersion } from "../flag";
 
 export const webActSchema = {
   url: z.string().describe("URL to navigate to before performing actions"),
@@ -29,10 +25,7 @@ type WebActParams = {
   context_name?: string | undefined;
 };
 
-/**
- * V2-compat path (default). Frozen for safe rollback.
- */
-export async function handleWebActV2(params: WebActParams) {
+export async function handleWebAct(params: WebActParams) {
   validatePublicUrl(params.url);
   const contextName = validateContextName(params.context_name || "default");
   const stagehand = await createBrowserSession(contextName);
@@ -83,17 +76,4 @@ export async function handleWebActV2(params: WebActParams) {
   } finally {
     await stagehand.close();
   }
-}
-
-/**
- * V3 path — delegates to V2 today. TODO: switch to page.act() (v3 idiomatic)
- * when the project needs those semantics.
- */
-export async function handleWebActV3(params: WebActParams) {
-  return handleWebActV2(params);
-}
-
-export async function handleWebAct(params: WebActParams) {
-  const version = getBrowserConnectorVersion();
-  return version === "v3" ? handleWebActV3(params) : handleWebActV2(params);
 }

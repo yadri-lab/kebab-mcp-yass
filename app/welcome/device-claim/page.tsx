@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { toMsg } from "@/core/error-utils";
 
 type State =
   | { kind: "idle" }
@@ -60,11 +61,7 @@ function useClaimToken(token: string | null): State {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setState({
-          kind: "error",
-          status: 0,
-          message: err instanceof Error ? err.message : String(err),
-        });
+        setState({ kind: "error", status: 0, message: toMsg(err) });
       });
     return () => {
       cancelled = true;

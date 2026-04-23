@@ -2,7 +2,13 @@
 
 All notable changes to Kebab MCP.
 
-## [Unreleased] — v0.13 — Daily-user delight
+## [Unreleased]
+
+### Removed
+
+- `KEBAB_BROWSER_CONNECTOR_V2` env flag + the V2/V3 dispatch layer in the browser connector. The flag was an abstraction for a future Stagehand-v3 idiomatic code path that never diverged — both branches always delegated to the same implementation. With Stagehand 3.2.x as the only installed path and no user-facing need for rollback, the flag was pure complexity with a misleading name. Tools (`handleWebBrowse`, `handleWebAct`, `handleWebExtract`, `handleLinkedinFeed`) now expose a single handler. Regression test collapses from 24 cases (4 tools × 3 flag states × 2 scenarios) to 8 (4 tools × 2 scenarios). `.env.example` + `docs/CONNECTORS.md` + `scripts/audit-gate.mjs` updated to drop all flag references.
+
+## [v0.1.13] — v0.13 — Daily-user delight
 
 ### Phase 53 — Observability UI expansion (OBS-06..11)
 
