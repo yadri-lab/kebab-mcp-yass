@@ -188,6 +188,63 @@ export function legacyRateLimitKey(
 }
 
 /**
+ * Phase 53: parse a KV rate-limit key into its tenantId/scope/bucket
+ * components. Handles the three shapes the codebase has shipped with:
+ *
+ *   - 6-part (new, tenant-wrapped):  `tenant:<tid>:ratelimit:<scope>:<idHash>:<bucket>`
+ *   - 5-part (legacy pre-v0.11):     `ratelimit:<tid>:<scope>:<idHash>:<bucket>`
+ *   - 4-part (null-tenant new):      `ratelimit:<scope>:<idHash>:<bucket>`
+ *
+ * Returns `null` when the key does not match any recognized shape or
+ * the bucket segment is not numeric.
+ *
+ * Extracted from `app/api/admin/rate-limits/route.ts` so the new
+ * `/api/admin/metrics/ratelimit` route can share the exact same parser
+ * — preventing drift between the two admin views of rate-limit state.
+ */
+export interface ParsedRateLimitKey {
+  tenantId: string;
+  scope: string;
+  bucket: number;
+  /** "tenant-wrapped" | "legacy" | "null-tenant" — informational. */
+  shape: "tenant-wrapped" | "legacy" | "null-tenant";
+}
+
+export function parseRateLimitKey(key: string): ParsedRateLimitKey | null {
+  const parts = key.split(":");
+  // 6-part tenant-wrapped: tenant:<tid>:ratelimit:<scope>:<hash>:<bucket>
+  if (parts.length === 6 && parts[0] === "tenant" && parts[2] === "ratelimit") {
+    const tenantId = parts[1];
+    const scope = parts[3];
+    const bucketStr = parts[5];
+    if (tenantId === undefined || scope === undefined || bucketStr === undefined) return null;
+    const bucket = parseInt(bucketStr, 10);
+    if (!Number.isFinite(bucket)) return null;
+    return { tenantId, scope, bucket, shape: "tenant-wrapped" };
+  }
+  // 5-part legacy pre-v0.11: ratelimit:<tid>:<scope>:<hash>:<bucket>
+  if (parts.length === 5 && parts[0] === "ratelimit") {
+    const tenantId = parts[1];
+    const scope = parts[2];
+    const bucketStr = parts[4];
+    if (tenantId === undefined || scope === undefined || bucketStr === undefined) return null;
+    const bucket = parseInt(bucketStr, 10);
+    if (!Number.isFinite(bucket)) return null;
+    return { tenantId, scope, bucket, shape: "legacy" };
+  }
+  // 4-part null-tenant new: ratelimit:<scope>:<hash>:<bucket>
+  if (parts.length === 4 && parts[0] === "ratelimit") {
+    const scope = parts[1];
+    const bucketStr = parts[3];
+    if (scope === undefined || bucketStr === undefined) return null;
+    const bucket = parseInt(bucketStr, 10);
+    if (!Number.isFinite(bucket)) return null;
+    return { tenantId: "default", scope, bucket, shape: "null-tenant" };
+  }
+  return null;
+}
+
+/**
  * Best-effort bucket cleanup. Scans within the current tenant's
  * namespace (via `getContextKVStore()`) and deletes anything older
  * than the current minute. Failures are swallowed.

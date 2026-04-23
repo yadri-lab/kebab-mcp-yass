@@ -4,6 +4,7 @@ import { getContextKVStore, getCurrentTenantId } from "@/core/request-context";
 import { withAdminAuth } from "@/core/with-admin-auth";
 import type { PipelineContext } from "@/core/pipeline";
 import { getConfigInt } from "@/core/config-facade";
+import { parseRateLimitKey } from "@/core/rate-limit";
 
 interface RateLimitScope {
   scope: string;
@@ -65,73 +66,32 @@ async function getHandler(ctx: PipelineContext) {
       // and new-tenant-wrapped (6-part: `tenant:<tid>:ratelimit:<scope>:<hash>:<bucket>`)
       // shapes. Also catches bare null-tenant new-shape
       // (4-part after "ratelimit:": `ratelimit:<scope>:<hash>:<bucket>`).
+      //
+      // Phase 53: key-shape parse delegates to parseRateLimitKey() in
+      // src/core/rate-limit.ts — shared with /api/admin/metrics/ratelimit.
       const rawKV = getKVStore();
       const [rlKeys, tenantKeys] = await Promise.all([
         kvScanAll(rawKV, "ratelimit:*"),
         kvScanAll(rawKV, "tenant:*"),
       ]);
 
-      for (const key of rlKeys) {
-        const parts = key.split(":");
-        // Legacy pre-v0.11 5-part shape: ratelimit:<tenant>:<scope>:<hash>:<bucket>
-        // vs new null-tenant 4-part shape: ratelimit:<scope>:<hash>:<bucket>
-        let tenantId: string;
-        let scope: string;
-        let bucket: number;
-        // Phase 49 noUncheckedIndexedAccess: extract and validate all
-        // parts before narrowing. `continue` guards the `!` / guarded
-        // path so downstream assignments operate on strings, not
-        // `string | undefined`.
-        if (parts.length === 5) {
-          const p1 = parts[1];
-          const p2 = parts[2];
-          const p4 = parts[4];
-          if (p1 === undefined || p2 === undefined || p4 === undefined) continue;
-          tenantId = p1;
-          scope = p2;
-          bucket = parseInt(p4, 10);
-        } else if (parts.length === 4) {
-          const p1 = parts[1];
-          const p3 = parts[3];
-          if (p1 === undefined || p3 === undefined) continue;
-          tenantId = "default";
-          scope = p1;
-          bucket = parseInt(p3, 10);
-        } else {
-          continue;
-        }
-        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
-        activeKeys.push({ key, tenantId, scope, rawKey: key });
-      }
-
-      for (const key of tenantKeys) {
-        // tenant:<tid>:ratelimit:<scope>:<hash>:<bucket> — 6 parts
-        const parts = key.split(":");
-        if (parts.length !== 6 || parts[2] !== "ratelimit") continue;
-        const tenantId = parts[1];
-        const scope = parts[3];
-        const p5 = parts[5];
-        if (tenantId === undefined || scope === undefined || p5 === undefined) continue;
-        const bucket = parseInt(p5, 10);
-        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
-        activeKeys.push({ key, tenantId, scope, rawKey: key });
+      for (const key of [...rlKeys, ...tenantKeys]) {
+        const parsed = parseRateLimitKey(key);
+        if (!parsed || parsed.bucket !== currentBucket) continue;
+        activeKeys.push({ key, tenantId: parsed.tenantId, scope: parsed.scope, rawKey: key });
       }
     } else {
       // Default path: tenant-scoped scan. TenantKVStore wraps the match
       // pattern and strips the prefix from returned keys, so we see
-      // `ratelimit:<scope>:<hash>:<bucket>` (4 parts).
+      // `ratelimit:<scope>:<hash>:<bucket>` (4 parts) — the null-tenant
+      // shape per parseRateLimitKey().
       const kv = getContextKVStore();
       const keys = await kvScanAll(kv, "ratelimit:*");
       const tenantId = getCurrentTenantId() ?? "default";
       for (const key of keys) {
-        const parts = key.split(":");
-        if (parts.length !== 4) continue;
-        const scope = parts[1];
-        const p3 = parts[3];
-        if (scope === undefined || p3 === undefined) continue;
-        const bucket = parseInt(p3, 10);
-        if (!Number.isFinite(bucket) || bucket !== currentBucket) continue;
-        activeKeys.push({ key, tenantId, scope });
+        const parsed = parseRateLimitKey(key);
+        if (!parsed || parsed.bucket !== currentBucket) continue;
+        activeKeys.push({ key, tenantId, scope: parsed.scope });
       }
     }
 
