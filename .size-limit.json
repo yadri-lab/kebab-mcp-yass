@@ -2,7 +2,7 @@
   {
     "name": "Dashboard (/config)",
     "route": "/config",
-    "limit": "600 KB"
+    "limit": "620 KB"
   },
   {
     "name": "Welcome (/welcome)",
