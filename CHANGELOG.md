@@ -4,6 +4,61 @@ All notable changes to Kebab MCP.
 
 ## [Unreleased]
 
+## [v0.14.0] — Skills sync & governance
+
+Elevates Skills from individual Markdown payloads to reusable playbooks
+with explicit tool governance and one-click sync to a local Claude Code
+installation.
+
+### Added
+
+- **Allowed tools governance (SKILL-01..03):** Each skill can now declare
+  `toolsAllowed: string[]` — an explicit list of MCP tool names it may
+  invoke. Set via the Skill editor's new **Allowed tools** multi-select
+  (backed by `GET /api/config/available-tools`). The list is embedded
+  into all export formats (`.md` frontmatter, Claude `.skill` JSON, sync
+  push), so Claude Code and human reviewers see the skill's surface
+  before invocation. Empty = no explicit restriction (inherits ambient
+  surface).
+- **Skills sync to Claude Code (SYNC-01..05):** Configure sync targets
+  via `KEBAB_SKILLS_SYNC_TARGETS` (JSON array of `{name, path}`). Skills
+  tab gains a **Sync** button per skill + **Sync all** in the header.
+  `POST /api/config/skills/:id/sync` writes `<target>/<skill_id>.md`
+  with YAML-like frontmatter (name, description, arguments,
+  tools_allowed, kebab_version). Bulk sync surfaces partial failures
+  via 207 Multi-Status.
+- **Per-target sync state:** Each skill tracks
+  `syncState[target] = { lastSyncedHash, lastSyncedAt, lastSyncStatus,
+  lastSyncError? }`. Server-side SHA-256 hash of
+  `(name + \x1f + description + \x1f + content)` is stable and
+  collision-resistant across name/description boundary.
+- **Passive drift detection (DRIFT-01):** When `updatedAt` is newer than
+  the last successful sync, the Skills tab shows an orange "drift" badge
+  on the affected skill. Hover tooltip lists the stale targets. A green
+  "synced" badge surfaces when all targets are current. No background
+  polling — detection is pure client-side diff on load.
+
+### Infrastructure
+
+- `src/connectors/skills/lib/sync.ts` — pure sync module:
+  `listSyncTargets()` / `getSyncTarget()` / `renderSkillMarkdown()` /
+  `syncSkillToTarget()`. Refuses to write to filesystem roots
+  (`/`, `C:\`, etc.) even if user-configured. Target directory is
+  auto-created.
+- Skill schema extends `toolsAllowed: string[]` + `syncState: Record<string,
+  SkillSyncState>` with Zod defaults so existing skills in KV round-trip
+  cleanly (pre-v0.14 skills read back with empty arrays).
+- 3 new routes: `GET /api/config/skills-sync-targets`,
+  `GET /api/config/available-tools`, `POST /api/config/skills/:id/sync`.
+  All `withAdminAuth`-gated; contract tests pass.
+- 16 new unit tests (10 sync + 6 store sync-state + hash collision
+  resistance). 994 baseline → 1010 unit tests, 22 contract unchanged.
+
+### Configuration
+
+- **New env var:** `KEBAB_SKILLS_SYNC_TARGETS` — JSON array of sync
+  targets. Optional. Example in `.env.example`.
+
 ### Removed
 
 - `KEBAB_BROWSER_CONNECTOR_V2` env flag + the V2/V3 dispatch layer in the browser connector. The flag was an abstraction for a future Stagehand-v3 idiomatic code path that never diverged — both branches always delegated to the same implementation. With Stagehand 3.2.x as the only installed path and no user-facing need for rollback, the flag was pure complexity with a misleading name. Tools (`handleWebBrowse`, `handleWebAct`, `handleWebExtract`, `handleLinkedinFeed`) now expose a single handler. Regression test collapses from 24 cases (4 tools × 3 flag states × 2 scenarios) to 8 (4 tools × 2 scenarios). `.env.example` + `docs/CONNECTORS.md` + `scripts/audit-gate.mjs` updated to drop all flag references.
