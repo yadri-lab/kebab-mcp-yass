@@ -116,6 +116,15 @@ export const ALL_CONNECTOR_LOADERS: ConnectorLoaderEntry[] = [
     loader: () => import("@/connectors/skills/manifest").then((m) => m.skillsConnector),
   },
   {
+    id: "api-connections",
+    label: "API Connections",
+    description:
+      "User-defined HTTP API integrations and their custom tools. Configure in /config → Connectors.",
+    requiredEnvVars: [],
+    toolCount: 0, // dynamic — actual count loaded with manifest; stub shows 0.
+    loader: () => import("@/connectors/api/manifest").then((m) => m.apiConnectionsConnector),
+  },
+  {
     id: "paywall",
     label: "Paywall Readers",
     description:

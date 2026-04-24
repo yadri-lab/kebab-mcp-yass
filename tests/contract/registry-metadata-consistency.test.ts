@@ -55,12 +55,12 @@ describe("registry loader metadata vs loaded manifest consistency", () => {
   }, 45_000);
 
   it("every loader entry's toolCount matches the loaded manifest.tools.length", async () => {
-    // Skills is user-defined: the sync tool-list reads from disk/KV and
-    // varies per deploy. The loader's static toolCount=0 is a stub; the
-    // actual manifest reports whatever is in the current skill store.
-    // We skip the equality check for "skills" to avoid making the
-    // contract test dependent on local disk state.
-    const DYNAMIC_TOOL_COUNT = new Set(["skills"]);
+    // Skills + api-connections are user-defined: the sync tool-list reads
+    // from disk/KV and varies per deploy. The loader's static toolCount=0
+    // is a stub; the actual manifest reports whatever is in the current
+    // store. We skip the equality check for these dynamic connectors to
+    // avoid making the contract test dependent on local disk state.
+    const DYNAMIC_TOOL_COUNT = new Set(["skills", "api-connections"]);
     for (const entry of ALL_CONNECTOR_LOADERS) {
       if (DYNAMIC_TOOL_COUNT.has(entry.id)) continue;
       const manifest = await entry.loader();
