@@ -20,6 +20,7 @@ export interface ClaudeSkillFile {
   name: string;
   description: string;
   content: string;
+  toolsAllowed?: string[];
   metadata: {
     source: "mymcp";
     version: string;
@@ -35,6 +36,7 @@ export interface SkillLike {
   name: string;
   description: string;
   content: string;
+  toolsAllowed?: string[];
   source?: { type: string; cachedContent?: string };
 }
 
@@ -53,7 +55,7 @@ export function toClaudeSkillFile(
   const body =
     skill.content || (skill.source?.type === "remote" ? skill.source.cachedContent || "" : "");
 
-  return {
+  const out: ClaudeSkillFile = {
     name: skill.name,
     description: skill.description || skill.name,
     content: body,
@@ -63,4 +65,8 @@ export function toClaudeSkillFile(
       exportedAt: opts?.exportedAt ?? new Date().toISOString(),
     },
   };
+  if (skill.toolsAllowed && skill.toolsAllowed.length > 0) {
+    out.toolsAllowed = [...skill.toolsAllowed];
+  }
+  return out;
 }

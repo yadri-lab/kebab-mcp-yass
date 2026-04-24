@@ -45,6 +45,20 @@ export const skillSourceSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+/**
+ * Per-target sync state. Tracks whether a skill has been pushed to a
+ * configured local path (e.g. Claude Code skills dir).
+ */
+export const skillSyncStateSchema = z.object({
+  target: z.string(),
+  lastSyncedHash: z.string(),
+  lastSyncedAt: z.string(),
+  lastSyncStatus: z.enum(["ok", "error"]),
+  lastSyncError: z.string().optional(),
+});
+
+export type SkillSyncState = z.infer<typeof skillSyncStateSchema>;
+
 export const skillSchema = z.object({
   id: z
     .string()
@@ -54,7 +68,11 @@ export const skillSchema = z.object({
   description: z.string().default(""),
   content: z.string().default(""),
   arguments: z.array(skillArgumentSchema).default([]),
+  /** Governance: explicit list of tool names this skill is allowed to invoke. */
+  toolsAllowed: z.array(z.string()).default([]),
   source: skillSourceSchema,
+  /** Per-target sync state. Keyed by target name. */
+  syncState: z.record(z.string(), skillSyncStateSchema).default({}),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -68,13 +86,16 @@ export const skillCreateInputSchema = z.object({
   description: z.string().max(500).default(""),
   content: z.string().default(""),
   arguments: z.array(skillArgumentSchema).default([]),
+  toolsAllowed: z.array(z.string()).default([]),
   source: skillSourceSchema,
 });
 
 export const skillUpdateInputSchema = skillCreateInputSchema.partial();
 
-export type SkillCreateInput = z.infer<typeof skillCreateInputSchema>;
-export type SkillUpdateInput = z.infer<typeof skillUpdateInputSchema>;
+// Authored input type (what callers pass into createSkill / updateSkill).
+// `toolsAllowed` is optional on input — defaults to [] after parse.
+export type SkillCreateInput = z.input<typeof skillCreateInputSchema>;
+export type SkillUpdateInput = z.input<typeof skillUpdateInputSchema>;
 
 // ── Storage backend selection ───────────────────────────────────────────
 
@@ -229,7 +250,9 @@ export function createSkill(input: SkillCreateInput): Promise<Skill> {
       description: parsed.description ?? "",
       content: parsed.content ?? "",
       arguments: parsed.arguments ?? [],
+      toolsAllowed: parsed.toolsAllowed ?? [],
       source: parsed.source,
+      syncState: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -261,6 +284,8 @@ export function updateSkill(id: string, patch: SkillUpdateInput): Promise<Skill 
       content: parsed.content ?? prev.content,
       source: parsed.source ?? prev.source,
       arguments: parsed.arguments ?? prev.arguments,
+      toolsAllowed: parsed.toolsAllowed ?? prev.toolsAllowed ?? [],
+      syncState: prev.syncState ?? {},
     };
     all[idx] = next;
     await writeRaw(all);
@@ -418,6 +443,48 @@ export function rollbackSkill(skillId: string, version: number): Promise<Skill |
     await writeRaw(all);
     await saveVersion(updated);
     return updated;
+  });
+}
+
+// ── Sync state helpers ────────────────────────────────────────────────
+//
+// Each skill tracks `syncState[target] = { lastSyncedHash, lastSyncedAt, ...}`.
+// Drift is detected by comparing the current content hash against
+// lastSyncedHash for a given target.
+
+import { createHash } from "crypto";
+
+/** Stable content hash used to detect drift. sha256(name + description + content). */
+export function computeSkillContentHash(
+  skill: Pick<Skill, "name" | "description" | "content">
+): string {
+  const h = createHash("sha256");
+  h.update(skill.name);
+  h.update("\x1f");
+  h.update(skill.description);
+  h.update("\x1f");
+  h.update(skill.content);
+  return h.digest("hex");
+}
+
+/** Persist the sync outcome for a given target on a skill. */
+export function recordSkillSyncState(id: string, state: SkillSyncState): Promise<Skill | null> {
+  return enqueueWrite(async () => {
+    const all = await readRaw();
+    const idx = all.findIndex((s) => s.id === id);
+    if (idx === -1) return null;
+    const prev = all[idx];
+    if (!prev) return null;
+    const next: Skill = {
+      ...prev,
+      syncState: {
+        ...(prev.syncState ?? {}),
+        [state.target]: state,
+      },
+    };
+    all[idx] = next;
+    await writeRaw(all);
+    return next;
   });
 }
 
