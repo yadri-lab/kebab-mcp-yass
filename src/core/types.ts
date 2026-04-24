@@ -124,6 +124,20 @@ export interface ConnectorManifest {
   isActive?: ((env: NodeJS.ProcessEnv) => { active: boolean; reason?: string }) | undefined;
   /** All tools in this pack */
   tools: ToolDefinition[];
+  /**
+   * Optional async hook invoked by the MCP transport before it iterates
+   * `tools` for registration. Connectors whose tool set is dynamic and
+   * persisted outside the process (KV-backed user-defined tools) use
+   * this to prime a synchronous cache that `tools` reads from.
+   *
+   * Without this hook, such connectors silently expose 0 tools to MCP
+   * clients on cold lambdas until `/api/admin/status` (or any other
+   * code path that calls `diagnose()`) fires — because `tools` is a
+   * synchronous getter that cannot await the backing store.
+   *
+   * Called once per request cycle on the transport. Idempotent.
+   */
+  refresh?: (() => Promise<void>) | undefined;
   /** Optional async health check — verifies credentials actually work */
   diagnose?: (() => Promise<{ ok: boolean; message: string }>) | undefined;
   /**

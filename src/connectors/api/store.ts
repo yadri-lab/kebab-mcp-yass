@@ -317,6 +317,11 @@ export async function primeApiToolsCache(): Promise<void> {
   }
 }
 
+/** Reset the sync cache. Exposed for tests — prevents cross-test bleed. */
+export function _resetApiToolsCacheForTests(): void {
+  _syncCache = [];
+}
+
 export function createApiTool(input: ApiToolCreateInput): Promise<ApiTool> {
   return enqueue("tool", async () => {
     const parsed = apiToolCreateSchema.parse(input);

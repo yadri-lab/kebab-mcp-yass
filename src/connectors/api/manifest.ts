@@ -98,9 +98,16 @@ export const apiConnectionsConnector: ConnectorManifest = {
       return [];
     }
   },
+  // Prime the KV-backed sync cache so `tools` returns fresh data on the
+  // first cold-lambda request (before any diagnose/status route fires).
+  refresh: async () => {
+    await primeApiToolsCache();
+  },
   diagnose: async () => {
     try {
-      // Prime the cache so subsequent sync reads in this lambda see fresh data.
+      // Defensive: also prime here so operators hitting /api/admin/status
+      // on a brand-new cold lambda see accurate counts even if the transport
+      // refresh hasn't run yet.
       await primeApiToolsCache();
       const tools = listApiToolsSync();
       return {

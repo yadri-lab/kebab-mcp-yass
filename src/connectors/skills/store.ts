@@ -172,10 +172,14 @@ async function writeRaw(skills: Skill[]): Promise<void> {
     const tmp = `${legacy}.${randomBytes(4).toString("hex")}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(skills, null, 2), "utf-8");
     await fs.rename(tmp, legacy);
-    return;
+  } else {
+    const kv = getContextKVStore();
+    await kv.set(KV_KEY, JSON.stringify(skills));
   }
-  const kv = getContextKVStore();
-  await kv.set(KV_KEY, JSON.stringify(skills));
+  // Keep the sync cache in lock-step so the MCP transport picks up
+  // newly-created/edited skills on the next tools iteration in this
+  // lambda — without waiting for the next `primeSkillsCache()` roundtrip.
+  _skillsCache = skills;
 }
 
 // ── Write mutex ─────────────────────────────────────────────────────────
@@ -197,12 +201,49 @@ export async function listSkills(): Promise<Skill[]> {
   return readRaw();
 }
 
+// Async-primed cache for the sync getter.
+//
+// The pack's `tools` getter is synchronous (driven by the MCP SDK's
+// registration pattern), but on Upstash the underlying store is async.
+// `listSkillsSync` therefore reads either:
+//   1. The warm cache populated by `primeSkillsCache()`, if it's been
+//      called at least once on this lambda — OR
+//   2. The filesystem KV dump on disk (dev + Vercel without Upstash).
+//
+// Without the async primer, Upstash deploys would expose 0 skills to MCP
+// clients on cold lambdas until /api/admin/status (which calls `diagnose()`)
+// happened to fire first. The ConnectorManifest.refresh hook in the
+// transport primes this cache before iterating `tools`.
+let _skillsCache: Skill[] | null = null;
+
+/**
+ * Populate the sync cache from the authoritative async store. Called by
+ * the `refresh` manifest hook before the MCP transport iterates `tools`.
+ * Idempotent; safe to call from any request frame.
+ */
+export async function primeSkillsCache(): Promise<void> {
+  try {
+    _skillsCache = await readRaw();
+  } catch {
+    _skillsCache = _skillsCache ?? [];
+  }
+}
+
+/** Reset the sync cache. Exposed for tests — prevents cross-test bleed. */
+export function _resetSkillsCacheForTests(): void {
+  _skillsCache = null;
+}
+
 /** Synchronous snapshot — used by the pack manifest at registry scan time.
  *
- * For the KV filesystem backend we read the underlying JSON file synchronously.
- * For Upstash (or any non-filesystem backend) sync reads are impossible —
- * callers should fall back to the async `listSkills()` API. */
+ * Resolution order:
+ *   1. If `primeSkillsCache()` has run on this lambda, return its snapshot.
+ *   2. Else for the KV filesystem backend (dev), read the underlying JSON
+ *      file synchronously.
+ *   3. Else (Upstash without a warm cache), return [] — callers that need
+ *      a guaranteed fresh read must use the async `listSkills()` API. */
 export function listSkillsSync(): Skill[] {
+  if (_skillsCache !== null) return _skillsCache;
   const legacy = getLegacySkillsPath();
   const filePath =
     legacy ?? (hasUpstashCreds() ? null : path.resolve(process.cwd(), "data", "kv.json"));

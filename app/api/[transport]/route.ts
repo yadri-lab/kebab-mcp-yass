@@ -76,6 +76,20 @@ async function buildHandler(
   // cache is warm and subsequent resolves are O(1).
   const enabledPacks = await getEnabledPacksLazy();
 
+  // Prime dynamic tool caches (user-defined Skills, Custom API Tools) before
+  // we iterate `manifest.tools`. Without this priming step, connectors that
+  // back `tools` with a KV-persisted store return [] on cold lambdas — they
+  // cannot await inside the synchronous `tools` getter. See
+  // ConnectorManifest.refresh in src/core/types.ts.
+  await Promise.all(
+    enabledPacks.map((p) =>
+      p.manifest.refresh?.().catch(() => {
+        // refresh failure should not block transport startup; the connector
+        // will simply expose whatever the cached sync view sees (possibly []).
+      })
+    )
+  );
+
   return createMcpHandler(
     (server) => {
       for (const pack of enabledPacks) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ConnectorManifest, ToolDefinition, ToolResult } from "@/core/types";
-import { listSkillsSync, getSkill, type Skill } from "./store";
+import { listSkillsSync, getSkill, primeSkillsCache, type Skill } from "./store";
 import { renderSkill } from "./lib/render";
 import { maybeRefreshRemote } from "./lib/remote-fetcher";
 import { toMsg } from "@/core/error-utils";
@@ -68,8 +68,17 @@ export const skillsConnector: ConnectorManifest = {
       return [];
     }
   },
+  // Prime the KV-backed sync cache so `tools` returns fresh data on the
+  // first cold-lambda request (critical for Upstash where the sync file
+  // path does not exist).
+  refresh: async () => {
+    await primeSkillsCache();
+  },
   diagnose: async () => {
     try {
+      // Defensive: prime once more so admin/status/verify see fresh counts
+      // on a brand-new cold lambda even before transport refresh has run.
+      await primeSkillsCache();
       const skills = listSkillsSync();
       return {
         ok: true,

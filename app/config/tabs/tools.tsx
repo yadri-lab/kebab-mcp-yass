@@ -149,7 +149,7 @@ export function ToolsTab({
           onClose={() => setBuilderOpen(false)}
           onCreated={() => {
             setBuilderOpen(false);
-            setFlash("Custom tool created — reload page to see it in MCP");
+            setFlash("Custom tool created — reload the page to see it in the list");
             setTimeout(() => setFlash(null), 4000);
             setReloadKey((k) => k + 1);
           }}
