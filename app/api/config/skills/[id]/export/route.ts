@@ -33,13 +33,16 @@ async function getHandler(ctx: PipelineContext) {
 
   const safeName = skill.id;
   const safeDesc = (skill.description || skill.name).replace(/\n/g, " ").trim();
-  const md =
-    `---\n` +
-    `name: ${safeName}\n` +
-    `description: ${safeDesc}\n` +
-    `---\n\n` +
-    `# ${skill.name}\n\n` +
-    `${body}\n`;
+
+  const frontmatterLines: string[] = ["---", `name: ${safeName}`, `description: ${safeDesc}`];
+  if (skill.toolsAllowed && skill.toolsAllowed.length > 0) {
+    frontmatterLines.push("tools_allowed:");
+    for (const t of skill.toolsAllowed) {
+      frontmatterLines.push(`  - ${t}`);
+    }
+  }
+  frontmatterLines.push("---", "");
+  const md = `${frontmatterLines.join("\n")}\n# ${skill.name}\n\n${body}\n`;
 
   return new Response(md, {
     status: 200,
