@@ -101,7 +101,7 @@ export type SkillUpdateInput = z.input<typeof skillUpdateInputSchema>;
 
 /** Legacy filesystem path override. When set, bypasses KVStore. */
 function getLegacySkillsPath(): string | null {
-  const override = getConfig("MYMCP_SKILLS_PATH")?.trim();
+  const override = getConfig("KEBAB_SKILLS_PATH")?.trim();
   return override ? path.resolve(override) : null;
 }
 

@@ -31,7 +31,7 @@ const MAX_PAYLOAD_BYTES = 1_048_576;
  */
 
 function getAllowedWebhooks(): Set<string> {
-  const raw = getConfig("MYMCP_WEBHOOKS")?.trim();
+  const raw = getConfig("KEBAB_WEBHOOKS")?.trim();
   if (!raw) return new Set();
   return new Set(
     raw
@@ -114,7 +114,7 @@ async function webhookHandler(ctx: PipelineContext): Promise<Response> {
   await kv.set(`webhook:last:${normalizedName}`, entryJson);
 
   // History: store timestamped entry + prune beyond limit
-  const historyLimit = Math.max(1, getConfigInt("MYMCP_WEBHOOK_HISTORY_SIZE", 10));
+  const historyLimit = Math.max(1, getConfigInt("KEBAB_WEBHOOK_HISTORY_SIZE", 10));
   const ts = Date.now();
   await kv.set(`webhook:history:${normalizedName}:${ts}`, entryJson);
 

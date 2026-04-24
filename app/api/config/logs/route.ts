@@ -70,7 +70,7 @@ async function getHandler(ctx: PipelineContext) {
   const scope: "all" | undefined = scopeQuery === "all" && isRootCaller ? "all" : undefined;
   const explicitTenant = isRootCaller && tenantQuery ? tenantQuery : null;
 
-  if (getConfig("MYMCP_DURABLE_LOGS") === "true") {
+  if (getConfig("KEBAB_DURABLE_LOGS") === "true") {
     try {
       const store = getLogStore();
       // Phase 42 / TEN-02: getDurableLogs() reads via getLogStore().recent(),

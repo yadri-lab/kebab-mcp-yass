@@ -78,7 +78,7 @@ export function getLogger(tag?: string): Logger {
     error: (msg, meta) =>
       meta ? console.error(`${prefix}${msg}`, meta) : console.error(`${prefix}${msg}`),
     debug: (msg, meta) => {
-      if (getConfig("MYMCP_DEBUG") !== "1") return;
+      if (getConfig("KEBAB_DEBUG") !== "1") return;
       if (meta) console.log(`[DEBUG]${prefix}${msg}`, meta);
       else console.log(`[DEBUG]${prefix}${msg}`);
     },
@@ -172,7 +172,7 @@ export function logToolCall(log: ToolLog) {
   // Fire-and-forget: a failing log write must never surface to the
   // caller of the tool. The in-memory ring buffer above is what drives
   // p95/metrics so we stay observable even if the store is misbehaving.
-  if (getConfig("MYMCP_DURABLE_LOGS") === "true") {
+  if (getConfig("KEBAB_DURABLE_LOGS") === "true") {
     try {
       const store = getLogStore();
       const entry: LogEntry = {
@@ -191,7 +191,7 @@ export function logToolCall(log: ToolLog) {
 
   // Fire error webhook if configured
   if (log.status === "error") {
-    const webhookUrl = getConfig("MYMCP_ERROR_WEBHOOK_URL");
+    const webhookUrl = getConfig("KEBAB_ERROR_WEBHOOK_URL");
     if (webhookUrl) {
       fetch(webhookUrl, {
         method: "POST",

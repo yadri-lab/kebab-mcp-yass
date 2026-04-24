@@ -48,7 +48,7 @@ async function getHandler(ctx: PipelineContext) {
   const url = new URL(request.url);
   const scopeAll = url.searchParams.get("scope") === "all";
 
-  const defaultLimit = Math.max(1, getConfigInt("MYMCP_RATE_LIMIT_RPM", 60));
+  const defaultLimit = Math.max(1, getConfigInt("KEBAB_RATE_LIMIT_RPM", 60));
 
   try {
     // Current minute bucket — only count active buckets

@@ -93,7 +93,7 @@ export async function checkRateLimit(
   options: { scope?: string | undefined; limit?: number | undefined } = {}
 ): Promise<RateLimitResult> {
   const scope = options.scope || "mcp";
-  const defaultLimit = Math.max(1, getConfigInt("MYMCP_RATE_LIMIT_RPM", 60));
+  const defaultLimit = Math.max(1, getConfigInt("KEBAB_RATE_LIMIT_RPM", 60));
   const limit = options.limit ?? defaultLimit;
   const now = Date.now();
   const windowMs = 60_000;
@@ -113,7 +113,7 @@ export async function checkRateLimit(
   // pure in-process limiter never touch KV (filesystem or Upstash).
   // Composite in-memory key keeps tenants separate even without the
   // KV namespace wrapper.
-  if (getConfig("MYMCP_RATE_LIMIT_INMEMORY") === "1") {
+  if (getConfig("KEBAB_RATE_LIMIT_INMEMORY") === "1") {
     const memKey = `${tenantId ?? "null"}:${key}`;
     return checkRateLimitInMemory(memKey, limit, resetAt);
   }

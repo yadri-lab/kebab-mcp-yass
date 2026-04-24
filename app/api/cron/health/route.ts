@@ -57,7 +57,7 @@ async function cronHealthHandler(_ctx: PipelineContext): Promise<Response> {
   // `.catch(() => {})` silent swallow to a log-then-swallow so the
   // `no-silent-swallows` tripwire stays green on this file.
   if (degraded.length > 0) {
-    const webhookUrl = getConfig("MYMCP_ERROR_WEBHOOK_URL");
+    const webhookUrl = getConfig("KEBAB_ERROR_WEBHOOK_URL");
     if (webhookUrl) {
       try {
         await fetch(webhookUrl, {

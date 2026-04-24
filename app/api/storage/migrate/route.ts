@@ -161,7 +161,7 @@ async function postHandler(ctx: PipelineContext) {
   const { promises: fsp } = await import("node:fs");
   const { randomBytes } = await import("node:crypto");
   const path = await import("node:path");
-  const kvPath = getConfig("MYMCP_KV_PATH");
+  const kvPath = getConfig("KEBAB_KV_PATH");
   const dataDir = kvPath ? path.dirname(kvPath) : path.resolve(process.cwd(), "data");
   const probePath = path.join(dataDir, `.mymcp-probe-${randomBytes(4).toString("hex")}`);
   try {

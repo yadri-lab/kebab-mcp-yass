@@ -26,7 +26,7 @@ const logger = getLogger("admin.health-history");
  */
 async function getHandler(ctx: PipelineContext) {
   const url = new URL(ctx.request.url);
-  const defaultDays = getConfigInt("MYMCP_HEALTH_SAMPLE_RETENTION_DAYS", 7);
+  const defaultDays = getConfigInt("KEBAB_HEALTH_SAMPLE_RETENTION_DAYS", 7);
   const days = Math.max(
     1,
     Math.min(parseInt(url.searchParams.get("days") || String(defaultDays), 10) || defaultDays, 90)

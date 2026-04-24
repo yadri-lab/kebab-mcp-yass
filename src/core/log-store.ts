@@ -41,12 +41,12 @@ export interface LogStore {
 }
 
 function envMaxEntries(): number {
-  const n = getConfigInt("MYMCP_LOG_MAX_ENTRIES", 500);
+  const n = getConfigInt("KEBAB_LOG_MAX_ENTRIES", 500);
   return n > 0 ? n : 500;
 }
 
 function envMaxAgeSeconds(): number | undefined {
-  const raw = getConfig("MYMCP_LOG_MAX_AGE_SECONDS");
+  const raw = getConfig("KEBAB_LOG_MAX_AGE_SECONDS");
   if (!raw) return undefined;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
@@ -73,7 +73,7 @@ export function extractHttpStatus(err: Error): number | null {
 }
 
 function envRotateSegments(): number {
-  const n = getConfigInt("MYMCP_LOG_ROTATE_SEGMENTS", 3);
+  const n = getConfigInt("KEBAB_LOG_ROTATE_SEGMENTS", 3);
   return n >= 1 ? n : 3;
 }
 

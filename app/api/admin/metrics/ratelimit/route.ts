@@ -35,7 +35,7 @@ async function handler() {
   if (getCurrentTenantId() !== null) {
     return NextResponse.json({ error: "root_only" }, { status: 403 });
   }
-  const defaultLimit = Math.max(1, getConfigInt("MYMCP_RATE_LIMIT_RPM", 60));
+  const defaultLimit = Math.max(1, getConfigInt("KEBAB_RATE_LIMIT_RPM", 60));
   const windowMs = 60_000;
   const now = Date.now();
   const currentBucket = Math.floor(now / windowMs);

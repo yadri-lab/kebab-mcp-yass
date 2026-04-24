@@ -43,7 +43,7 @@ async function welcomeInitHandler(ctx: PipelineContext): Promise<Response> {
   // a token in this state hands the user a doomed credential — the very
   // next cold lambda erases it. Refuse outright until the operator
   // removes the env var.
-  if (getConfig("MYMCP_RECOVERY_RESET") === "1") {
+  if (getConfig("KEBAB_RECOVERY_RESET") === "1") {
     return NextResponse.json(
       {
         error:

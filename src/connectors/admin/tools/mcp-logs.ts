@@ -15,7 +15,7 @@ export async function handleMcpLogs(params: {
   count?: number | undefined;
   filter?: "all" | "errors" | "success" | undefined;
 }) {
-  const durableEnabled = getConfig("MYMCP_DURABLE_LOGS") === "true";
+  const durableEnabled = getConfig("KEBAB_DURABLE_LOGS") === "true";
   const filter = params.filter ?? "all";
 
   let logs;

@@ -203,7 +203,7 @@ describe("skills store: write paths must keep _skillsCache in lock-step", () => 
       target: "notion",
       lastSyncedHash: "abc123",
       lastSyncedAt: new Date().toISOString(),
-      pageId: "page-1",
+      lastSyncStatus: "ok",
     });
 
     // The skill is still in the cache after the sync-state write.

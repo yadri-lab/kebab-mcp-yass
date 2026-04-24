@@ -77,7 +77,7 @@ export default async function WelcomePage({
   // the wizard, click Generate, and end up with a token that the very
   // next cold lambda wipes — mysterious 503s afterwards. Make the
   // foot-gun visible BEFORE they spend time on the flow.
-  const recoveryResetActive = getConfig("MYMCP_RECOVERY_RESET") === "1";
+  const recoveryResetActive = getConfig("KEBAB_RECOVERY_RESET") === "1";
 
   return (
     <WelcomeShell

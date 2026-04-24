@@ -67,14 +67,14 @@ is the authoritative source.
 - **Fix commit**: [`f818e01`](https://github.com/Yassinello/kebab-mcp/commit/f818e01)
 - **Regression test**: [`tests/regression/welcome-flow.test.ts` — BUG-04](../tests/regression/welcome-flow.test.ts)
 
-### BUG-05 — `MYMCP_RECOVERY_RESET=1` silently wiped tokens on every cold lambda
+### BUG-05 — `KEBAB_RECOVERY_RESET=1` silently wiped tokens on every cold lambda
 
 - **Symptom**: Warm welcome lambda showed "permanent token active";
   moments later a different cold lambda's `/api/mcp` returned 503 /
   401. Claude Desktop's Test-MCP probe failed because the bootstrap
   genuinely vanished mid-session.
 - **Root cause**: `rehydrateBootstrapFromTmp()` calls `forceReset()`
-  when `MYMCP_RECOVERY_RESET=1` — every cold lambda deleted `/tmp`
+  when `KEBAB_RECOVERY_RESET=1` — every cold lambda deleted `/tmp`
   and the KV bootstrap on boot. Init minted a token that the next
   cold lambda erased.
 - **Fix commit**: [`5273add`](https://github.com/Yassinello/kebab-mcp/commit/5273add)
@@ -300,18 +300,21 @@ recognized since `7f6ec80` (see
 Check `process.env` in the Vercel UI; either pair unblocks the
 rehydrate path. If both are set, `UPSTASH_REDIS_REST_*` wins.
 
-### "I set `MYMCP_RECOVERY_RESET=1` and it wiped everything"
+### "I set `KEBAB_RECOVERY_RESET=1` and it wiped everything"
 
-Working as intended. `MYMCP_RECOVERY_RESET=1` is an emergency-reset
+Working as intended. `KEBAB_RECOVERY_RESET=1` is an emergency-reset
 escape hatch — it deletes the bootstrap and rotates the signing
 secret so old claim cookies no longer verify (SEC-04).
 
 DO NOT leave the env var set — every cold lambda wipes state on
 boot, so any newly-minted token vanishes within minutes. See
-[BUG-05](#bug-05--mymcp_recovery_reset1-silently-wiped-tokens-on-every-cold-lambda).
+[BUG-05](#bug-05--kebab_recovery_reset1-silently-wiped-tokens-on-every-cold-lambda).
 
 As of `5273add`, `/api/welcome/init` now returns 409 while the var
 is set, so you can't accidentally mint a doomed token.
+
+> **Note:** The legacy alias `MYMCP_RECOVERY_RESET` still works but is
+> deprecated — use `KEBAB_RECOVERY_RESET` for new deployments.
 
 ### "Welcome flow says 'already initialized' but I can't paste my token"
 

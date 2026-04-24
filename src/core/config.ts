@@ -199,7 +199,7 @@ export async function saveInstanceConfig(
 
 /** Default tool timeout in ms. Override via MYMCP_TOOL_TIMEOUT env var. */
 export function getToolTimeout(): number {
-  const raw = getConfig("MYMCP_TOOL_TIMEOUT");
+  const raw = getConfig("KEBAB_TOOL_TIMEOUT");
   if (raw) {
     const n = parseInt(raw, 10);
     if (!isNaN(n) && n > 0) return n;
@@ -209,7 +209,7 @@ export function getToolTimeout(): number {
 
 /** Webhook URL for error notifications. If set, POST is sent on tool failure. */
 export function getErrorWebhookUrl(): string | undefined {
-  return getConfig("MYMCP_ERROR_WEBHOOK_URL") || undefined;
+  return getConfig("KEBAB_ERROR_WEBHOOK_URL") || undefined;
 }
 
 /**

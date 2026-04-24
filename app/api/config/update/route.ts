@@ -31,7 +31,7 @@ function run(cmd: string): { ok: boolean; out: string; err: string } {
 
 function disabledReason(): string | null {
   if (getConfig("VERCEL") === "1") return "Disabled on Vercel — redeploy via git push instead.";
-  if (getConfig("MYMCP_DISABLE_UPDATE_API") === "1")
+  if (getConfig("KEBAB_DISABLE_UPDATE_API") === "1")
     return "Disabled via MYMCP_DISABLE_UPDATE_API.";
   return null;
 }
