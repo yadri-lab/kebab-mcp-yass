@@ -10,6 +10,7 @@ import {
   getSkillCurrentVersion,
   rollbackSkill,
   listSkills,
+  _resetSkillsCacheForTests,
 } from "./store";
 import { resetKVStoreCache } from "@/core/kv-store";
 
@@ -36,6 +37,7 @@ describe("skill versioning", () => {
     // keys don't accumulate across tests.
     process.env.MYMCP_KV_PATH = path.join(tmpDir, "kv.json");
     resetKVStoreCache();
+    _resetSkillsCacheForTests();
   });
 
   afterEach(async () => {
@@ -44,6 +46,7 @@ describe("skill versioning", () => {
     if (originalKvPath === undefined) delete process.env.MYMCP_KV_PATH;
     else process.env.MYMCP_KV_PATH = originalKvPath;
     resetKVStoreCache();
+    _resetSkillsCacheForTests();
     try {
       await fs.rm(tmpDir, { recursive: true, force: true });
     } catch {

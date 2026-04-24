@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { createSkill, listSkills, updateSkill, deleteSkill } from "./store";
+import {
+  createSkill,
+  listSkills,
+  updateSkill,
+  deleteSkill,
+  _resetSkillsCacheForTests,
+} from "./store";
 
 let tmpDir = "";
 let originalPath: string | undefined;
@@ -18,11 +24,13 @@ describe("skills store CRUD", () => {
     const p = await withTempSkillsFile();
     tmpDir = path.dirname(p);
     process.env.MYMCP_SKILLS_PATH = p;
+    _resetSkillsCacheForTests();
   });
 
   afterEach(async () => {
     if (originalPath === undefined) delete process.env.MYMCP_SKILLS_PATH;
     else process.env.MYMCP_SKILLS_PATH = originalPath;
+    _resetSkillsCacheForTests();
     try {
       await fs.rm(tmpDir, { recursive: true, force: true });
     } catch {

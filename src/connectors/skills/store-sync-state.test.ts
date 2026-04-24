@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { computeSkillContentHash, createSkill, recordSkillSyncState, getSkill } from "./store";
+import {
+  computeSkillContentHash,
+  createSkill,
+  recordSkillSyncState,
+  getSkill,
+  _resetSkillsCacheForTests,
+} from "./store";
 
 describe("computeSkillContentHash", () => {
   it("produces a stable sha256 over name + description + content", () => {
@@ -41,11 +47,13 @@ describe("recordSkillSyncState", () => {
   beforeEach(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "kebab-skills-store-"));
     process.env["MYMCP_SKILLS_PATH"] = path.join(tmp, "skills.json");
+    _resetSkillsCacheForTests();
   });
 
   afterEach(async () => {
     if (originalSkillsPath === undefined) delete process.env["MYMCP_SKILLS_PATH"];
     else process.env["MYMCP_SKILLS_PATH"] = originalSkillsPath;
+    _resetSkillsCacheForTests();
     await fs.rm(tmp, { recursive: true, force: true });
   });
 
