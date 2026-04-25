@@ -21,6 +21,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as kvStore from "@/core/kv-store";
+import * as requestContext from "@/core/request-context";
 import { checkRateLimit, __resetInMemoryRateLimitForTests } from "@/core/rate-limit";
 
 // Import the /api/welcome/init POST handler for Scenario B. This is
@@ -172,7 +173,10 @@ describe("Phase 39 / HOST-04 / Scenario C — N-replica rate-limit convergence",
     sharedKv = new MemoryKV();
     // Inject the shared KV for every `checkRateLimit` caller — this is
     // the "two replicas pointing at the same Upstash" model.
-    getKVStoreSpy = vi.spyOn(kvStore, "getKVStore").mockReturnValue(sharedKv);
+    // rate-limit.ts uses getContextKVStore (Phase 42 / TEN-01 migration).
+    // Spy on request-context so both the shared-KV and in-memory paths
+    // route through sharedKv.
+    getKVStoreSpy = vi.spyOn(requestContext, "getContextKVStore").mockReturnValue(sharedKv);
     prevInMem = process.env.MYMCP_RATE_LIMIT_INMEMORY;
   });
 
