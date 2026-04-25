@@ -36,8 +36,10 @@ const ALLOWLIST = new Set<string>([
   "src/core/kv-store.ts",
   "src/core/request-context.ts",
   "src/core/tenant.ts",
-  // Bootstrap / first-run is intentionally pre-tenant
+  // Bootstrap / first-run is intentionally pre-tenant (facade + sub-modules)
   "src/core/first-run.ts",
+  "src/core/first-run/bootstrap.ts",
+  "src/core/first-run/obs.ts",
   "src/core/signing-secret.ts",
   // Dashboard env writes — global by design (transitional; see SEC-02)
   "src/core/env-store.ts",

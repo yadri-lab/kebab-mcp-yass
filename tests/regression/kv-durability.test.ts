@@ -71,9 +71,13 @@ describe("TEST-03 batch B.1 — kv-durability regressions", () => {
   // ── BUG-07 — awaited flush (95f0df7 part 1) ─────────────────────────
   it("regression: BUG-07 flushBootstrapToKv awaits the write", async () => {
     // Direct test: import the function, verify it's async AND awaits
-    // the underlying kv.set. Grep-contract on first-run.ts is the
-    // primary belt, reinforced by the TEST-01 end-to-end scenario A.
-    const firstRun = readFileSync(resolve(process.cwd(), "src/core/first-run.ts"), "utf-8");
+    // the underlying kv.set. Grep-contract on first-run/bootstrap.ts is the
+    // primary belt (Phase 56 refactor moved the implementation there);
+    // first-run.ts is now a barrel facade — reinforced by TEST-01 scenario A.
+    const firstRun = readFileSync(
+      resolve(process.cwd(), "src/core/first-run/bootstrap.ts"),
+      "utf-8"
+    );
 
     // The function must exist and be async.
     expect(firstRun).toMatch(/export\s+async\s+function\s+flushBootstrapToKv/);

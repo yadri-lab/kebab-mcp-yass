@@ -100,6 +100,11 @@ const ALLOWLIST: readonly string[] = [
   // Edge-runtime KV key `mymcp:firstrun:bootstrap` (cross-version KV
   // contract — the migration shim depends on this exact string).
   "src/core/first-run-edge.ts",
+  // first-run sub-modules (Phase 56 refactor): carry the KV key strings
+  // and FIRST_RUN_COOKIE_NAME that are cross-version contract literals.
+  "src/core/first-run/claim.ts",
+  "src/core/first-run/bootstrap.ts",
+  "src/core/first-run/obs.ts",
   // Skills export format: claude-skills JSON carries `source: "mymcp"`
   // as an external identifier; rename would break Claude Desktop's
   // round-trip import/export cycle.
@@ -125,7 +130,7 @@ const ALLOWLIST: readonly string[] = [
  * second new file to the allowlist forces an explicit bump + code-review
  * conversation.
  */
-const ALLOWLIST_BUDGET = ALLOWLIST.length + 1;
+const ALLOWLIST_BUDGET = ALLOWLIST.length + 2;
 
 const SKIP_DIRS = new Set([
   "node_modules",
