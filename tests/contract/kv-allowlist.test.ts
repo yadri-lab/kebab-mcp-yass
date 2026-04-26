@@ -82,6 +82,10 @@ const ALLOWLIST = new Set<string>([
   // tool). The cache holds the upstream-version probe written by the daily
   // cron at /api/cron/update-check. Mirrors the cron's allowlist entry.
   "app/api/config/update/route.ts",
+  // Phase 63 / CRON-01: /api/cron/update-check is the daily cron writer
+  // for global:update-check (non-tenanted, root-scope by design — single-fork
+  // tool). Mirrors the GET-handler's allowlist entry above.
+  "app/api/cron/update-check/route.ts",
   // Scripts (not runtime server code)
   "scripts/kv-compact.ts",
 ]);
