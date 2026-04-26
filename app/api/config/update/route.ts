@@ -156,7 +156,9 @@ async function githubApiGetHandler(): Promise<Response> {
   const forkPrivate = repoData.private ?? false;
 
   // Compare fork HEAD with upstream
-  const compareRes = await ghFetch(`/repos/${owner}/${slug}/compare/main...${upstream}`, token);
+  // BASE=upstream, HEAD=fork → response describes fork's position relative to upstream
+  // (status: "behind" + behind_by:N means fork is N commits behind upstream → updates available)
+  const compareRes = await ghFetch(`/repos/${owner}/${slug}/compare/${upstream}...main`, token);
   if (!compareRes.ok) {
     return errorResponse(new Error(`GitHub compare failed: ${compareRes.status}`), {
       status: 502,
@@ -215,8 +217,9 @@ async function githubApiPostHandler(): Promise<Response> {
   }
 
   // Server-side guard: re-check ahead_by before merge (D-04)
+  // BASE=upstream, HEAD=fork → ahead_by>0 means fork has local commits → block merge
   const upstream = `${UPSTREAM_OWNER}:${UPSTREAM_REPO_SLUG}:main`;
-  const compareRes = await ghFetch(`/repos/${owner}/${slug}/compare/main...${upstream}`, token);
+  const compareRes = await ghFetch(`/repos/${owner}/${slug}/compare/${upstream}...main`, token);
   if (!compareRes.ok) {
     return errorResponse(new Error(`Pre-merge compare failed: ${compareRes.status}`), {
       status: 502,
