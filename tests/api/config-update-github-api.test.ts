@@ -28,6 +28,17 @@ vi.mock("@/core/with-admin-auth", () => ({
   withAdminAuth: (fn: unknown) => fn,
 }));
 
+// Phase 62 STAB-02: route now uses an explicit pipeline (composeRequestPipeline)
+// instead of withAdminAuth. Bypass the real authStep("admin") so the legacy
+// 14 unit tests continue to invoke the handler directly without auth.
+vi.mock("@/core/pipeline", async () => {
+  const actual = await vi.importActual<typeof import("@/core/pipeline")>("@/core/pipeline");
+  return {
+    ...actual,
+    composeRequestPipeline: <H>(_steps: unknown[], handler: H) => handler,
+  };
+});
+
 vi.mock("@/core/with-bootstrap-rehydrate", () => ({
   withBootstrapRehydrate: (fn: unknown) => fn,
 }));
