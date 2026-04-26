@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.9
 milestone_name: — Infrastructure & performance
-status: Phase 62 in progress (1/4 plans complete; STAB-01 closed) — Phase 53 closed 2026-04-23.
-stopped_at: Completed 062-01-PLAN.md — STAB-01 fixed (GitHub Compare URL inversion), 2 commits on main, 2 files modified
-last_updated: "2026-04-26T21:46:38.274Z"
-last_activity: 2026-04-26
+status: Phase 53 closed 2026-04-23.
+stopped_at: Completed 062-02-PLAN.md — STAB-02 (hydrateCredentialsStep wired into /api/config/update), 2 commits on main
+last_updated: "2026-04-26T22:03:05.641Z"
+last_activity: 2026-04-23
 progress:
   total_phases: 35
   completed_phases: 2
   total_plans: 10
-  completed_plans: 20
+  completed_plans: 22
   percent: 100
 ---
 
@@ -705,6 +705,8 @@ Exit condition for operator attention:
 - [Phase 061]: exactOptionalPropertyTypes forces conditional spread for optional prop assignments in UpdateStatus/UpdateResult setters
 - [Phase 061-in-dashboard-updates]: Tests use vi.resetModules() + dynamic import per test to prevent module cache bleed in github-api mode tests
 - [Phase 062-stabilize-phase-61 / 062-01]: GitHub Compare API URL semantics are BASE...HEAD; for "fork's position relative to upstream" use compare/${upstream}...main (BASE=upstream, HEAD=fork), NOT compare/main...${upstream}. STAB-01 silent feature failure was caused by this inversion in route.ts:159+219.
+- [Phase 062]: Phase 62-04 (STAB-04): UI copy 'encrypted in KV' replaced with 'Upstash KV' (D-12); 5-step Phase-61 smoke-test recipe added to docs/TROUBLESHOOTING.md (D-14, D-15); Phase 61 SUMMARY audited — no overstatement found, audit note added (D-13).
+- [Phase 062]: STAB-02 closed: per-route composeRequestPipeline + hydrateCredentialsStep replaces withAdminAuth on /api/config/update; PAT saved via /api/config/env now visible to getCredential() through requestContext.credentials
 
 ### Phase 38 (unchanged)
 
@@ -937,5 +939,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 062-01-PLAN.md — STAB-01 closed (GitHub Compare API URL direction inverted in both githubApiGetHandler and githubApiPostHandler pre-merge guard). 2 commits on main: 45c9abb (RED — 5 URL-direction assertion blocks added to tests) + eef91a8 (GREEN — 2 URL swaps + 3 explanatory comment lines in route.ts). All 6 unit tests in tests/api/config-update-github.test.ts pass.
+Stopped at: Completed 062-02-PLAN.md — STAB-02 (hydrateCredentialsStep wired into /api/config/update), 2 commits on main
 Ready for: 062-02-PLAN.md (wire hydrateCredentialsStep into /api/config/update via explicit composeRequestPipeline — STAB-02). Phase 62 plan progress: 1/4 complete. Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28), T-LITFB audit.
