@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fkebab-mcp&project-name=kebab-mcp-me&repository-name=kebab-mcp-me"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+  <a href="https://vercel.com/new/deploy?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fkebab-mcp&project-name=kebab-mcp"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
   &middot;
   <a href="https://mymcp-home.vercel.app"><strong>Live demo →</strong></a>
 </p>
@@ -64,7 +64,7 @@ Two paths cover ~95% of users — Vercel for click-and-go, Docker for full contr
 
 ### Option A — Deploy on Vercel (recommended)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fkebab-mcp&project-name=kebab-mcp-me&repository-name=kebab-mcp-me)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/deploy?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fkebab-mcp&project-name=kebab-mcp)
 
 1. Click **Deploy** above — no env vars to fill in
 2. When Vercel finishes (~60s), open the deployed URL → you land on `/welcome`, mint your token, dashboard auto-redeploys with it pinned
