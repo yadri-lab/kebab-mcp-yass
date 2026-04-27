@@ -17,24 +17,31 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
-  // Any deploy with a configured MCP_AUTH_TOKEN is, by definition, a personal
-  // instance — showing the marketing landing on someone's real MCP server
-  // would be confusing. The landing is reserved for showcase deploys (e.g.
-  // mymcp-home) which intentionally set INSTANCE_MODE=showcase OR leave
-  // MCP_AUTH_TOKEN unset.
+  // Routing rules for `/`:
+  //   - Token present → user has finished setup → /config dashboard.
+  //   - Explicit `INSTANCE_MODE=showcase` → marketing landing (e.g. the
+  //     public mymcp-home demo).
+  //   - Anything else (real deployments, including fresh forks) → /welcome
+  //     to mint the token. The previous logic gated this on
+  //     `INSTANCE_MODE=personal` being explicitly set, but Vercel's
+  //     fork-then-import flow doesn't set any env vars, so first-time
+  //     users landed on the marketing page on their own deploy.
+  //     Default-to-welcome makes the zero-config path work.
+  //
+  // Local dev (`npm run dev`) without a token still hits /welcome, which
+  // is the right behavior — the welcome page is what bootstraps state.
+  // To preview the marketing landing locally, set INSTANCE_MODE=showcase.
   const hasToken = !!getConfig("MCP_AUTH_TOKEN");
   const mode = getConfig("INSTANCE_MODE");
   const isShowcase = mode === "showcase";
 
-  if (!isShowcase && (mode === "personal" || hasToken)) {
-    if (hasToken) {
-      redirect("/config");
-    }
-    // Zero-config flow: send first-time visitors to the welcome page which
-    // generates a token via the in-memory bridge. The legacy /setup wizard
-    // remains reachable for filesystem dev.
-    redirect("/welcome");
+  if (isShowcase) {
+    return <LandingPage />;
   }
 
-  return <LandingPage />;
+  if (hasToken) {
+    redirect("/config");
+  }
+
+  redirect("/welcome");
 }
