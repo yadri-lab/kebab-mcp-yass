@@ -119,7 +119,6 @@ export function Sidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab") || "overview";
-  const orgInitials = getInitials(serverName);
   const userInitials = getInitials(displayName);
   // MOBILE-01: open/close state for the mobile drawer. Closed by default
   // so the page content renders immediately on small screens.
@@ -162,16 +161,10 @@ export function Sidebar({
         bg-bg-sidebar flex-col
       `}
       >
-        {/* Brand / Org header */}
+        {/* Instance header */}
         <div className="px-4 pt-6 pb-5">
-          <div className="flex items-center gap-2 px-1 mb-3">
-            <KebabLogo size={22} className="text-amber-400 shrink-0" />
-            <p className="text-base font-bold tracking-tight">Kebab MCP</p>
-          </div>
           <div className="flex items-center gap-2.5 bg-bg border border-border rounded-lg px-2.5 py-2">
-            <div className="w-8 h-8 rounded-md bg-accent text-white flex items-center justify-center text-xs font-bold shrink-0">
-              {orgInitials}
-            </div>
+            <KebabLogo size={20} className="text-amber-400 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">{serverName}</p>
               <p className="text-[10px] text-text-muted truncate">
