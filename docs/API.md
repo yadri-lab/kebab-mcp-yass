@@ -311,7 +311,7 @@ Google OAuth is handled specially (not a regular connector credential form) beca
 - [HOSTING.md](HOSTING.md) — deployment modes + degraded-mode contract.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — FAQ + the 17 catalogued bugs from v0.10 hardening.
 - [SECURITY-ADVISORIES.md](SECURITY-ADVISORIES.md) — SEC-* findings timeline.
-- [../CONTRIBUTING.md](../CONTRIBUTING.md) — coverage philosophy + dev loop.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — coverage philosophy + dev loop.
 
 ---
 

@@ -218,7 +218,7 @@ describe("hello_say_hi", () => {
 **Pattern notes:**
 - Mock `fetchWithTimeout` at the module boundary, not global `fetch` — more precise, less flaky.
 - `vi.resetModules()` between tests when env var changes affect import-time behavior.
-- Cover 3+ error paths (auth, timeout, rate-limit) PLUS happy path. Per [CONTRIBUTING.md § Coverage](../CONTRIBUTING.md), connector libs carry a ≥ 60% local floor.
+- Cover 3+ error paths (auth, timeout, rate-limit) PLUS happy path. Per [CONTRIBUTING.md § Coverage](CONTRIBUTING.md), connector libs carry a ≥ 60% local floor.
 - Use `toMsg()` helper from `@/core/error-utils` in your assertions when comparing error messages.
 
 ---
@@ -351,7 +351,7 @@ Use the `kebab.<tool>.*` convention via `brandSpanAttrs({ "tool.name": "hello_sa
 
 - [CONNECTORS.md](CONNECTORS.md) — the 14 shipped connectors + 86 tools.
 - [API.md](API.md) — route-by-route API reference.
-- [../CONTRIBUTING.md](../CONTRIBUTING.md) — full contribution workflow + coverage philosophy.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — full contribution workflow + coverage philosophy.
 - [../CLAUDE.md](../CLAUDE.md) — project conventions for Claude Code agents.
 
 ---

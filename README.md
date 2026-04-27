@@ -20,7 +20,7 @@
   <a href="#configuration">Configuration</a> &middot;
   <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> &middot;
   <a href="docs/HOSTING.md">Hosting</a> &middot;
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="docs/CONTRIBUTING.md">Contributing</a>
 </p>
 
 ---
@@ -585,7 +585,7 @@ Each token must be at least 16 characters. An 8-character SHA-256 hash prefix of
 v0.12 renamed the env-var prefix from `MYMCP_*` to `KEBAB_*`. Both
 are accepted during the 2-release transition; the operator sees one
 boot-time deprecation warning per legacy variable. See
-[CHANGELOG § v0.12 migration guide](CHANGELOG.md).
+[CHANGELOG § v0.12 migration guide](docs/CHANGELOG.md).
 
 | Variable                  | Legacy name               | Default             | Description                                 |
 | ------------------------- | ------------------------- | ------------------- | ------------------------------------------- |
@@ -632,7 +632,7 @@ KEBAB_ENABLED_PACKS=vault,admin    # Only listed connectors are considered (MYMC
 - **GitHub Issues / Linear / Airtable connectors** — 6 / 6 / 7 tools respectively
 - **Request ID propagation** — `x-request-id` on every response, propagated to logs and OTel spans
 
-See [CHANGELOG.md](CHANGELOG.md) for the per-patch detail.
+See [CHANGELOG.md](docs/CHANGELOG.md) for the per-patch detail.
 
 ## Dashboard & Tools
 
@@ -697,13 +697,13 @@ Ordered by reader journey — discover, deploy, use, author, contribute.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — symptom → fix index for every shipped bug + security finding
 - [docs/SECURITY-ADVISORIES.md](docs/SECURITY-ADVISORIES.md) — published advisory index
 - [CLAUDE.md](CLAUDE.md) — developer / fork-maintainer guide (durable bootstrap pattern, conventions)
-- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guide + coverage philosophy
-- [CHANGELOG.md](CHANGELOG.md) — version history
-- [SECURITY.md](SECURITY.md) — vulnerability reporting
+- [CONTRIBUTING.md](docs/CONTRIBUTING.md) — contribution guide + coverage philosophy
+- [CHANGELOG.md](docs/CHANGELOG.md) — version history
+- [SECURITY.md](docs/SECURITY.md) — vulnerability reporting
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add tools, connectors, and custom extensions.
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for how to add tools, connectors, and custom extensions.
 
 **Quick version:** Create a file in `src/connectors/<connector>/tools/`, add it to the connector's `manifest.ts`. Done.
 

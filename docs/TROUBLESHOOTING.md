@@ -7,7 +7,7 @@ your symptom, read the root cause, jump to the fix commit and the
 regression test that keeps the fix pinned.
 
 - Roadmap: [`.planning/milestones/v0.10-durability-ROADMAP.md`](../.planning/milestones/v0.10-durability-ROADMAP.md)
-- CHANGELOG: [`CHANGELOG.md`](../CHANGELOG.md)
+- CHANGELOG: [`CHANGELOG.md`](CHANGELOG.md)
 - Regression tests: [`tests/regression/`](../tests/regression/)
 - Integration tests: [`tests/integration/welcome-durability.test.ts`](../tests/integration/welcome-durability.test.ts)
 
@@ -419,7 +419,7 @@ a persistent 503 means KV isn't serving the bootstrap back.
 
 ## Reference
 
-- [`CHANGELOG.md`](../CHANGELOG.md) — v0.10.0 release notes and
+- [`CHANGELOG.md`](CHANGELOG.md) — v0.10.0 release notes and
   per-phase subsections.
 - [`CLAUDE.md`](../CLAUDE.md) — developer guide, durable bootstrap
   pattern.
