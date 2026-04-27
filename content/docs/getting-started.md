@@ -22,6 +22,30 @@ That's it. Your AI assistant now has tools.
 
 By default, none of the heavyweight connectors (Google, Slack, Notion, etc.) are active — they need credentials. Open `/config → Connectors` and follow the per-connector credential guide. Each connector activates automatically when its required env vars are set.
 
+## Configuring updates (Vercel)
+
+If you deployed on Vercel, you can sync your fork with upstream Kebab MCP (`Yassinello/kebab-mcp`) directly from the dashboard — no terminal required.
+
+**One-time setup:**
+
+1. Generate a GitHub Personal Access Token. Scope: `public_repo` for public forks, `repo` for private forks. Fine-grained PATs need *Contents: read/write* permission on your fork.
+2. Open `/config → Settings → Advanced → Updates`.
+3. Paste the PAT, click **Save token**, then **Test connection**.
+
+**How it works after setup:**
+
+- A daily cron at 8h UTC pre-fetches upstream status into your Upstash KV.
+- The Overview tab banner shows the result instantly (no GitHub round-trip on each page load).
+- When new commits land, click **Update now** in the banner — Kebab MCP calls GitHub's `merge-upstream` API and Vercel redeploys automatically (~2 min).
+- Possible breaking changes (commits flagged `feat!:` or `BREAKING CHANGE:`) get a heuristic warning + link to the upstream release notes.
+- If your fork has diverged (you committed locally on `main`), the button is disabled and a manual-resolution link is shown.
+
+**Refresh icon (↻):** force a re-check between cron runs. 30s debounce to avoid API spam.
+
+**Disable entirely:** set `KEBAB_DISABLE_UPDATE_API=1` in your Vercel env vars.
+
+**Local dev / Docker:** updates work differently — `npm run dev` auto-pulls upstream on start, and `npm run update` is the manual equivalent. See the [README "Staying up to date"](https://github.com/Yassinello/kebab-mcp#staying-up-to-date) section for the full matrix.
+
 ## Local development
 
 ```

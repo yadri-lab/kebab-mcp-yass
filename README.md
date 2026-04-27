@@ -279,11 +279,49 @@ Use the Streamable HTTP endpoint:
 
 ### Staying up to date
 
-Kebab MCP is a [template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository). Your copy is standalone — it won't auto-update. Three ways to pull new tools and fixes, from zero-effort to fully manual:
+Kebab MCP is a [template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository). Your copy is standalone — it won't auto-update. The right path depends on **where you run it**:
 
-#### 1. Automatic — updates on every `npm run dev` (default)
+| Where you run it | How updates work |
+|---|---|
+| **Vercel** (most users) | One-click sync from the dashboard via GitHub's API — no terminal needed |
+| **Local dev** (`npm run dev`) | Auto-pull on every dev server start (silent, fast-forward only) |
+| **Docker / self-hosted** | `npm run update` (or its `git fetch + merge` equivalent) |
 
-Every time you start the dev server, a `predev` hook checks for upstream changes and fast-forwards your working copy silently. You'll see one of these lines in the terminal before Next.js starts:
+#### Vercel — one-click in-dashboard updates (recommended)
+
+> Available since v0.13. Replaces the previous "deploy = fork without updates" pattern.
+
+The dashboard runs a daily cron at 8h UTC that pre-fetches upstream status, so the Overview banner loads **instantly** without hitting GitHub on every page view.
+
+**One-time setup** (under 1 minute):
+
+1. Open your dashboard → **Settings → Advanced → Updates**.
+2. Generate a GitHub Personal Access Token (PAT):
+   - Public fork → scope `public_repo`
+   - Private fork → scope `repo`
+   - Fine-grained PAT → permission *Contents: read/write* on your fork
+3. Paste it into the **Update token** field, click **Save token**, then **Test connection** to verify it works.
+4. Open the **Overview** tab — banner shows live status.
+
+**Day-to-day:**
+
+| Banner state | Meaning | Your action |
+|---|---|---|
+| *Up to date — checked Xh ago* | Cron has run; nothing new upstream | Nothing |
+| *N updates available* + commit list | Upstream has N new commits | Click **Update now** |
+| *Possible breaking changes (heuristic)* | One of the new commits flagged `feat!:` or `BREAKING CHANGE:` | Read the linked release notes, then click **Update now** if OK |
+| *Your fork has N local commits ahead* | You committed directly on the fork — auto-sync is blocked | Resolve manually on GitHub (link provided) |
+| *GitHub authentication failed* | PAT expired, revoked, or scope insufficient | Click **Reconfigure token →** |
+
+**What "Update now" does:** calls GitHub's `merge-upstream` API → your fork's `main` fast-forwards to upstream → Vercel detects the push and redeploys automatically (~2 min). The button is disabled if your fork has diverged.
+
+**Refresh icon (↻):** force a re-check before the next cron run. 30s debounce to prevent API spam. Shows a green ✓ flash to confirm even when nothing changed.
+
+**Cache invalidation:** the dashboard's update cache is automatically purged whenever you save a new PAT in Settings, so you don't have to wait up to 48h to see the new auth state.
+
+#### Local dev — auto-pull on `npm run dev`
+
+A `predev` hook checks for upstream changes and fast-forwards your working copy silently before Next.js starts:
 
 ```
 [mymcp update] up to date
@@ -291,25 +329,13 @@ Every time you start the dev server, a `predev` hook checks for upstream changes
 [mymcp update] skipped (uncommitted changes — commit/stash first)
 ```
 
-The check is safe by design: it **never** rewrites local work. If you have uncommitted changes, diverged commits, or no remote configured, it skips silently and lets `next dev` start normally.
+Safe by design: never rewrites local work. Skips silently on uncommitted changes, diverged commits, or no remote configured.
 
-To opt out permanently (e.g. on a CI/CD environment), set `MYMCP_SKIP_UPDATE_CHECK=1` in your `.env`. The check is also auto-skipped on Vercel and CI platforms.
+Opt out: set `MYMCP_SKIP_UPDATE_CHECK=1` in your `.env`. Auto-skipped on Vercel + CI platforms.
 
-#### 2. In-dashboard — "Update now" button in `/config → Overview`
+#### Manual — `npm run update`
 
-The dashboard polls GitHub when you open it. When new commits land, you'll see an orange banner:
-
-> **3 updates available**
-> New commits on upstream/main (latest: `abc1234`) — fast-forward safe.
-> **[Update now]**
-
-Clicking **Update now** runs the same fast-forward merge as option 1 without touching the terminal. After the merge, Next.js hot-reloads most changes on the fly — only structural changes (dependency bumps, new connector manifests) require a dev server restart.
-
-This is the recommended flow if you keep the dashboard open while working.
-
-#### 3. Manual — `npm run update`
-
-The classic CLI flow still works:
+For Docker, self-hosted, or when you prefer the terminal:
 
 ```bash
 # One-time setup (skip if you used npx @yassinello/create-kebab-mcp — already done)
@@ -319,13 +345,15 @@ git remote add upstream https://github.com/Yassinello/kebab-mcp.git
 npm run update
 ```
 
-Equivalent to `git fetch upstream && git merge upstream/main`. Useful when you're already in the terminal and don't want to restart the dev server.
+Equivalent to `git fetch upstream && git merge upstream/main`.
 
----
+#### What's safe to update
 
-**Your `.env` and `data/` are never touched** — all customization lives in env vars and the gitignored `data/` directory, not in tracked code. Updates are always safe to merge.
+**Your `.env`, `data/`, and saved credentials in Upstash KV are never touched** — all customization lives in env vars and the gitignored `data/` directory, not in tracked code. Updates are always safe to merge.
 
-**When the Vercel flow applies:** if you're running on Vercel instead of locally, the in-dashboard updater is disabled. Just `git push` your fork and Vercel redeploys automatically.
+**Vercel disable switch:** set `KEBAB_DISABLE_UPDATE_API=1` to fully disable the in-dashboard update feature (banner hides, route returns disabled).
+
+**Smoke test:** if you want to validate the full flow on your live deploy, follow the [smoke-test recipe](docs/TROUBLESHOOTING.md#phase-61-update-flow-smoke-test) in the troubleshooting guide.
 
 ## Connectors
 

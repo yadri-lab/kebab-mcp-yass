@@ -16,6 +16,8 @@ If you just deployed and got dropped here from the Welcome wizard: skip to [Wher
 
 The default landing tab. Shows your **instance health widget** (token status, Vercel auto-deploy availability, endpoint URL), a **setup health widget**, and a snapshot of how many connectors and tools are active. If you ever come back wondering "is everything OK," start here.
 
+The Overview tab also surfaces an **upstream updates banner**: when your Vercel fork drifts behind `Yassinello/kebab-mcp`, you'll see how many commits are pending, the list of incoming commits, any breaking-change warnings, and an **Update now** button that calls GitHub's `merge-upstream` API + triggers a Vercel redeploy. A daily cron pre-fetches the status, so the banner loads instantly. The refresh icon (↻) next to "checked Xh ago" forces a live re-check (30s debounce). Configure the PAT once in Settings → Advanced → Updates; see [Configuring updates](#configuring-updates) for the full setup.
+
 ### Connectors
 
 The credential surface for every connector Kebab MCP ships. Each one knows its required env vars, exposes a per-connector setup guide, and a **Test connection** button that verifies the credentials are real before you trust them.
@@ -80,6 +82,21 @@ If the **Storage** badge is orange (`Filesystem (temporary)`), fix that first �
 2. Pick the tool from the dropdown
 3. Fill the schema fields, click **Run**
 4. Inspect the response, latency, and (on error) the structured error code
+
+### "I want to keep my fork up to date with upstream"
+
+1. Open **Settings → Advanced → Updates**
+2. Paste a GitHub Personal Access Token — `public_repo` scope (or `repo` for private forks). Fine-grained PATs need *Contents: read/write* on your fork.
+3. Click **Save token** then **Test connection** — green confirms it works
+4. Switch back to **Overview** — banner shows live status
+
+After that, a daily cron at 8h UTC pre-fetches upstream commits into KV. When new commits land, you'll see a banner with the count, the commit list, and an **Update now** button that calls GitHub's `merge-upstream` API. Vercel redeploys automatically afterwards.
+
+The ↻ icon next to "checked Xh ago" forces a re-check between cron runs (30s debounce). The cache is auto-invalidated whenever you save a new PAT, so token rotations take effect immediately.
+
+If your fork has diverged (you committed locally on `main`), the auto-update is blocked — resolve manually on GitHub. If your PAT expires or has insufficient scope, the banner shows a dedicated "GitHub authentication failed" message with reconfiguration link.
+
+To disable the feature entirely, set `KEBAB_DISABLE_UPDATE_API=1` in your Vercel env vars.
 
 ## When stuck
 

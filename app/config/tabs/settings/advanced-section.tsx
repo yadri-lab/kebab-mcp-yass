@@ -409,12 +409,52 @@ export function AdvancedSection() {
         <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">
           Updates
         </h3>
-        <p className="text-xs text-text-dim mb-4">
+        <p className="text-xs text-text-dim mb-3">
           Configure a GitHub PAT to enable one-click upstream sync from the Overview tab. Requires{" "}
           <code className="font-mono bg-bg-muted px-1 rounded">public_repo</code> scope for public
           forks, <code className="font-mono bg-bg-muted px-1 rounded">repo</code> scope for private
           forks. Fine-grained PATs: ensure <em>Contents: read/write</em> permission on your fork.
         </p>
+        <details className="mb-4 text-xs text-text-dim">
+          <summary className="cursor-pointer text-text-muted hover:text-text">
+            How does the update flow work?
+          </summary>
+          <ul className="list-disc pl-5 mt-2 space-y-1.5">
+            <li>
+              A daily cron at 8h UTC pre-fetches upstream status into your Upstash KV — the Overview
+              banner loads instantly without a GitHub round-trip.
+            </li>
+            <li>
+              Clicking <strong>Update now</strong> in the banner calls GitHub&apos;s{" "}
+              <code className="font-mono bg-bg-muted px-1 rounded">merge-upstream</code> API. Your
+              fork&apos;s <code>main</code> fast-forwards, Vercel detects the push, and redeploys
+              automatically (~2 minutes).
+            </li>
+            <li>
+              If your fork has diverged (local commits on <code>main</code>), the button is disabled
+              and a manual-resolution link to GitHub is shown.
+            </li>
+            <li>
+              The ↻ icon next to &quot;checked Xh ago&quot; forces a re-check between cron runs.
+              30-second debounce to avoid API spam.
+            </li>
+            <li>
+              Possible breaking changes (commits flagged{" "}
+              <code className="font-mono bg-bg-muted px-1 rounded">feat!:</code> or{" "}
+              <code className="font-mono bg-bg-muted px-1 rounded">BREAKING CHANGE:</code>) get a
+              heuristic warning + link to upstream release notes.
+            </li>
+            <li>
+              Saving a new PAT here invalidates the cache immediately — no waiting for the next cron
+              run.
+            </li>
+            <li>
+              To disable entirely, set{" "}
+              <code className="font-mono bg-bg-muted px-1 rounded">KEBAB_DISABLE_UPDATE_API=1</code>{" "}
+              in your Vercel env vars.
+            </li>
+          </ul>
+        </details>
 
         <div className="space-y-3">
           {/* PAT input */}
@@ -440,7 +480,9 @@ export function AdvancedSection() {
               </button>
             </div>
             <p className="text-xs text-text-muted mt-1">
-              Stored in your Upstash KV. Takes effect immediately — no redeploy required.
+              Stored in your Upstash KV under <code>cred:KEBAB_UPDATE_PAT</code>. Takes effect
+              immediately — no redeploy required. Saving here also invalidates the update-check
+              cache, so the Overview banner reflects the new auth state on next load.
             </p>
           </div>
 

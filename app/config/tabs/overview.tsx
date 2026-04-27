@@ -304,7 +304,10 @@ export function OverviewTab({
               Update token not configured
             </p>
             <p className="text-xs text-text-dim mt-0.5">
-              Configure a GitHub PAT to enable one-click upstream sync.
+              Add a GitHub Personal Access Token to enable one-click upstream sync from this
+              dashboard. Scope <code className="font-mono">public_repo</code> (or{" "}
+              <code className="font-mono">repo</code> for private forks). Once saved, a daily cron
+              keeps this banner up to date automatically.
             </p>
           </div>
           <a
