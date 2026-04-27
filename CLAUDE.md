@@ -213,7 +213,7 @@ PERF-05 (Phase 43) adds a CI gate that fails on first-load JS regressions.
 | `AIRTABLE_API_KEY` | Airtable connector | Airtable personal access token |
 | `COMPOSIO_API_KEY` | Composio connector | Composio API key |
 | `MYMCP_WEBHOOKS` | Webhook connector | Comma-separated webhook names |
-| `INSTANCE_MODE` | No | `personal` or `showcase` (auto-detected) |
+| `INSTANCE_MODE` | No | Set to `showcase` to render the marketing landing on `/`. Otherwise `/` redirects to `/welcome` (no token) or `/config` (token present). |
 | `MYMCP_TOOL_TIMEOUT` | No | Tool timeout in ms (default: 30000) |
 | `MYMCP_ERROR_WEBHOOK_URL` | No | Webhook URL for error alerts |
 | `MYMCP_DURABLE_LOGS` | No | Persist logs to KV store (default: false) |
