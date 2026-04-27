@@ -16,11 +16,11 @@
 </p>
 
 <p align="center">
+  <a href="#who-is-this-for">Who it's for</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#features">Features</a> &middot;
   <a href="#use-cases">Use Cases</a> &middot;
   <a href="#configuration">Configuration</a> &middot;
-  <a href="#architecture">Architecture</a> &middot;
   <a href="#community--roadmap">Community</a> &middot;
   <a href="docs/CONTRIBUTING.md">Contributing</a>
 </p>
@@ -32,11 +32,23 @@
 </p>
 <p align="center"><em>The unified dashboard — connectors, tools, skills, logs, settings.</em></p>
 
+## The pitch
+
+**The problem.** Every AI client wants its own MCP server. Claude, Cursor, Windsurf, ChatGPT — each with its own config, its own tools, its own auth. You end up running five half-broken servers, or you rent a hosted platform that holds your tokens hostage.
+
+**The fix.** Kebab MCP is one self-hosted server that exposes 86+ tools across Google Workspace, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Browser, Apify, plus your own Skills and any HTTP API. Deploys to Vercel in 5 minutes. Your tokens stay in your KV.
+
+**Why it's different.** Hosted platforms own your auth. Per-app MCP servers don't compose. Kebab gives every AI client the same backend — your backend — without the hosted-platform lock-in.
+
+## Who is this for?
+
+- **Solo builders** who use Claude / Cursor / ChatGPT side-by-side and want one tool set everywhere.
+- **Small ops teams** that need an internal AI backend wired to Slack / Notion / Linear / Google Workspace without paying per seat.
+- **Privacy-minded developers** who'd rather hand their OAuth refresh tokens to their own Vercel project than to a third party.
+
+If you just want a single MCP integration, you don't need this — pick the official one. Kebab earns its keep when you have ≥ 3 tool sources or ≥ 2 AI clients.
+
 ## Why Kebab MCP?
-
-Most MCP setups require running 5 separate servers, each with their own config. Or paying for a hosted platform that controls your data.
-
-Kebab MCP gives you **one server, one endpoint, 86+ tools** — deployed on Vercel's free tier (or Docker). You own everything.
 
 |              | Kebab MCP                | Separate MCP servers | Hosted platforms           |
 | ------------ | ------------------------ | -------------------- | -------------------------- |
@@ -45,8 +57,6 @@ Kebab MCP gives you **one server, one endpoint, 86+ tools** — deployed on Verc
 | **Endpoint** | 1                        | 5+                   | 1 (their server)           |
 | **Cost**     | Free (Vercel free tier)  | Free but complex     | $0–80/month                |
 | **Data**     | Your Vercel, your keys   | Your machines        | Their servers              |
-
-I built Kebab MCP because I wanted a single MCP server that works everywhere (Claude, ChatGPT, Cursor, Windsurf, OpenClaw…). It started as a bridge to my Obsidian vault and kept growing — Google Workspace, browser automation, Slack, Notion, LinkedIn via Apify. If it's useful to me, it might be useful to you.
 
 ## Quick Start
 
@@ -148,7 +158,30 @@ You can also ask Claude in a Claude Code conversation: *"Run `npx @yassinello/cr
 
 ## Features
 
-15 connectors, 86 tools, plus dynamic Skills and API Connections. Each connector auto-activates when its credentials are in your env.
+Five families of capability. Each connector auto-activates when its credentials are in your env.
+
+### 🔌 Connectors — 13 built-in integrations
+
+Google Workspace, Obsidian Vault, Slack, Notion, GitHub, Linear, Airtable, Browser Automation, Apify (LinkedIn), Composio (1000+ apps via bridge), Paywall Readers, Webhooks. **86 production-ready tools** total. Setup is one env var per connector.
+
+### 🛠️ Custom Tools — bring any HTTP API
+
+**API Connections** turns any HTTP endpoint into an MCP tool — paste an OpenAPI spec or wire a REST endpoint, define the auth, ship. No code, no PR. Useful for internal APIs, niche SaaS, or quick experiments.
+
+### ⚡ Skills — prompt-powered workflows
+
+**Skills** are user-defined tools built from prompt templates. Compose existing tools in the dashboard's visual wizard, save, and the skill becomes `skill_<name>` in your MCP client. Versioned — every edit is a new revision, with one-click rollback.
+
+### 📊 Dashboard & Ops
+
+Unified `/config` page covers connector status, per-tool toggles, live logs, deep health checks, OAuth flows, Skill composer, API playground, and one-click upstream updates. The Welcome wizard handles first-run token minting and credential collection.
+
+### 🔒 Security & Ownership
+
+Self-hosted by design. Timing-safe token comparison, multi-tenant auth, per-token rate limits, SSRF protection on browser tools, HMAC validation on webhooks, env-only configuration (no config files, `git pull` never conflicts), HttpOnly OAuth cookies with PKCE.
+
+<details>
+<summary><strong>Full connector matrix — tool count, auth, setup time</strong></summary>
 
 | Connector              | Tools | Auth                                | Setup |
 | ---------------------- | ----- | ----------------------------------- | ----- |
@@ -168,7 +201,9 @@ You can also ask Claude in a Claude Code conversation: *"Run `npx @yassinello/cr
 | **API Connections**    | dyn.  | per-API                             | 1 min |
 | **Admin & Logs**       | 5     | Admin token                         | 0 min |
 
-Per-tool details and setup instructions: [docs/CONNECTORS.md](docs/CONNECTORS.md).
+Per-tool details and env vars: [docs/CONNECTORS.md](docs/CONNECTORS.md).
+
+</details>
 
 ## Use Cases
 
