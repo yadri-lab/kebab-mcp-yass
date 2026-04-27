@@ -138,24 +138,35 @@ function RecommendedCard() {
               <StepBadge n={2} />
               <span>
                 Open <strong>Import to Vercel</strong>. Find your fork in the list and click{" "}
-                <strong>Import</strong>.
+                <strong>Import</strong>. Keep all defaults (Next.js preset, root{" "}
+                <code className="font-mono text-xs">./</code>), leave env vars empty, click{" "}
+                <strong>Deploy</strong>.
               </span>
             </li>
             <li className="flex gap-3">
               <StepBadge n={3} />
               <span>
-                Add the <strong>Upstash Redis</strong> integration during setup — your auth token
-                needs durable storage.
+                After the first deploy completes (~60s), open the project → <strong>Storage</strong>{" "}
+                tab → <strong>Connect Database</strong> → <strong>Upstash for Redis</strong> (Free
+                plan). Vercel injects{" "}
+                <code className="font-mono text-xs bg-slate-800/80 text-slate-300 rounded px-1 py-0.5">
+                  KV_REST_API_*
+                </code>{" "}
+                and auto-redeploys.
               </span>
             </li>
             <li className="flex gap-3">
               <StepBadge n={4} />
               <span>
-                Open the deploy URL → mint your{" "}
+                Open your deploy URL → land on{" "}
+                <code className="font-mono text-xs bg-slate-800/80 text-slate-300 rounded px-1 py-0.5">
+                  /welcome
+                </code>{" "}
+                → mint your{" "}
                 <code className="font-mono text-xs bg-slate-800/80 text-slate-300 rounded px-1 py-0.5">
                   MCP_AUTH_TOKEN
-                </code>{" "}
-                in the welcome flow.
+                </code>
+                .
               </span>
             </li>
             <li className="flex gap-3">

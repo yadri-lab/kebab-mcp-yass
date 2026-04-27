@@ -67,8 +67,8 @@ Two paths cover ~95% of users — Fork + Vercel for the recommended path, Docker
 The deploy hub at **[/deploy](https://kebab-mcp.vercel.app/deploy)** walks through this visually. The flow:
 
 1. **[Fork on GitHub](https://github.com/Yassinello/kebab-mcp/fork)** — keeps your deployment linked to upstream so updates land in one click.
-2. **[Import to Vercel](https://vercel.com/new)** — pick your fork from the list and click *Import*.
-3. **Add the [Upstash integration](https://vercel.com/integrations/upstash)** (free tier) — your auth token and credentials need durable storage to survive serverless cold starts.
+2. **[Import to Vercel](https://vercel.com/new)** — pick your fork from the list, click *Import*, keep all defaults, click *Deploy*.
+3. **Attach Upstash KV** — after the first deploy completes, open your project → *Storage* tab → *Connect Database* → *Upstash for Redis* (Free plan). Vercel injects the env vars and auto-redeploys. Without this, your auth token and credentials don't survive serverless cold starts.
 4. **Open the deployed URL** → land on `/welcome`, mint your `MCP_AUTH_TOKEN`, paste it into your AI client.
 
 > **Why not the one-click Deploy Button?** Vercel's `/new/clone` creates a standalone snapshot — not a real GitHub fork — so the dashboard's *Update now* flow can never sync upstream changes. We tried it and reverted (case study: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)). The fork-first flow takes one extra click and stays maintainable forever.
