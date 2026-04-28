@@ -7,6 +7,20 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ConnectorsTab } from "../../app/config/tabs/connectors";
 import type { ConnectorSummary } from "../../app/config/tabs";
 
+// Mock next/navigation — ConnectorsTab calls useRouter() for router.refresh()
+// after a successful save. The default jest-style App-Router mock isn't
+// available in component-test mode, so provide a minimal stub.
+const refreshMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: refreshMock, push: vi.fn(), replace: vi.fn() }),
+}));
+
+// Mock ApiConnectionsSection which makes its own fetch calls — keep this
+// component test focused on the ConnectorsTab logic.
+vi.mock("../../app/config/tabs/api-connections-section", () => ({
+  ApiConnectionsSection: () => null,
+}));
+
 // Mock the wizard module which ConnectorsTab imports for PACKS / CredentialInput
 vi.mock("../../app/config/pack-defs", () => ({
   PACKS: [
@@ -74,7 +88,7 @@ describe("ConnectorsTab", () => {
     } as unknown as Response);
   });
 
-  it("renders connector names and status badges", async () => {
+  it("renders connector names and the Active badge for enabled packs", async () => {
     render(<ConnectorsTab connectors={mockConnectors} />);
 
     await waitFor(() => {
@@ -82,8 +96,10 @@ describe("ConnectorsTab", () => {
       expect(screen.getByText("Obsidian Vault")).toBeInTheDocument();
     });
 
+    // The "Setup needed" badge was deliberately removed in 2718209 to cut
+    // visual noise on fresh installs (12+ disabled connectors). Only the
+    // Active badge survives — assert that, not the dropped one.
     expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("Setup needed")).toBeInTheDocument();
   });
 
   it("expands a connector on click to show tools", async () => {
@@ -104,13 +120,101 @@ describe("ConnectorsTab", () => {
     });
   });
 
-  it("shows tool count for each connector", async () => {
+  it("shows tool count for enabled connectors only", async () => {
     render(<ConnectorsTab connectors={mockConnectors} />);
 
     await waitFor(() => {
-      // Tool counts are split across text nodes ("18" + " tools"), use a matcher
+      // Only enabled packs render their tool count in the header (visual-noise
+      // cleanup, 2718209). Google is enabled → "18 tools" appears. Vault is
+      // disabled → "15 tools" must NOT appear in the header.
       expect(screen.getAllByText(/18\s*tools/).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/15\s*tools/).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/15\s*tools/)).toBeNull();
+    });
+  });
+});
+
+// User-reported regression suite (2026-04-29):
+// On Browser/Paywall connectors with already-saved (masked) credentials,
+// clicking Save without editing any field returned silently — no toast,
+// no error, no toggle change. The user assumed the save was broken.
+// These tests pin the new feedback paths so the silent-return can't
+// reappear.
+describe("ConnectorsTab — Save feedback (2026-04-29 regression)", () => {
+  // Route-aware fetch mock: ConnectorsTab fires both /api/config/env
+  // (creds) and /api/storage/status (mode/ephemeral) on mount. Returning
+  // a single resolved-once mock for the first call would leave the second
+  // hitting the unmocked global fetch → render stays on "Loading…".
+  function mockTabFetches(envVars: Record<string, string>) {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/config/env")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, vars: envVars }),
+        } as unknown as Response);
+      }
+      if (url.includes("/api/storage/status")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ mode: "kv", ephemeral: false, error: null }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true }),
+      } as unknown as Response);
+    });
+  }
+
+  // Click the header of one card to expand it. Cards stay in the DOM
+  // when collapsed (max-h transition rather than unmount), so we need
+  // to wait for at least one Save button to be present before acting.
+  async function openCard(label: string) {
+    await waitFor(() => expect(screen.getByText(label)).toBeInTheDocument());
+    const headers = screen.getAllByText(label);
+    fireEvent.click(headers[0]!);
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /^Save$/ }).length).toBeGreaterThan(0)
+    );
+  }
+
+  // Click the *first* Save button — only the expanded card's Save is
+  // interactive in the user's eye. (Both render in the DOM but only one
+  // is visible.)
+  function clickFirstSave() {
+    const buttons = screen.getAllByRole("button", { name: /^Save$/ });
+    fireEvent.click(buttons[0]!);
+  }
+
+  // Save button click without typing into any field — the silent-return path.
+  it("surfaces 'No changes to save' when Save is clicked with no edits on an already-configured pack", async () => {
+    mockTabFetches({ GOOGLE_CLIENT_ID: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022" });
+
+    render(<ConnectorsTab connectors={mockConnectors} />);
+    await openCard("Google Workspace");
+
+    clickFirstSave();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No changes to save/i)).toBeInTheDocument();
+    });
+  });
+
+  // Save with no edits on an unconfigured pack should also surface a clear hint.
+  it("surfaces 'Fill in at least one credential' on an unconfigured pack with no edits", async () => {
+    mockTabFetches({});
+
+    render(<ConnectorsTab connectors={mockConnectors} />);
+    await openCard("Obsidian Vault");
+
+    // Vault is the second card; openCard expanded it but two Save buttons
+    // exist in the DOM (Google's hidden card + Vault's visible one). The
+    // visible one is the second in document order.
+    const buttons = screen.getAllByRole("button", { name: /^Save$/ });
+    fireEvent.click(buttons[buttons.length - 1]!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Fill in at least one credential/i)).toBeInTheDocument();
     });
   });
 });

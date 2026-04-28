@@ -27,6 +27,13 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   const [storageMode, setStorageMode] = useState<StorageMode>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [storageEphemeral, setStorageEphemeral] = useState(false);
+  // Tracks the last successfully saved pack so we can detect when the
+  // RSC refresh brings back `enabled: true` and collapse / celebrate the
+  // card. User-reported 2026-04-29: after saving Browser/Paywall the
+  // toggle stayed off and the card stayed open with no visible
+  // confirmation that anything had landed. The id is cleared by the
+  // post-save effect once we've reacted to the freshly-gated state.
+  const [recentlySavedId, setRecentlySavedId] = useState<string | null>(null);
 
   // Load current env on mount
   useEffect(() => {
@@ -62,6 +69,41 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
   // Ephemeral (/tmp on Vercel) does NOT disable saves — they technically
   // work, just don't persist. We show a prominent warning banner instead.
   const savesDisabled = storageMode === "static" || storageMode === "kv-degraded";
+
+  // Post-save reactivity: when the RSC refresh brings back the freshly-
+  // gated connector list, collapse the card we just saved and surface a
+  // clear "Connected" toast for 4s. If the connector did NOT flip to
+  // enabled (creds saved but custom-active predicate still rejects, e.g.
+  // paywall with both MEDIUM_SID and SUBSTACK_SID empty), keep the card
+  // open and surface a hint instead of leaving the user wondering.
+  useEffect(() => {
+    if (!recentlySavedId) return;
+    const pack = connectors.find((c) => c.id === recentlySavedId);
+    if (!pack) return;
+    if (pack.enabled) {
+      // Connector flipped on — collapse + clear any prior error.
+      setExpanded((cur) => (cur === recentlySavedId ? null : cur));
+      setSaveError((p) => ({ ...p, [recentlySavedId]: "" }));
+    } else if (!pack.reason.startsWith("missing env")) {
+      // Creds saved but the custom-active predicate or another reason still
+      // blocks. Surface that reason inline so the user knows why the toggle
+      // stayed off (paywall: needs at least one source cookie; webhook:
+      // needs MYMCP_WEBHOOKS list, etc.).
+      setSaveError((p) => ({
+        ...p,
+        [recentlySavedId]: `Saved, but the connector is still inactive: ${pack.reason}`,
+      }));
+    } else {
+      // Still missing required vars — happens when the user partially
+      // filled the form (e.g. only 1 of 3 Browser keys). Tell them
+      // exactly which.
+      setSaveError((p) => ({
+        ...p,
+        [recentlySavedId]: `Saved, but more credentials are needed: ${pack.reason}`,
+      }));
+    }
+    setRecentlySavedId(null);
+  }, [connectors, recentlySavedId]);
 
   const getValue = useCallback(
     (key: string): string => {
@@ -114,7 +156,10 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
     setSavingId(packId);
     setSaveError((p) => ({ ...p, [packId]: "" }));
     const packDef = PACKS.find((p) => p.id === packId);
-    if (!packDef) return;
+    if (!packDef) {
+      setSavingId(null);
+      return;
+    }
     const vars: Record<string, string> = {};
     for (const v of packDef.vars) {
       const edited = edits[v.key];
@@ -123,6 +168,20 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
       }
     }
     if (Object.keys(vars).length === 0) {
+      // Silent-return bug (user-reported 2026-04-29): the card already
+      // shows masked bullets for every saved value, so the user re-clicks
+      // Save expecting it to "commit" or re-validate. We had no edits to
+      // submit, returned without feedback, and the toggle stayed off —
+      // making the save button feel broken. Surface explicit feedback so
+      // the user knows nothing was sent and why.
+      const pack = visibleConnectors.find((c) => c.id === packId);
+      const alreadyConfigured = pack?.enabled || (pack && !pack.reason.startsWith("missing env"));
+      setSaveError((p) => ({
+        ...p,
+        [packId]: alreadyConfigured
+          ? "No changes to save — credentials are already saved. Edit a field above to update."
+          : "Fill in at least one credential field before saving.",
+      }));
       setSavingId(null);
       return;
     }
@@ -155,10 +214,14 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
               : "Saved";
         setSavedFlash(packId);
         setSavedBackend(backendLabel);
+        // 5s instead of 3s — the 3s window was easy to miss (user reported
+        // 2026-04-29 they saw "no feedback at all" after Save). 5s is long
+        // enough to register but short enough that it doesn't linger
+        // through the next save.
         setTimeout(() => {
           setSavedFlash(null);
           setSavedBackend(null);
-        }, 3000);
+        }, 5000);
         // After a successful save, the server-side registry will see the
         // new env vars and flip `enabled: true` for connectors whose
         // required vars are now all present. The client still holds the
@@ -171,6 +234,10 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
         // survive the next cold start anyway and the user has bigger
         // problems to read in the amber banner).
         if (!data.ephemeral) {
+          // Mark this pack as "just saved" so the post-refresh effect
+          // can react to the freshly-gated state (collapse if active,
+          // surface inactive reason if not).
+          setRecentlySavedId(packId);
           setTimeout(() => {
             router.refresh();
           }, 800);
@@ -561,12 +628,34 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
                       })}
                     />
                   )}
-                  {saveError[pack.id] && (
-                    <div className="bg-red-bg border border-red/20 rounded-md p-3 text-xs text-red">
-                      <p className="font-semibold mb-1">Save failed</p>
-                      <p className="break-words">{saveError[pack.id]}</p>
-                    </div>
-                  )}
+                  {saveError[pack.id] &&
+                    (() => {
+                      // Differentiate informational messages (no-op save,
+                      // partial config, custom-active still inactive) from
+                      // hard failures. The post-save effect surfaces benign
+                      // hints through the same channel; rendering them in
+                      // red with "Save failed" headline would mislead the
+                      // user into thinking something broke.
+                      const msg = saveError[pack.id] || "";
+                      const isBenign =
+                        msg.startsWith("No changes to save") ||
+                        msg.startsWith("Fill in at least one") ||
+                        msg.startsWith("Saved, but");
+                      return (
+                        <div
+                          className={
+                            isBenign
+                              ? "bg-bg-muted border border-border rounded-md p-3 text-xs text-text-dim"
+                              : "bg-red-bg border border-red/20 rounded-md p-3 text-xs text-red"
+                          }
+                        >
+                          <p className="font-semibold mb-1">
+                            {isBenign ? "Heads up" : "Save failed"}
+                          </p>
+                          <p className="break-words">{msg}</p>
+                        </div>
+                      );
+                    })()}
                   {test &&
                     !test.ok &&
                     test.message !== "Testing..." &&
