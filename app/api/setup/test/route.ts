@@ -4,6 +4,8 @@ import { checkAdminAuth } from "@/core/auth";
 import { isLoopbackRequest, getClientIP } from "@/core/request-utils";
 import { checkRateLimit } from "@/core/rate-limit";
 import { loadConnectorManifest } from "@/core/registry";
+import { hydrateCredentialsFromKV, getHydratedCredentialSnapshot } from "@/core/credential-store";
+import { getConfig } from "@/core/config-facade";
 import { withTimeout } from "@/core/timeout";
 import { composeRequestPipeline, rehydrateStep, type PipelineContext } from "@/core/pipeline";
 
@@ -81,9 +83,35 @@ async function postHandler(ctx: PipelineContext) {
     return NextResponse.json({ ok: true, message: "No test available" });
   }
 
+  // Fallback for "Test connection" pressed against a connector that is
+  // already saved (Bug D, 2026-04-28): the dashboard form serves masked
+  // values (••••) which the client filters out before posting, so the
+  // body arrives with an empty `credentials`. Without this fallback the
+  // test would return "Missing PAT or repo" even though the credentials
+  // are sitting in KV. We fill in any required-env-var that the caller
+  // did NOT supply from the persisted credential snapshot, so user-typed
+  // values still take precedence (lets the user re-test new creds before
+  // saving them).
+  await hydrateCredentialsFromKV();
+  const snapshot = getHydratedCredentialSnapshot();
+  const merged: Record<string, string> = {};
+  for (const key of manifest.requiredEnvVars ?? []) {
+    if (credentials[key]) {
+      merged[key] = credentials[key];
+    } else {
+      const fromSnapshot = snapshot[key] ?? getConfig(key);
+      if (fromSnapshot) merged[key] = fromSnapshot;
+    }
+  }
+  // Preserve any extra (non-required) keys the caller passed — some
+  // connectors test optional knobs (e.g. paywall source cookies).
+  for (const [k, v] of Object.entries(credentials)) {
+    if (!(k in merged)) merged[k] = v;
+  }
+
   try {
     const result = await withTimeout(
-      manifest.testConnection(credentials),
+      manifest.testConnection(merged),
       TEST_TIMEOUT_MS,
       `${packId} testConnection()`
     );
