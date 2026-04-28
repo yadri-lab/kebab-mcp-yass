@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { InfoTooltip } from "./settings/info-tooltip";
 import { ImportSkillModal } from "./skills-import-modal";
 import { SkillComposer } from "./skill-composer";
@@ -560,174 +560,323 @@ export function SkillsTab() {
         </div>
       )}
 
-      {skills.map((skill) => {
-        const drift = computeDrift(skill);
-        const syncedTargets = Object.keys(skill.syncState ?? {}).filter(
-          (t) => (skill.syncState ?? {})[t]?.lastSyncStatus === "ok"
-        );
-        return (
-          <div
-            key={skill.id}
-            className="border border-border rounded-lg overflow-hidden hover:border-border-light transition-colors"
+      {skills.map((skill) => (
+        <SkillCard
+          key={skill.id}
+          skill={skill}
+          drift={computeDrift(skill)}
+          syncedTargets={Object.keys(skill.syncState ?? {}).filter(
+            (t) => (skill.syncState ?? {})[t]?.lastSyncStatus === "ok"
+          )}
+          version={versionMap[skill.id] ?? 0}
+          syncTargets={syncTargets}
+          refreshing={refreshing === skill.id}
+          syncing={syncing === skill.id}
+          historyOpen={historyOpen === skill.id}
+          historyLoading={historyLoading}
+          historyData={historyData}
+          rollingBack={rollingBack}
+          onEdit={() => startEdit(skill)}
+          onDelete={() => deleteSkill(skill.id)}
+          onRefresh={() => refreshSkill(skill.id)}
+          onSync={() => syncSkill(skill.id)}
+          onToggleHistory={() => toggleHistory(skill.id)}
+          onExport={() => exportSkill(skill.id)}
+          onExportClaude={() => exportClaudeSkill(skill)}
+          onRollback={(version) => rollbackTo(skill.id, version)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SkillCard({
+  skill,
+  drift,
+  syncedTargets,
+  version,
+  syncTargets,
+  refreshing,
+  syncing,
+  historyOpen,
+  historyLoading,
+  historyData,
+  rollingBack,
+  onEdit,
+  onDelete,
+  onRefresh,
+  onSync,
+  onToggleHistory,
+  onExport,
+  onExportClaude,
+  onRollback,
+}: {
+  skill: Skill;
+  drift: { stale: boolean; targets: string[] };
+  syncedTargets: string[];
+  version: number;
+  syncTargets: SyncTarget[];
+  refreshing: boolean;
+  syncing: boolean;
+  historyOpen: boolean;
+  historyLoading: boolean;
+  historyData: SkillVersionSummary[];
+  rollingBack: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRefresh: () => void;
+  onSync: () => void;
+  onToggleHistory: () => void;
+  onExport: () => void;
+  onExportClaude: () => void;
+  onRollback: (version: number) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const close = () => setMenuOpen(false);
+  const run = (fn: () => void) => () => {
+    close();
+    fn();
+  };
+
+  const isRemote = skill.source.type === "remote";
+  const remoteHasError = skill.source.type === "remote" && !!skill.source.lastError;
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden hover:border-border-light transition-colors">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onEdit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onEdit();
+          }
+        }}
+        className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-bg-muted/30 transition-colors"
+        title="Click to edit"
+      >
+        <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold text-sm shrink-0">
+          {skill.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-sm">{skill.name}</p>
+            <code className="text-[11px] text-text-muted">skill_{skill.id}</code>
+            <span
+              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                isRemote ? "text-accent bg-accent/10" : "text-text-muted bg-bg-muted"
+              }`}
+            >
+              {skill.source.type}
+            </span>
+            {version > 0 && (
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full text-text-muted bg-bg-muted">
+                v{version}
+              </span>
+            )}
+            {remoteHasError && (
+              <span className="text-[11px] font-medium text-red bg-red-bg px-2 py-0.5 rounded-full">
+                fetch error
+              </span>
+            )}
+            {drift.stale && (
+              <span
+                className="text-[11px] font-medium text-orange bg-orange-bg px-2 py-0.5 rounded-full"
+                title={`Edited after last sync to: ${drift.targets.join(", ")}`}
+              >
+                drift
+              </span>
+            )}
+            {!drift.stale && syncedTargets.length > 0 && (
+              <span
+                className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full"
+                title={`Synced to ${syncedTargets.join(", ")}`}
+              >
+                synced
+              </span>
+            )}
+            {(skill.toolsAllowed?.length ?? 0) > 0 && (
+              <span
+                className="text-[11px] font-medium text-text-muted bg-bg-muted px-2 py-0.5 rounded-full"
+                title={`Allowed tools: ${skill.toolsAllowed!.join(", ")}`}
+              >
+                {skill.toolsAllowed!.length} tool{skill.toolsAllowed!.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-text-dim mt-0.5 truncate">
+            {skill.description || <em className="text-text-muted">no description</em>}
+          </p>
+        </div>
+        <div
+          className="relative shrink-0"
+          ref={menuRef}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="presentation"
+        >
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            className="text-xs font-medium text-text-dim hover:text-text border border-border hover:border-border-light rounded-md px-2.5 py-1 inline-flex items-center gap-1"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Skill actions"
           >
-            <div className="flex items-center gap-3 px-5 py-4">
-              <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold text-sm">
-                {skill.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-sm">{skill.name}</p>
-                  <code className="text-[11px] text-text-muted">skill_{skill.id}</code>
-                  <span
-                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                      skill.source.type === "remote"
-                        ? "text-accent bg-accent/10"
-                        : "text-text-muted bg-bg-muted"
-                    }`}
-                  >
-                    {skill.source.type}
+            Actions
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+              className={`transition-transform ${menuOpen ? "rotate-180" : ""}`}
+            >
+              <path
+                d="M3 4.5L6 7.5L9 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-1 w-48 bg-bg border border-border rounded-md shadow-lg overflow-hidden z-10"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(onEdit)}
+                className="w-full text-left text-xs px-3 py-2 text-text hover:bg-bg-muted"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(onToggleHistory)}
+                className="w-full text-left text-xs px-3 py-2 text-text-dim hover:bg-bg-muted hover:text-text"
+              >
+                {historyOpen ? "Hide history" : "View history"}
+              </button>
+              {isRemote && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={run(onRefresh)}
+                  disabled={refreshing}
+                  className="w-full text-left text-xs px-3 py-2 text-text-dim hover:bg-bg-muted hover:text-text disabled:opacity-60"
+                >
+                  {refreshing ? "Refreshing..." : "Refresh from URL"}
+                </button>
+              )}
+              {syncTargets.length > 0 && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={run(onSync)}
+                  disabled={syncing}
+                  className="w-full text-left text-xs px-3 py-2 text-text-dim hover:bg-bg-muted hover:text-text disabled:opacity-60"
+                  title={`Sync to ${syncTargets.map((t) => t.name).join(", ")}`}
+                >
+                  {syncing ? "Syncing..." : "Sync to targets"}
+                </button>
+              )}
+              <div className="border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(onExport)}
+                className="w-full text-left text-xs px-3 py-2 text-text-dim hover:bg-bg-muted hover:text-text"
+              >
+                Export as Markdown
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(onExportClaude)}
+                className="w-full text-left text-xs px-3 py-2 text-text-dim hover:bg-bg-muted hover:text-text"
+              >
+                Export as Claude Skill
+              </button>
+              <div className="border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(onDelete)}
+                className="w-full text-left text-xs px-3 py-2 text-red hover:bg-red-bg"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      {historyOpen && (
+        <div className="border-t border-border px-5 py-4 bg-bg-muted/30">
+          <h4 className="text-xs font-semibold text-text-muted mb-2">Version History</h4>
+          {historyLoading ? (
+            <p className="text-xs text-text-muted">Loading...</p>
+          ) : historyData.length === 0 ? (
+            <p className="text-xs text-text-muted">No version history available.</p>
+          ) : (
+            <div className="space-y-2">
+              {[...historyData].reverse().map((v) => (
+                <div
+                  key={v.version}
+                  className="flex items-center gap-3 text-xs border border-border rounded-md px-3 py-2"
+                >
+                  <span className="font-mono font-medium text-accent shrink-0">v{v.version}</span>
+                  <span className="text-text-muted shrink-0">
+                    {new Date(v.savedAt).toLocaleString()}
                   </span>
-                  {(versionMap[skill.id] ?? 0) > 0 && (
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full text-text-muted bg-bg-muted">
-                      v{versionMap[skill.id]}
-                    </span>
-                  )}
-                  {skill.source.type === "remote" && skill.source.lastError && (
-                    <span className="text-[11px] font-medium text-red bg-red-bg px-2 py-0.5 rounded-full">
-                      fetch error
-                    </span>
-                  )}
-                  {drift.stale && (
-                    <span
-                      className="text-[11px] font-medium text-orange bg-orange-bg px-2 py-0.5 rounded-full"
-                      title={`Edited after last sync to: ${drift.targets.join(", ")}`}
+                  <span className="text-text-dim flex-1 truncate">
+                    {v.contentPreview || "(empty)"}
+                  </span>
+                  {v.version !== version && (
+                    <button
+                      onClick={() => onRollback(v.version)}
+                      disabled={rollingBack}
+                      className="text-xs text-orange hover:underline shrink-0 disabled:opacity-50"
                     >
-                      drift
-                    </span>
+                      Rollback
+                    </button>
                   )}
-                  {!drift.stale && syncedTargets.length > 0 && (
-                    <span
-                      className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full"
-                      title={`Synced to ${syncedTargets.join(", ")}`}
-                    >
-                      synced
-                    </span>
-                  )}
-                  {(skill.toolsAllowed?.length ?? 0) > 0 && (
-                    <span
-                      className="text-[11px] font-medium text-text-muted bg-bg-muted px-2 py-0.5 rounded-full"
-                      title={`Allowed tools: ${skill.toolsAllowed!.join(", ")}`}
-                    >
-                      {skill.toolsAllowed!.length} tool{skill.toolsAllowed!.length === 1 ? "" : "s"}
+                  {v.version === version && (
+                    <span className="text-[10px] font-medium text-green bg-green-bg px-1.5 py-0.5 rounded shrink-0">
+                      current
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-text-dim mt-0.5 truncate">
-                  {skill.description || <em className="text-text-muted">no description</em>}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {skill.source.type === "remote" && (
-                  <button
-                    onClick={() => refreshSkill(skill.id)}
-                    disabled={refreshing === skill.id}
-                    className="text-xs text-text-dim hover:text-accent px-2 py-1 rounded disabled:opacity-60"
-                    title="Re-fetch remote content"
-                  >
-                    {refreshing === skill.id ? "..." : "Refresh"}
-                  </button>
-                )}
-                {syncTargets.length > 0 && (
-                  <button
-                    onClick={() => syncSkill(skill.id)}
-                    disabled={syncing === skill.id}
-                    className="text-xs text-text-dim hover:text-accent px-2 py-1 rounded disabled:opacity-60"
-                    title={`Sync to ${syncTargets.map((t) => t.name).join(", ")}`}
-                  >
-                    {syncing === skill.id ? "..." : "Sync"}
-                  </button>
-                )}
-                <button
-                  onClick={() => toggleHistory(skill.id)}
-                  className="text-xs text-text-dim hover:text-accent px-2 py-1 rounded"
-                  title="View version history"
-                >
-                  History
-                </button>
-                <button
-                  onClick={() => exportSkill(skill.id)}
-                  className="text-xs text-text-dim hover:text-accent px-2 py-1 rounded"
-                  title="Download as Markdown (.md)"
-                >
-                  Export
-                </button>
-                <button
-                  onClick={() => exportClaudeSkill(skill)}
-                  className="text-xs text-text-dim hover:text-accent px-2 py-1 rounded"
-                  title="Download as Claude Desktop Skill (.skill)"
-                >
-                  Claude
-                </button>
-                <button
-                  onClick={() => startEdit(skill)}
-                  className="text-xs text-accent hover:underline px-2 py-1 rounded"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => deleteSkill(skill.id)}
-                  className="text-xs text-red hover:underline px-2 py-1 rounded"
-                >
-                  Delete
-                </button>
-              </div>
+              ))}
             </div>
-            {historyOpen === skill.id && (
-              <div className="border-t border-border px-5 py-4 bg-bg-muted/30">
-                <h4 className="text-xs font-semibold text-text-muted mb-2">Version History</h4>
-                {historyLoading ? (
-                  <p className="text-xs text-text-muted">Loading...</p>
-                ) : historyData.length === 0 ? (
-                  <p className="text-xs text-text-muted">No version history available.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {[...historyData].reverse().map((v) => (
-                      <div
-                        key={v.version}
-                        className="flex items-center gap-3 text-xs border border-border rounded-md px-3 py-2"
-                      >
-                        <span className="font-mono font-medium text-accent shrink-0">
-                          v{v.version}
-                        </span>
-                        <span className="text-text-muted shrink-0">
-                          {new Date(v.savedAt).toLocaleString()}
-                        </span>
-                        <span className="text-text-dim flex-1 truncate">
-                          {v.contentPreview || "(empty)"}
-                        </span>
-                        {v.version !== versionMap[skill.id] && (
-                          <button
-                            onClick={() => rollbackTo(skill.id, v.version)}
-                            disabled={rollingBack}
-                            className="text-xs text-orange hover:underline shrink-0 disabled:opacity-50"
-                          >
-                            Rollback
-                          </button>
-                        )}
-                        {v.version === versionMap[skill.id] && (
-                          <span className="text-[10px] font-medium text-green bg-green-bg px-1.5 py-0.5 rounded shrink-0">
-                            current
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          )}
+        </div>
+      )}
     </div>
   );
 }
