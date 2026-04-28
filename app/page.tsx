@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LandingPage from "./landing/landing-page";
 import { getConfig } from "@/core/config-facade";
+import { isFirstRunMode, rehydrateBootstrapAsync } from "@/core/first-run";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
   // Routing rules for `/`:
   //   - Token present → user has finished setup → /config dashboard.
   //   - Explicit `INSTANCE_MODE=showcase` → marketing landing (e.g. the
@@ -31,7 +32,16 @@ export default function HomePage() {
   // Local dev (`npm run dev`) without a token still hits /welcome, which
   // is the right behavior — the welcome page is what bootstraps state.
   // To preview the marketing landing locally, set INSTANCE_MODE=showcase.
-  const hasToken = !!getConfig("MCP_AUTH_TOKEN");
+  //
+  // Cold-lambda note: on Vercel, the Node-side bootstrap cache is per-
+  // process. A cold lambda whose Edge sibling has already warmed up
+  // doesn't see the rehydrated token until rehydrateBootstrapAsync()
+  // runs in this Node process. Without that, a freshly-minted token
+  // living in KV would look "missing" here and we'd send the user back
+  // to /welcome on every cold hit. The same pattern is used in
+  // app/config/page.tsx — keep them in sync.
+  await rehydrateBootstrapAsync();
+
   const mode = getConfig("INSTANCE_MODE");
   const isShowcase = mode === "showcase";
 
@@ -39,7 +49,10 @@ export default function HomePage() {
     return <LandingPage />;
   }
 
-  if (hasToken) {
+  // hasToken is true when the boot env has MCP_AUTH_TOKEN OR the bootstrap
+  // cache has been populated from KV. isFirstRunMode() encapsulates that
+  // — invert it for the "user has set up" check.
+  if (!isFirstRunMode()) {
     redirect("/config");
   }
 
