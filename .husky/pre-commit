@@ -16,3 +16,21 @@ fi
 npx lint-staged
 npm run test:contract
 npm run test:doc-counts
+
+# Typecheck — only when .ts/.tsx files are staged (skipped on doc-only or
+# config-only commits to keep them snappy). Uses tsc --incremental so the
+# repeat cost is ~7s on a warm cache, ~25s cold.
+#
+# Why this gate exists: CI fails on type errors (npm run typecheck), but
+# CI runs on a fresh clone with no incremental cache. Local dev was
+# repeatedly committing "OK locally" then watching CI go red because the
+# stale .tsbuildinfo masked the regression. This catches it pre-push.
+#
+# Bypass: `git commit --no-verify` skips this and every other gate. Use
+# only for mid-WIP commits you'll fix before pushing — never for final
+# commits that land on main.
+staged_ts=$(git diff --cached --name-only --diff-filter=AM | grep -E '\.(ts|tsx)$' || true)
+if [ -n "$staged_ts" ]; then
+  echo "→ Running typecheck (TypeScript files staged)..."
+  npm run typecheck
+fi
