@@ -7,13 +7,13 @@ import { isFirstRunMode, rehydrateBootstrapAsync } from "@/core/first-run";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Kebab MCP — Give every AI client the same superpowers.",
+  title: "Kebab MCP — One backend. Every AI gets a bite.",
   description:
-    "One self-hosted backend for every AI client. 86+ tools across 15 connectors — Gmail, Calendar, Notion, GitHub, Slack and more. Deploy to Vercel in one click. MIT licensed, open source.",
+    "Deploy Kebab MCP on Vercel and serve Claude, Cursor, Windsurf, and any MCP-compatible client the same private backend: 86+ built-in tools, custom Skills, and your own APIs. MIT licensed, open source.",
   openGraph: {
-    title: "Kebab MCP — Give every AI client the same superpowers.",
+    title: "Kebab MCP — One backend. Every AI gets a bite.",
     description:
-      "One deploy. Claude, Cursor, Windsurf — every MCP client gets 86+ tools across 15 connectors. Self-hosted, MIT licensed, zero ongoing cost.",
+      "Connect your tools once. Feed every AI. 86+ built-in tools across 15 connectors, custom Skills, and any HTTP API you want to bring. Self-hosted on Vercel, MIT licensed.",
   },
 };
 

@@ -9,14 +9,14 @@ export default function Hero() {
           {/* Copy column */}
           <div className="text-center lg:text-left">
             <p className="text-xs font-mono text-amber-400 mb-4 tracking-widest uppercase">
-              One self-hosted backend for every AI client
+              Connect your tools once. Feed every AI.
             </p>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-[1.05] tracking-tight mb-6">
-              Give every AI client the same superpowers.
+              One backend. Every AI gets a bite.
             </h1>
             <p className="text-lg text-slate-400 leading-relaxed mb-6 max-w-xl mx-auto lg:mx-0">
-              One Vercel deploy. Claude, Cursor, Windsurf — and any MCP-compatible client — all get
-              the same 86+ tools: Gmail, Calendar, Notion, GitHub, Slack, and more.
+              Deploy Kebab MCP on Vercel and serve Claude, Cursor, Windsurf, and any MCP-compatible
+              client the same private backend: 86+ built-in tools, custom Skills, and your own APIs.
             </p>
             <p className="text-sm text-slate-500 mb-8 max-w-lg mx-auto lg:mx-0">
               Your keys, your data, your infra. Open source, MIT licensed, no SaaS middleman.
