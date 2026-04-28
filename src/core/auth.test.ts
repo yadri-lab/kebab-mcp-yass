@@ -281,3 +281,86 @@ describe("checkAdminAuth — first-run mode", () => {
     expect(await checkAdminAuth(req)).toBeNull();
   });
 });
+
+// ── SEC-A-03: admin/MCP token isolation in production ────────────────
+
+describe("checkAdminAuth — SEC-A-03 production token isolation", () => {
+  const origMcp = process.env.MCP_AUTH_TOKEN;
+  const origAdmin = process.env.ADMIN_AUTH_TOKEN;
+  const origFallback = process.env.KEBAB_ADMIN_TOKEN_FALLBACK;
+  const origNodeEnv = process.env.NODE_ENV;
+  const origVercel = process.env.VERCEL;
+
+  beforeEach(() => {
+    delete process.env.MCP_AUTH_TOKEN;
+    delete process.env.ADMIN_AUTH_TOKEN;
+    delete process.env.KEBAB_ADMIN_TOKEN_FALLBACK;
+    delete process.env.NODE_ENV;
+    delete process.env.VERCEL;
+    __resetFirstRunForTests();
+  });
+
+  afterEach(() => {
+    if (origMcp === undefined) delete process.env.MCP_AUTH_TOKEN;
+    else process.env.MCP_AUTH_TOKEN = origMcp;
+    if (origAdmin === undefined) delete process.env.ADMIN_AUTH_TOKEN;
+    else process.env.ADMIN_AUTH_TOKEN = origAdmin;
+    if (origFallback === undefined) delete process.env.KEBAB_ADMIN_TOKEN_FALLBACK;
+    else process.env.KEBAB_ADMIN_TOKEN_FALLBACK = origFallback;
+    if (origNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = origNodeEnv;
+    if (origVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = origVercel;
+    __resetFirstRunForTests();
+  });
+
+  it("returns 503 in production when MCP_AUTH_TOKEN set but ADMIN_AUTH_TOKEN unset", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_AUTH_TOKEN = "mcp-secret-tok";
+    const req = new Request("http://example.com/api/admin/status", {
+      headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer mcp-secret-tok" },
+    });
+    const result = await checkAdminAuth(req);
+    expect(result).not.toBeNull();
+    expect((result as Response).status).toBe(503);
+  });
+
+  it("returns 503 on Vercel when MCP_AUTH_TOKEN set but ADMIN_AUTH_TOKEN unset", async () => {
+    process.env.VERCEL = "1";
+    process.env.MCP_AUTH_TOKEN = "mcp-secret-tok";
+    const req = new Request("http://example.com/api/admin/status", {
+      headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer mcp-secret-tok" },
+    });
+    const result = await checkAdminAuth(req);
+    expect(result).not.toBeNull();
+    expect((result as Response).status).toBe(503);
+  });
+
+  it("allows fallback when KEBAB_ADMIN_TOKEN_FALLBACK=1 explicitly opts in", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_AUTH_TOKEN = "shared-tok";
+    process.env.KEBAB_ADMIN_TOKEN_FALLBACK = "1";
+    const req = new Request("http://example.com/api/admin/status", {
+      headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer shared-tok" },
+    });
+    expect(await checkAdminAuth(req)).toBeNull();
+  });
+
+  it("does not block when both ADMIN_AUTH_TOKEN and MCP_AUTH_TOKEN are set in prod", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.MCP_AUTH_TOKEN = "mcp-tok";
+    process.env.ADMIN_AUTH_TOKEN = "admin-tok";
+    const req = new Request("http://example.com/api/admin/status", {
+      headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer admin-tok" },
+    });
+    expect(await checkAdminAuth(req)).toBeNull();
+  });
+
+  it("preserves dev convenience fallback (no NODE_ENV, no VERCEL)", async () => {
+    process.env.MCP_AUTH_TOKEN = "shared-tok";
+    const req = new Request("http://example.com/api/admin/status", {
+      headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer shared-tok" },
+    });
+    expect(await checkAdminAuth(req)).toBeNull();
+  });
+});

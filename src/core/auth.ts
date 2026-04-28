@@ -317,8 +317,27 @@ async function _checkAdminAuthImpl(request: Request): Promise<Response | null> {
   if (csrfError) return csrfError;
 
   warnAdminTokenFallback();
-  const adminRaw =
-    getConfig("ADMIN_AUTH_TOKEN") || getConfig("MCP_AUTH_TOKEN") || getBootstrapAuthToken() || "";
+
+  // SEC-A-03: refuse silent fallback in production. If MCP_AUTH_TOKEN is set
+  // but ADMIN_AUTH_TOKEN is not, the dashboard would otherwise be reachable
+  // with the same token every MCP client holds. That defeats the two-scope
+  // model. To opt back into the legacy behavior (single token shared
+  // between MCP + admin), set KEBAB_ADMIN_TOKEN_FALLBACK=1 explicitly.
+  const adminTokenEnv = getConfig("ADMIN_AUTH_TOKEN");
+  const mcpTokenEnv = getConfig("MCP_AUTH_TOKEN");
+  const fallbackOptIn =
+    getConfig("KEBAB_ADMIN_TOKEN_FALLBACK") === "1" ||
+    getConfig("KEBAB_ADMIN_TOKEN_FALLBACK") === "true";
+  const isProd = getConfig("NODE_ENV") === "production" || getConfig("VERCEL") === "1";
+  if (isProd && !adminTokenEnv && mcpTokenEnv && !fallbackOptIn) {
+    return new Response(
+      "Admin auth misconfigured: ADMIN_AUTH_TOKEN is required when MCP_AUTH_TOKEN is set " +
+        "(or set KEBAB_ADMIN_TOKEN_FALLBACK=1 to allow shared-token fallback).",
+      { status: 503 }
+    );
+  }
+
+  const adminRaw = adminTokenEnv || mcpTokenEnv || getBootstrapAuthToken() || "";
   const tokens = parseTokens(adminRaw);
   if (tokens.length === 0) {
     // First-run mode (no token configured anywhere). We must NOT silently

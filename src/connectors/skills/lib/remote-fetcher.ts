@@ -1,8 +1,10 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import type { Skill } from "../store";
 import { replaceSkill } from "../store";
 import { fetchWithByteCap } from "@/core/fetch-utils";
 import { isPublicUrl } from "@/core/url-safety";
 import { toMsg } from "@/core/error-utils";
+import { getConfig } from "@/core/config-facade";
 
 // Phase 44 SCM-05b: this file retains an inline `new AbortController() +
 // setTimeout` in fetchRemote because it composes with fetchWithByteCap
@@ -30,6 +32,40 @@ import { toMsg } from "@/core/error-utils";
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BYTES = 500 * 1024;
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
+const SIGNATURE_HEADER = "x-skill-signature";
+
+/**
+ * SEC-A-01 — optional HMAC signature verification for remote skills.
+ *
+ * When `KEBAB_SKILLS_HMAC_SECRET` is set, every remote-skill response MUST
+ * carry an `x-skill-signature` header equal to `hex(hmacSHA256(secret, body))`.
+ * Mismatched / missing signatures are rejected with a generic error so an
+ * attacker cannot distinguish "header missing" from "header wrong".
+ *
+ * When the env var is unset, signature verification is bypassed and the
+ * existing TLS + SSRF guards are the only defense — same behavior as before.
+ *
+ * Threat: a remote skill URL refetched periodically can be intercepted by a
+ * MITM (DNS spoof, compromised CDN, attacker-controlled origin) and have its
+ * content swapped, injecting prompt-level instructions into the LLM's prompt
+ * composition path. HMAC pins the content to a secret only the operator + the
+ * signing producer share.
+ */
+function verifySkillSignature(body: string, headers: Headers): { ok: boolean; error?: string } {
+  const secret = getConfig("KEBAB_SKILLS_HMAC_SECRET");
+  if (!secret) return { ok: true }; // opt-in; unset = legacy behavior
+  const provided = headers.get(SIGNATURE_HEADER);
+  if (!provided) return { ok: false, error: "Skill signature missing" };
+  const expected = createHmac("sha256", secret).update(body).digest("hex");
+  // Length check first: timingSafeEqual throws on length mismatch.
+  if (provided.length !== expected.length) return { ok: false, error: "Skill signature mismatch" };
+  try {
+    const ok = timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+    return ok ? { ok: true } : { ok: false, error: "Skill signature mismatch" };
+  } catch {
+    return { ok: false, error: "Skill signature mismatch" };
+  }
+}
 
 export interface FetchRemoteResult {
   ok: boolean;
@@ -117,6 +153,10 @@ export async function fetchRemote(url: string): Promise<FetchRemoteResult> {
       }
       if (result.truncated) {
         return { ok: false, error: `response exceeds ${MAX_BYTES} bytes` };
+      }
+      const sig = verifySkillSignature(result.text, result.headers);
+      if (!sig.ok) {
+        return { ok: false, error: sig.error || "Skill signature invalid" };
       }
       return { ok: true, content: result.text };
     }

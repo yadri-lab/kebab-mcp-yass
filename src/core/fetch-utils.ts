@@ -75,6 +75,9 @@ export interface FetchCapResult {
   /** Location header for 3xx responses. Callers using `redirect: "manual"`
    *  must read this and re-validate before following the redirect. */
   location: string | null;
+  /** Response headers — exposed so callers can read auth/signature
+   *  headers (e.g. `x-skill-signature`) without a second fetch. */
+  headers: Headers;
 }
 
 export async function fetchWithByteCap(
@@ -95,6 +98,7 @@ export async function fetchWithByteCap(
       status: res.status,
       finalUrl: res.url || url,
       location,
+      headers: res.headers,
     };
   }
 
@@ -109,6 +113,7 @@ export async function fetchWithByteCap(
       status: res.status,
       finalUrl: res.url || url,
       location,
+      headers: res.headers,
     };
   }
 
@@ -151,5 +156,6 @@ export async function fetchWithByteCap(
     status: res.status,
     finalUrl: res.url || url,
     location,
+    headers: res.headers,
   };
 }

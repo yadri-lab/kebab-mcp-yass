@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
-import { interpolate, invokeApiTool, testApiConnection } from "./invoke";
+import { interpolate, invokeApiTool, testApiConnection, __resetAllowLocalWarn } from "./invoke";
 import type { ApiConnection, ApiTool } from "../store";
 
 function makeConn(partial: Partial<ApiConnection> = {}): ApiConnection {
@@ -127,6 +127,61 @@ describe("invokeApiTool", () => {
     const res = await invokeApiTool(conn, tool, {});
     expect(res.truncated).toBe(true);
     expect(res.body.length).toBeLessThanOrEqual(512 * 1024);
+  });
+});
+
+describe("SEC-A-02: KEBAB_API_CONN_ALLOW_LOCAL ignored in production", () => {
+  const origNodeEnv = process.env.NODE_ENV;
+  const origVercel = process.env.VERCEL;
+
+  beforeEach(() => {
+    __resetAllowLocalWarn();
+    process.env.KEBAB_API_CONN_ALLOW_LOCAL = "1";
+  });
+  afterEach(() => {
+    delete process.env.KEBAB_API_CONN_ALLOW_LOCAL;
+    if (origNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = origNodeEnv;
+    if (origVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = origVercel;
+    vi.restoreAllMocks();
+  });
+
+  it("rejects loopback in production even when KEBAB_API_CONN_ALLOW_LOCAL=1", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.VERCEL;
+    const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
+    const tool = makeTool();
+    await expect(invokeApiTool(conn, tool, {})).rejects.toThrow(/URL rejected|loopback|private/i);
+  });
+
+  it("rejects loopback on Vercel even when KEBAB_API_CONN_ALLOW_LOCAL=1", async () => {
+    delete process.env.NODE_ENV;
+    process.env.VERCEL = "1";
+    const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
+    const tool = makeTool();
+    await expect(invokeApiTool(conn, tool, {})).rejects.toThrow(/URL rejected|loopback|private/i);
+  });
+
+  it("logs an error to stderr (once) when flag is forced in production", async () => {
+    process.env.NODE_ENV = "production";
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
+    const tool = makeTool();
+    await expect(invokeApiTool(conn, tool, {})).rejects.toThrow();
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining("KEBAB_API_CONN_ALLOW_LOCAL is ignored in production")
+    );
+  });
+
+  it("still allows loopback in dev (NODE_ENV unset, no VERCEL)", async () => {
+    delete process.env.NODE_ENV;
+    delete process.env.VERCEL;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
+    const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
+    const tool = makeTool();
+    const res = await invokeApiTool(conn, tool, {});
+    expect(res.ok).toBe(true);
   });
 });
 

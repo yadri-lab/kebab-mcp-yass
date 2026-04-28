@@ -64,9 +64,34 @@ export interface InvokeResult {
   url: string;
 }
 
+let allowLocalProdWarned = false;
+
 function allowLocal(): boolean {
   const flag = getConfig("KEBAB_API_CONN_ALLOW_LOCAL");
-  return flag === "1" || flag === "true";
+  if (flag !== "1" && flag !== "true") return false;
+
+  // SEC-A-02: refuse the dev-convenience flag in production. Vercel sets
+  // VERCEL=1 on every deployment; NODE_ENV=production is the standard
+  // Node signal. Either rules it out — opening loopback / RFC1918 in
+  // prod would expose cloud metadata (169.254.169.254) and internal
+  // services to any caller able to define a custom API connection.
+  const isProd = getConfig("NODE_ENV") === "production" || getConfig("VERCEL") === "1";
+  if (isProd) {
+    if (!allowLocalProdWarned) {
+      console.error(
+        "[Kebab MCP Security] KEBAB_API_CONN_ALLOW_LOCAL is ignored in production. " +
+          "This flag is dev-only because it bypasses SSRF protection."
+      );
+      allowLocalProdWarned = true;
+    }
+    return false;
+  }
+  return true;
+}
+
+/** Test-only: reset the prod warning dedupe. */
+export function __resetAllowLocalWarn(): void {
+  allowLocalProdWarned = false;
 }
 
 /** Join baseUrl with a path, safely. */
