@@ -9,13 +9,7 @@ import { useEffect, useRef, useState } from "react";
  * multi-paragraph bodies. The (i) icon stays unobtrusive, the popover
  * appears on click and dismisses on outside-click or Escape.
  */
-export function InfoTooltip({
-  title,
-  body,
-}: {
-  title: string;
-  body: string;
-}) {
+export function InfoTooltip({ title, body }: { title: string; body: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

@@ -66,7 +66,14 @@ export default function SkewerIllustration() {
         <circle r="34" fill="url(#hero-veg)" />
         <circle r="34" fill="none" stroke="#92400e" strokeWidth="1.5" opacity="0.4" />
         {/* Mini Gmail mark — envelope */}
-        <g transform="translate(-14, -10)" stroke="#7c2d12" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <g
+          transform="translate(-14, -10)"
+          stroke="#7c2d12"
+          strokeWidth="2"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <rect x="0" y="0" width="28" height="20" rx="2" fill="#fef3c7" />
           <path d="M0 2 L14 12 L28 2" />
         </g>
@@ -75,7 +82,17 @@ export default function SkewerIllustration() {
       {/* Chunk 2 — Notion (meat-style cube) */}
       <g transform="translate(160, 184) rotate(-3)">
         <rect x="-32" y="-32" width="64" height="64" rx="6" fill="url(#hero-meat)" />
-        <rect x="-32" y="-32" width="64" height="64" rx="6" fill="none" stroke="#7c2d12" strokeWidth="1.5" opacity="0.5" />
+        <rect
+          x="-32"
+          y="-32"
+          width="64"
+          height="64"
+          rx="6"
+          fill="none"
+          stroke="#7c2d12"
+          strokeWidth="1.5"
+          opacity="0.5"
+        />
         <text
           x="0"
           y="6"
@@ -105,7 +122,17 @@ export default function SkewerIllustration() {
       {/* Chunk 4 — GitHub (meat-style cube) */}
       <g transform="translate(336, 175) rotate(2)">
         <rect x="-30" y="-30" width="60" height="60" rx="6" fill="url(#hero-meat)" />
-        <rect x="-30" y="-30" width="60" height="60" rx="6" fill="none" stroke="#7c2d12" strokeWidth="1.5" opacity="0.5" />
+        <rect
+          x="-30"
+          y="-30"
+          width="60"
+          height="60"
+          rx="6"
+          fill="none"
+          stroke="#7c2d12"
+          strokeWidth="1.5"
+          opacity="0.5"
+        />
         {/* GH cat silhouette simplified */}
         <path
           d="M0 -16 c-9 0 -16 7 -16 16 c0 7 5 13 11 15 c1 0 1 -1 1 -1 v-3 c-4 1 -6 -2 -6 -2 c-1 -2 -2 -3 -2 -3 c-2 -1 0 -1 0 -1 c2 0 3 2 3 2 c2 3 5 2 7 2 c0 -2 1 -3 2 -4 c-5 -1 -10 -3 -10 -11 c0 -2 1 -4 2 -6 c0 -1 -1 -3 0 -6 c0 0 2 -1 7 2 c2 -1 4 -1 6 -1 c2 0 4 0 6 1 c5 -3 7 -2 7 -2 c1 3 0 5 0 6 c1 2 2 4 2 6 c0 8 -5 10 -10 11 c1 1 2 3 2 5 v6 c0 1 0 2 1 1 c6 -2 11 -8 11 -15 c0 -9 -7 -16 -16 -16z"
@@ -118,7 +145,14 @@ export default function SkewerIllustration() {
         <circle r="28" fill="url(#hero-veg)" />
         <circle r="28" fill="none" stroke="#92400e" strokeWidth="1.5" opacity="0.4" />
         {/* Mini calendar */}
-        <g transform="translate(-10, -10)" stroke="#7c2d12" strokeWidth="1.8" fill="#fef3c7" strokeLinecap="round" strokeLinejoin="round">
+        <g
+          transform="translate(-10, -10)"
+          stroke="#7c2d12"
+          strokeWidth="1.8"
+          fill="#fef3c7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <rect x="0" y="2" width="20" height="18" rx="1.5" />
           <line x1="0" y1="7" x2="20" y2="7" />
           <line x1="6" y1="0" x2="6" y2="4" />

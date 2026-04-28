@@ -46,7 +46,13 @@ export default function WhyKebab() {
 /** Three identical skewers stacked — "same tools across clients" */
 function ThreeSkewersIcon() {
   return (
-    <svg className="w-7 h-7" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 32 32"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       {[8, 16, 24].map((y) => (
         <g key={y}>
           <line x1="3" y1={y} x2="29" y2={y} strokeLinecap="round" strokeWidth="1.8" />
@@ -62,7 +68,13 @@ function ThreeSkewersIcon() {
 /** Sauce/condiment bottle — "bring your own sauce" */
 function SauceBottleIcon() {
   return (
-    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       {/* Cap */}
       <rect x="9" y="2" width="6" height="3" rx="0.5" fill="currentColor" />
       {/* Neck */}
@@ -85,7 +97,13 @@ function SauceBottleIcon() {
 /** Simple chef's toque — "your kitchen, your rules" */
 function ChefHatIcon() {
   return (
-    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

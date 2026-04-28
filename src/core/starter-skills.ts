@@ -76,9 +76,7 @@ Rewritten version:`,
     description:
       "Pulls action items, owners, and deadlines out of meeting notes or chat transcripts. Returns a clean checklist.",
     icon: "✅",
-    arguments: [
-      { name: "notes", description: "Meeting notes or chat transcript", required: true },
-    ],
+    arguments: [{ name: "notes", description: "Meeting notes or chat transcript", required: true }],
     content: `Extract action items from the following notes.
 
 For each action item, identify:

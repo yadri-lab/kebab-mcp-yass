@@ -52,8 +52,8 @@ export default function Connectors() {
             12 integrations on the skewer.
           </h2>
           <p className="text-slate-400 text-base mt-3 max-w-2xl mx-auto leading-relaxed">
-            Drop in an API key — the connector lights up. 86+ tools across the apps you already
-            use, no glue code required.
+            Drop in an API key — the connector lights up. 86+ tools across the apps you already use,
+            no glue code required.
           </p>
         </div>
 
@@ -114,7 +114,13 @@ export default function Connectors() {
 function SkewerIcon({ variant = "outline" }: { variant?: "outline" | "filled" }) {
   const fill = variant === "filled" ? "currentColor" : "none";
   return (
-    <svg className="w-7 h-7" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 32 32"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <line x1="3" y1="20" x2="29" y2="14" strokeLinecap="round" strokeWidth="2" />
       <circle cx="10" cy="18.5" r="3" fill={fill} />
       <rect x="14" y="13.5" width="5" height="5" rx="0.8" fill={fill} />
@@ -125,7 +131,13 @@ function SkewerIcon({ variant = "outline" }: { variant?: "outline" | "filled" })
 
 function BookIcon() {
   return (
-    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -138,7 +150,13 @@ function BookIcon() {
 
 function GaugeIcon() {
   return (
-    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      className="w-7 h-7"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 13a9 9 0 0118 0" />
       <path strokeLinecap="round" d="M12 13l4-4" />
       <circle cx="12" cy="13" r="1.2" fill="currentColor" stroke="none" />

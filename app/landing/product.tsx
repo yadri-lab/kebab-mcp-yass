@@ -136,9 +136,7 @@ function DashboardMockup() {
               <div
                 key={c.name}
                 className={`border rounded-lg p-2.5 ${
-                  c.on
-                    ? "bg-amber-500/5 border-amber-500/30"
-                    : "bg-slate-900/40 border-slate-800"
+                  c.on ? "bg-amber-500/5 border-amber-500/30" : "bg-slate-900/40 border-slate-800"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
@@ -148,9 +146,7 @@ function DashboardMockup() {
                     {c.name}
                   </span>
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      c.on ? "bg-amber-400" : "bg-slate-600"
-                    }`}
+                    className={`w-1.5 h-1.5 rounded-full ${c.on ? "bg-amber-400" : "bg-slate-600"}`}
                   />
                 </div>
                 <span className="text-[10px] font-mono text-slate-500">{c.count} tools</span>
