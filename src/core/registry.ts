@@ -1,7 +1,7 @@
 import type { ConnectorManifest, ConnectorState, ToolDefinition } from "./types";
 import { getEnabledPacksOverride } from "./config";
 import { on } from "./events";
-import { hydrateCredentialsFromKV } from "./credential-store";
+import { hydrateCredentialsFromKV, getHydratedCredentialSnapshot } from "./credential-store";
 import { getConfig } from "./config-facade";
 
 // ── PERF-01: lazy connector loaders ──────────────────────────────────
@@ -279,7 +279,7 @@ type GateResult =
 function gateConnector(
   entry: ConnectorLoaderEntry,
   enabledOverride: Set<string> | undefined,
-  env: NodeJS.ProcessEnv
+  env: Record<string, string | undefined>
 ): GateResult {
   // Check explicit enable list (if set)
   if (enabledOverride && !enabledOverride.has(entry.id)) {
@@ -300,6 +300,27 @@ function gateConnector(
     return { kind: "reject", reason: `missing env: ${missing.join(", ")}` };
   }
   return { kind: "accept" };
+}
+
+/**
+ * Build the env view used for gating.
+ *
+ * SEC-02: credentials saved through the dashboard live in the
+ * `hydratedSnapshot` (see credential-store.ts), NOT in `process.env`
+ * (mutating process.env at request time would race across tenants on
+ * warm lambdas). The registry needs to see both — process.env for
+ * platform/boot vars, hydrated snapshot for KV-saved credentials —
+ * otherwise a connector configured via the dashboard would still gate
+ * as `missing env` after a save (Bug C, 2026-04-28).
+ *
+ * process.env wins on conflict to preserve the documented behavior:
+ * boot env vars (Vercel project settings, .env) take precedence over
+ * KV writes — the credential-store hydrate path mirrors this rule.
+ */
+function buildGateEnv(): Record<string, string | undefined> {
+  const snap = getHydratedCredentialSnapshot();
+  // Spread the snapshot first so process.env wins on conflict.
+  return { ...snap, ...process.env };
 }
 
 // ── Stub manifest for disabled connectors ────────────────────────────
@@ -351,11 +372,12 @@ export async function resolveRegistryAsync(): Promise<ConnectorState[]> {
   const enabledOverride = getEnabledPacksOverride();
   const results: ConnectorState[] = new Array(ALL_CONNECTOR_LOADERS.length);
   const loadPromises: Promise<void>[] = [];
+  const gateEnv = buildGateEnv();
 
   for (let i = 0; i < ALL_CONNECTOR_LOADERS.length; i++) {
     const entry = ALL_CONNECTOR_LOADERS[i];
     if (!entry) continue;
-    const gate = gateConnector(entry, enabledOverride, process.env);
+    const gate = gateConnector(entry, enabledOverride, gateEnv);
 
     if (gate.kind === "reject") {
       results[i] = {
@@ -383,8 +405,11 @@ export async function resolveRegistryAsync(): Promise<ConnectorState[]> {
       p.then((manifest) => {
         if (gate.kind === "needs-custom-active") {
           // Custom predicate lives on the manifest; evaluate now.
+          // Pass the merged gate env (process.env + KV-hydrated snapshot)
+          // so dashboard-saved credentials are visible to the predicate
+          // — same fix as the default missing-env path above.
           if (manifest.isActive) {
-            const r = manifest.isActive(process.env);
+            const r = manifest.isActive(gateEnv as NodeJS.ProcessEnv);
             if (!r.active) {
               results[i] = {
                 manifest,
@@ -395,8 +420,9 @@ export async function resolveRegistryAsync(): Promise<ConnectorState[]> {
             }
           }
           // Else: custom-active flag was set but manifest has no predicate;
-          // fall back to the default missing-env check.
-          const missing = entry.requiredEnvVars.filter((v) => !getConfig(v));
+          // fall back to the default missing-env check (against the merged
+          // gate env so KV-hydrated credentials count as present).
+          const missing = entry.requiredEnvVars.filter((v) => !gateEnv[v]);
           if (missing.length > 0) {
             results[i] = {
               manifest,

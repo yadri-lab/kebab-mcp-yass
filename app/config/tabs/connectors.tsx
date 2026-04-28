@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { ConnectorSummary } from "../tabs";
 import { PACKS, CredentialInput, normalizeGitHubRepo } from "../pack-defs";
 import { renderMarkdown } from "@/core/markdown-lite";
@@ -10,6 +11,7 @@ import { ApiConnectionsSection } from "./api-connections-section";
 type StorageMode = "kv" | "file" | "static" | "kv-degraded" | null;
 
 export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }) {
+  const router = useRouter();
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -162,14 +164,15 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
         // required vars are now all present. The client still holds the
         // pre-save server snapshot, so the toggle would still show OFF
         // and the "Setup needed" badge would persist until the next page
-        // load. Force a reload after a brief delay so the user sees the
-        // "Saved" toast first, then lands on the freshly-gated state.
-        // Skipped in ephemeral mode (no point reloading — the var won't
+        // load. Use Next's RSC refresh so the segment re-renders against
+        // the freshly-gated registry while the existing DOM stays mounted
+        // (no white "Loading connectors..." flash — Bug B, 2026-04-28).
+        // Skipped in ephemeral mode (no point refreshing — the var won't
         // survive the next cold start anyway and the user has bigger
         // problems to read in the amber banner).
         if (!data.ephemeral) {
           setTimeout(() => {
-            window.location.reload();
+            router.refresh();
           }, 800);
         }
         // Sync ephemeral flag — if the save landed in ephemeral storage
@@ -249,8 +252,10 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
       const data = await res.json();
       if (data.ok) {
         setEnvVars((p) => ({ ...p, ...vars }));
-        // Reload to re-fetch registry state
-        window.location.reload();
+        // Re-fetch registry state via RSC refresh — keeps the existing
+        // DOM mounted while the server segment re-renders with the
+        // freshly-gated connector list (Bug B, 2026-04-28).
+        router.refresh();
       } else {
         // Non-ok with mode hint → sync local state, surface error inline.
         if (data.mode === "static" || data.mode === "kv-degraded") {
@@ -562,19 +567,22 @@ export function ConnectorsTab({ connectors }: { connectors: ConnectorSummary[] }
                       <p className="break-words">{saveError[pack.id]}</p>
                     </div>
                   )}
-                  {test && !test.ok && (test.detail || test.message) && (
-                    <details className="bg-red-bg border border-red/20 rounded-md p-3 group">
-                      <summary className="cursor-pointer text-xs font-semibold text-red select-none list-none flex items-center gap-1.5">
-                        <span className="inline-block transition-transform group-open:rotate-90">
-                          ▶
-                        </span>
-                        Show error details
-                      </summary>
-                      <pre className="mt-2 text-[11px] font-mono text-red break-all whitespace-pre-wrap">
-                        {test.detail || test.message}
-                      </pre>
-                    </details>
-                  )}
+                  {test &&
+                    !test.ok &&
+                    test.message !== "Testing..." &&
+                    (test.detail || test.message) && (
+                      <details className="bg-red-bg border border-red/20 rounded-md p-3 group">
+                        <summary className="cursor-pointer text-xs font-semibold text-red select-none list-none flex items-center gap-1.5">
+                          <span className="inline-block transition-transform group-open:rotate-90">
+                            ▶
+                          </span>
+                          Show error details
+                        </summary>
+                        <pre className="mt-2 text-[11px] font-mono text-red break-all whitespace-pre-wrap">
+                          {test.detail || test.message}
+                        </pre>
+                      </details>
+                    )}
                   {pack.tools.length > 0 && (
                     <details className="pt-3 border-t border-border group">
                       <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:text-text select-none list-none flex items-center gap-1.5">
