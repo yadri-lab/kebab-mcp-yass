@@ -29,6 +29,8 @@
     "lint": "eslint src/ app/ scripts/ tests/",
     "lint:fix": "eslint src/ app/ scripts/ tests/ --fix",
     "lint:unused": "knip --config config/knip.ts",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "scaffold:connector": "npx tsx scripts/scaffold-connector.ts",
     "format": "prettier --write \"src/**/*.ts\" \"app/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"app/**/*.{ts,tsx}\"",
     "test:contract": "npx tsx scripts/contract-test.ts",

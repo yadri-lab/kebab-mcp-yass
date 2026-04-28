@@ -144,3 +144,62 @@ describe("fetchWithTimeout", () => {
     clearSpy.mockRestore();
   });
 });
+
+describe("DX-A-01: fetchWithValidation", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns typed data when schema matches the response", async () => {
+    const { z } = await import("zod");
+    const { fetchWithValidation } = await import("./fetch-utils");
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true, count: 3 }), { status: 200 })
+    ) as unknown as typeof fetch;
+
+    const Schema = z.object({ ok: z.literal(true), count: z.number() });
+    const { data, status } = await fetchWithValidation("https://x.test/", {}, Schema);
+    expect(data.count).toBe(3);
+    expect(status).toBe(200);
+  });
+
+  it("throws FetchValidationError when JSON does not match the schema", async () => {
+    const { z } = await import("zod");
+    const { fetchWithValidation, FetchValidationError } = await import("./fetch-utils");
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ wrong: "shape" }), { status: 200 })
+    ) as unknown as typeof fetch;
+
+    const Schema = z.object({ ok: z.literal(true) });
+    await expect(fetchWithValidation("https://x.test/", {}, Schema)).rejects.toBeInstanceOf(
+      FetchValidationError
+    );
+  });
+
+  it("throws FetchValidationError when body is not valid JSON", async () => {
+    const { z } = await import("zod");
+    const { fetchWithValidation, FetchValidationError } = await import("./fetch-utils");
+    globalThis.fetch = vi.fn(
+      async () => new Response("<html>oops</html>", { status: 500 })
+    ) as unknown as typeof fetch;
+
+    const Schema = z.object({ ok: z.boolean() });
+    await expect(fetchWithValidation("https://x.test/", {}, Schema)).rejects.toBeInstanceOf(
+      FetchValidationError
+    );
+  });
+
+  it("preserves status code on caller-handleable HTTP errors", async () => {
+    const { z } = await import("zod");
+    const { fetchWithValidation } = await import("./fetch-utils");
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ error: "not-found" }), { status: 404 })
+    ) as unknown as typeof fetch;
+
+    const Schema = z.object({ error: z.string() });
+    const { data, status } = await fetchWithValidation("https://x.test/", {}, Schema);
+    expect(status).toBe(404);
+    expect(data.error).toBe("not-found");
+  });
+});

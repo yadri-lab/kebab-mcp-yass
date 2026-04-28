@@ -18,10 +18,9 @@ vi.mock("@/core/request-context", async (importOriginal) => {
         return e.value;
       },
       set: async (k: string, v: string, ttl?: number) => {
-        STORE.set(k, {
-          value: v,
-          expiresAt: ttl ? Date.now() + ttl * 1000 : undefined,
-        });
+        const entry: { value: string; expiresAt?: number } = { value: v };
+        if (ttl) entry.expiresAt = Date.now() + ttl * 1000;
+        STORE.set(k, entry);
       },
       delete: async (k: string) => {
         STORE.delete(k);

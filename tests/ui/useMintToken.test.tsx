@@ -25,7 +25,9 @@ describe("useMintToken", () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    const [url, init] = call!;
     expect(String(url)).toMatch(/\/api\/welcome\/init/);
     expect((init as RequestInit | undefined)?.method).toBe("POST");
   });

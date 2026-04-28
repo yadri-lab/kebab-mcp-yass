@@ -295,7 +295,7 @@ describe("checkAdminAuth — SEC-A-03 production token isolation", () => {
     delete process.env.MCP_AUTH_TOKEN;
     delete process.env.ADMIN_AUTH_TOKEN;
     delete process.env.KEBAB_ADMIN_TOKEN_FALLBACK;
-    delete process.env.NODE_ENV;
+    delete (process.env as Record<string, string | undefined>).NODE_ENV;
     delete process.env.VERCEL;
     __resetFirstRunForTests();
   });
@@ -307,15 +307,16 @@ describe("checkAdminAuth — SEC-A-03 production token isolation", () => {
     else process.env.ADMIN_AUTH_TOKEN = origAdmin;
     if (origFallback === undefined) delete process.env.KEBAB_ADMIN_TOKEN_FALLBACK;
     else process.env.KEBAB_ADMIN_TOKEN_FALLBACK = origFallback;
-    if (origNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = origNodeEnv;
+    if (origNodeEnv === undefined)
+      delete (process.env as Record<string, string | undefined>).NODE_ENV;
+    else (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
     if (origVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = origVercel;
     __resetFirstRunForTests();
   });
 
   it("returns 503 in production when MCP_AUTH_TOKEN set but ADMIN_AUTH_TOKEN unset", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.MCP_AUTH_TOKEN = "mcp-secret-tok";
     const req = new Request("http://example.com/api/admin/status", {
       headers: { "x-forwarded-for": "8.8.8.8", authorization: "Bearer mcp-secret-tok" },
@@ -337,7 +338,7 @@ describe("checkAdminAuth — SEC-A-03 production token isolation", () => {
   });
 
   it("allows fallback when KEBAB_ADMIN_TOKEN_FALLBACK=1 explicitly opts in", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.MCP_AUTH_TOKEN = "shared-tok";
     process.env.KEBAB_ADMIN_TOKEN_FALLBACK = "1";
     const req = new Request("http://example.com/api/admin/status", {
@@ -347,7 +348,7 @@ describe("checkAdminAuth — SEC-A-03 production token isolation", () => {
   });
 
   it("does not block when both ADMIN_AUTH_TOKEN and MCP_AUTH_TOKEN are set in prod", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.MCP_AUTH_TOKEN = "mcp-tok";
     process.env.ADMIN_AUTH_TOKEN = "admin-tok";
     const req = new Request("http://example.com/api/admin/status", {

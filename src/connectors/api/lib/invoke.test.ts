@@ -140,15 +140,16 @@ describe("SEC-A-02: KEBAB_API_CONN_ALLOW_LOCAL ignored in production", () => {
   });
   afterEach(() => {
     delete process.env.KEBAB_API_CONN_ALLOW_LOCAL;
-    if (origNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = origNodeEnv;
+    if (origNodeEnv === undefined)
+      delete (process.env as Record<string, string | undefined>).NODE_ENV;
+    else (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
     if (origVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = origVercel;
     vi.restoreAllMocks();
   });
 
   it("rejects loopback in production even when KEBAB_API_CONN_ALLOW_LOCAL=1", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     delete process.env.VERCEL;
     const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
     const tool = makeTool();
@@ -156,7 +157,7 @@ describe("SEC-A-02: KEBAB_API_CONN_ALLOW_LOCAL ignored in production", () => {
   });
 
   it("rejects loopback on Vercel even when KEBAB_API_CONN_ALLOW_LOCAL=1", async () => {
-    delete process.env.NODE_ENV;
+    delete (process.env as Record<string, string | undefined>).NODE_ENV;
     process.env.VERCEL = "1";
     const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
     const tool = makeTool();
@@ -164,7 +165,7 @@ describe("SEC-A-02: KEBAB_API_CONN_ALLOW_LOCAL ignored in production", () => {
   });
 
   it("logs an error to stderr (once) when flag is forced in production", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });
     const tool = makeTool();
@@ -175,7 +176,7 @@ describe("SEC-A-02: KEBAB_API_CONN_ALLOW_LOCAL ignored in production", () => {
   });
 
   it("still allows loopback in dev (NODE_ENV unset, no VERCEL)", async () => {
-    delete process.env.NODE_ENV;
+    delete (process.env as Record<string, string | undefined>).NODE_ENV;
     delete process.env.VERCEL;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
     const conn = makeConn({ baseUrl: "http://127.0.0.1:5000" });

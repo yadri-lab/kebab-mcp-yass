@@ -60,7 +60,7 @@ let lastPrimeAt = 0;
 let lastPrimePromise: Promise<void> | null = null;
 
 async function primeDynamicCaches(
-  packs: { manifest: { refresh?: () => Promise<void> } }[]
+  packs: { manifest: { refresh?: (() => Promise<void>) | undefined } }[]
 ): Promise<void> {
   const now = Date.now();
   if (lastPrimePromise && now - lastPrimeAt < PRIME_CACHE_TTL_MS) {

@@ -33,6 +33,11 @@ jobs:
         run: node scripts/audit-gate.mjs
       - run: npm run lint
       - run: npm run format:check
+      # DX-A-02 (v0.16 Phase 66): TypeScript strictness gate. tsc was
+      # implicit via `next build`; running tsc --noEmit explicitly
+      # catches type regressions ~2 commits earlier and gives a much
+      # smaller diagnostic surface than waiting for build to fail.
+      - run: npm run typecheck
       # CI-03 (v0.11 Phase 43): knip now blocks on new dead code. The
       # one-time cleanup in `chore(knip):` b1fb3d1 landed before this
       # flip so the main branch is green.

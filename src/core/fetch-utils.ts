@@ -159,3 +159,92 @@ export async function fetchWithByteCap(
     headers: res.headers,
   };
 }
+
+/**
+ * fetchWithValidation — fetch + JSON parse + Zod validation in one call.
+ *
+ * DX-A-01 (v0.16): Connector lib code commonly does
+ *   `const data = (await res.json()) as MyResponse;`
+ * which silently passes through any garbage the upstream API returns.
+ * If the API drifts (Slack returns null for `ok`, GitHub adds a wrapper
+ * field, Notion swaps a string for an object), the cast hides the
+ * mismatch and the bug surfaces deep in the handler as a TypeError.
+ *
+ * This helper composes `fetchWithTimeout` + `response.json()` +
+ * `schema.parse()` so the validation failure is loud and located at
+ * the network boundary. Throws `FetchValidationError` on parse
+ * failure, with the upstream URL + truncated response body for
+ * debugging. HTTP errors (non-2xx) are NOT thrown — caller decides
+ * how to handle a 404 vs a 500.
+ *
+ * Use Zod's `.passthrough()` if the upstream may add fields you
+ * don't validate. Use `.strict()` to fail when the response has
+ * unknown fields (rare; useful for security-sensitive responses).
+ *
+ * Example:
+ *   const SlackOk = z.object({ ok: z.literal(true), ts: z.string() });
+ *   const data = await fetchWithValidation(url, init, SlackOk);
+ *   data.ts; // typed as string, validated at runtime
+ */
+import type { z } from "zod";
+
+export class FetchValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly url: string,
+    public readonly body: string,
+    public readonly status: number,
+    public override readonly cause?: unknown
+  ) {
+    super(message);
+    this.name = "FetchValidationError";
+  }
+}
+
+export async function fetchWithValidation<T>(
+  url: string,
+  init: RequestInit,
+  schema: z.ZodType<T>,
+  timeoutMs: number = 15_000
+): Promise<{ data: T; status: number; response: Response }> {
+  const res = await fetchWithTimeout(url, init, timeoutMs);
+  let raw: string;
+  try {
+    raw = await res.text();
+  } catch (err) {
+    throw new FetchValidationError(
+      `Failed to read response body from ${url}`,
+      url,
+      "",
+      res.status,
+      err
+    );
+  }
+  let parsed: unknown;
+  if (raw.length === 0) {
+    parsed = undefined;
+  } else {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new FetchValidationError(
+        `Response from ${url} is not valid JSON (status ${res.status})`,
+        url,
+        raw.slice(0, 500),
+        res.status,
+        err
+      );
+    }
+  }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new FetchValidationError(
+      `Response from ${url} failed schema validation: ${result.error.message}`,
+      url,
+      raw.slice(0, 500),
+      res.status,
+      result.error
+    );
+  }
+  return { data: result.data, status: res.status, response: res };
+}
