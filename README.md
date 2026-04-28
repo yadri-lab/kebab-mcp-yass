@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="#in-30-seconds">In 30 seconds</a> &middot;
   <a href="#who-is-this-for">Who it's for</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -27,18 +28,50 @@
 
 ---
 
+## In 30 seconds
+
+```
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                  Your AI clients (any of them)                     │
+   │   Claude Desktop  ·  Cursor  ·  Windsurf  ·  ChatGPT  ·  …         │
+   └─────────────────────────────┬──────────────────────────────────────┘
+                                 │  one MCP endpoint, one auth token
+                                 ▼
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                Kebab MCP  (your Vercel deploy)                     │
+   │                                                                    │
+   │   /api/mcp  →  registry  →  86+ tools across 15 connectors         │
+   │                                                                    │
+   │   Dashboard at /config: enable connectors, write Skills,           │
+   │   add custom HTTP API tools, watch live logs.                      │
+   └─────────────────────────────┬──────────────────────────────────────┘
+                                 │  your tokens, never ours
+                                 ▼
+   ┌────────────────────────────────────────────────────────────────────┐
+   │   Google Workspace · Slack · Notion · Obsidian · GitHub · Linear   │
+   │   Airtable · Browser (Browserbase) · Apify · Composio · …          │
+   └────────────────────────────────────────────────────────────────────┘
+```
+
+**What it is.** A self-hosted MCP server framework that ships with 86+ pre-built tools across 15 connectors. Deploys to Vercel free tier. Open-source, AGPL-3.0.
+
+**Why it exists.** Every AI client wants its own MCP server. Five clients × five tool sources = 25 half-broken integrations. Kebab is one backend that every client talks to.
+
+**What you get:**
+
+- ✅ **One deploy, one endpoint** — every AI client speaks to the same `https://your-fork.vercel.app/api/mcp`
+- ✅ **86+ tools, no code** — Gmail, Calendar, Drive, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Apify, Browser, paywalled articles, custom Skills, custom HTTP APIs
+- ✅ **Your tokens, your KV** — credentials live in your Upstash; we have no servers, no telemetry, no lock-in
+- ✅ **Dashboard included** — enable/disable connectors live, run any tool from the playground, write Skills in markdown, watch logs
+
+**Who it's not for.** If you only need one MCP integration (e.g. just Gmail), grab the official one. Kebab earns its keep at ≥ 3 tool sources or ≥ 2 AI clients.
+
+---
+
 <p align="center">
   <img src="public/screenshots/dashboard.png" alt="Kebab MCP dashboard" width="720" />
 </p>
 <p align="center"><em>The unified dashboard — connectors, tools, skills, logs, settings.</em></p>
-
-## The pitch
-
-**The problem.** Every AI client wants its own MCP server. Claude, Cursor, Windsurf, ChatGPT — each with its own config, its own tools, its own auth. You end up running five half-broken servers, or you rent a hosted platform that holds your tokens hostage.
-
-**The fix.** Kebab MCP is one self-hosted server that exposes 86+ tools across Google Workspace, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Browser, Apify, plus your own Skills and any HTTP API. Deploys to Vercel in 5 minutes. Your tokens stay in your KV.
-
-**Why it's different.** Hosted platforms own your auth. Per-app MCP servers don't compose. Kebab gives every AI client the same backend — your backend — without the hosted-platform lock-in.
 
 ## Who is this for?
 
@@ -361,7 +394,7 @@ Ordered by reader journey — discover, deploy, use, author, contribute.
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — contribution guide + coverage philosophy
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — version history
 - [docs/SECURITY.md](docs/SECURITY.md) — vulnerability reporting
-- [CLAUDE.md](CLAUDE.md) — developer / fork-maintainer guide (durable bootstrap pattern, conventions)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — developer / fork-maintainer guide (durable bootstrap pattern, conventions, env-var reference)
 
 ## Tech Stack
 
