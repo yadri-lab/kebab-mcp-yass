@@ -767,11 +767,44 @@ function DraftForm({
     });
   };
 
+  const isEditing = !!draft.editingId;
+  const breadcrumbLabel = isEditing ? draft.name.trim() || "Untitled skill" : "New";
+
   return (
     <div className="border border-accent/30 rounded-lg bg-bg p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">{draft.editingId ? "Edit skill" : "New skill"}</h3>
-        <button onClick={onCancel} className="text-xs text-text-dim hover:text-text">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <nav
+            className="flex items-center gap-1.5 text-[11px] text-text-muted mb-1"
+            aria-label="Breadcrumb"
+          >
+            <button type="button" onClick={onCancel} className="hover:text-text transition-colors">
+              Skills
+            </button>
+            <span className="text-text-muted/60">/</span>
+            <span className="text-text-dim font-medium truncate max-w-[280px]">
+              {breadcrumbLabel}
+            </span>
+            {isEditing && (
+              <>
+                <span className="text-text-muted/60">/</span>
+                <span className="text-text-dim">Edit</span>
+              </>
+            )}
+          </nav>
+          <h2 className="font-semibold text-base text-text">
+            {isEditing ? "Edit skill" : "Create a new skill"}
+          </h2>
+          <p className="text-xs text-text-dim mt-0.5">
+            {isEditing
+              ? "Update the prompt body, arguments, or allowed tools."
+              : "Define a reusable prompt template — exposed as an MCP tool to your clients."}
+          </p>
+        </div>
+        <button
+          onClick={onCancel}
+          className="text-xs text-text-dim hover:text-text shrink-0 px-2 py-1"
+        >
           Cancel
         </button>
       </div>
