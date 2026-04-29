@@ -31,6 +31,8 @@ import {
 } from "./tools/linkedin-company-insights";
 import { apifySearchActorsSchema, handleApifySearchActors } from "./tools/search-actors";
 import { apifyRunActorSchema, handleApifyRunActor } from "./tools/run-actor";
+import { apifySearchDocsSchema, handleApifySearchDocs } from "./tools/search-docs";
+import { apifyFetchDocSchema, handleApifyFetchDoc } from "./tools/fetch-doc";
 import { getConfig } from "@/core/config-facade";
 
 interface WrapperDef {
@@ -124,6 +126,22 @@ const ALWAYS_ON_TOOLS: ToolDefinition[] = [
     handler: async (args) => handleApifyRunActor(args),
     destructive: true,
   }),
+  defineTool({
+    name: "apify_search_docs",
+    description:
+      "Full-text search across Apify and Crawlee documentation (platform, SDKs, CLI, REST API, Academy). Returns matching page URLs with snippets. Use this before apify_run_actor when you need to look up an actor's input shape, an API parameter, or a platform concept. Source param: 'apify' (default) | 'crawlee-js' | 'crawlee-py'.",
+    schema: apifySearchDocsSchema,
+    handler: async (args) => handleApifySearchDocs(args),
+    destructive: false,
+  }),
+  defineTool({
+    name: "apify_fetch_doc",
+    description:
+      "Fetch the full markdown of an Apify or Crawlee documentation page given its URL (typically one returned by apify_search_docs). Restricted to docs.apify.com and crawlee.dev.",
+    schema: apifyFetchDocSchema,
+    handler: async (args) => handleApifyFetchDoc(args),
+    destructive: false,
+  }),
 ];
 
 function parseAllowlist(env: NodeJS.ProcessEnv): Set<string> | null {
@@ -161,10 +179,17 @@ An [Apify](https://apify.com) account with credits or a paid plan. The LinkedIn 
 3. Copy your **Personal API token** and set it as \`APIFY_TOKEN\`
 4. Optional: set \`APIFY_ACTORS\` to a comma-separated allowlist of actor IDs if you want to restrict which wrappers are registered
 
+### Bonus tools (no extra setup)
+- \`apify_search_docs\` — full-text search across Apify + Crawlee documentation (Algolia-backed, no auth needed).
+- \`apify_fetch_doc\` — read the full markdown of any \`docs.apify.com\` or \`crawlee.dev\` page returned by the search.
+
+These two are handy for self-service discovery: when no \`apify_linkedin_*\` wrapper matches, search the docs to find the right actor or learn its input shape before calling \`apify_run_actor\`.
+
 ### Troubleshooting
 - _401 from Apify_: the token is wrong or was regenerated — grab a fresh one from Settings.
 - _Actor run succeeds but dataset is empty_: LinkedIn actors occasionally get blocked; retry or switch to a different actor via \`apify_search_actors\`.
-- _Out of credits_: top up your Apify account; each LinkedIn run consumes a small amount.`,
+- _Out of credits_: top up your Apify account; each LinkedIn run consumes a small amount.
+- _\`apify_search_docs\` returns 0 results_: try fewer / different keywords, or switch \`source\` to \`crawlee-js\` or \`crawlee-py\` if the topic is library-specific.`,
   requiredEnvVars: ["APIFY_TOKEN"],
   testConnection: async (credentials) => {
     const token = credentials.APIFY_TOKEN;

@@ -82,6 +82,14 @@
     "destructive": true
   },
   {
+    "name": "apify_fetch_doc",
+    "pack": "apify",
+    "schemaKeys": [
+      "url"
+    ],
+    "destructive": false
+  },
+  {
     "name": "apify_linkedin_company",
     "pack": "apify",
     "schemaKeys": [
@@ -145,6 +153,17 @@
     "pack": "apify",
     "schemaKeys": [
       "query"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "apify_search_docs",
+    "pack": "apify",
+    "schemaKeys": [
+      "limit",
+      "offset",
+      "query",
+      "source"
     ],
     "destructive": false
   },
