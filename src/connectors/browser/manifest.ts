@@ -25,8 +25,19 @@ Two accounts:
   requiredEnvVars: ["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID", "OPENROUTER_API_KEY"],
   testConnection: async (credentials) => {
     const bbKey = credentials.BROWSERBASE_API_KEY;
+    const bbProject = credentials.BROWSERBASE_PROJECT_ID;
+    const orKey = credentials.OPENROUTER_API_KEY;
     if (!bbKey) return { ok: false, message: "Missing Browserbase API key" };
-    return { ok: true, message: "Credentials provided — will be verified on first use" };
+    if (!bbProject) return { ok: false, message: "Missing Browserbase project ID" };
+    if (!orKey) return { ok: false, message: "Missing OpenRouter API key" };
+
+    const [bb, or] = await Promise.all([pingBrowserbase(bbKey, bbProject), pingOpenRouter(orKey)]);
+    if (!bb.ok && !or.ok) {
+      return { ok: false, message: `Browserbase: ${bb.reason} · OpenRouter: ${or.reason}` };
+    }
+    if (!bb.ok) return { ok: false, message: `Browserbase: ${bb.reason}` };
+    if (!or.ok) return { ok: false, message: `OpenRouter: ${or.reason}` };
+    return { ok: true, message: `Browserbase: ${bb.detail} · OpenRouter: ${or.detail}` };
   },
   tools: [
     defineTool({
@@ -75,3 +86,61 @@ Two accounts:
     }),
   ],
 };
+
+type PingResult = { ok: true; detail: string } | { ok: false; reason: string };
+
+async function pingBrowserbase(apiKey: string, projectId: string): Promise<PingResult> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(
+      `https://api.browserbase.com/v1/projects/${encodeURIComponent(projectId)}`,
+      { method: "GET", headers: { "X-BB-API-Key": apiKey }, signal: ctrl.signal }
+    );
+    if (res.status === 401) return { ok: false, reason: "invalid API key" };
+    if (res.status === 403) return { ok: false, reason: "key has no access to this project" };
+    if (res.status === 404) return { ok: false, reason: "project ID not found" };
+    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+    const data = (await res.json().catch(() => ({}))) as { name?: string; concurrency?: number };
+    const name = data.name || "project";
+    const conc = typeof data.concurrency === "number" ? `, concurrency=${data.concurrency}` : "";
+    return { ok: true, detail: `${name}${conc}` };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error && err.name === "AbortError" ? "timeout (5s)" : "network error",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function pingOpenRouter(apiKey: string): Promise<PingResult> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/key", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: ctrl.signal,
+    });
+    if (res.status === 401) return { ok: false, reason: "invalid API key" };
+    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: { label?: string; limit_remaining?: number | null; is_free_tier?: boolean };
+    };
+    const d = body.data ?? {};
+    const tier = d.is_free_tier ? "free tier" : "paid";
+    const credit =
+      d.limit_remaining == null ? "unlimited" : `$${Number(d.limit_remaining).toFixed(2)} left`;
+    const label = d.label ? `${d.label}, ` : "";
+    return { ok: true, detail: `${label}${tier}, ${credit}` };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error && err.name === "AbortError" ? "timeout (5s)" : "network error",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
