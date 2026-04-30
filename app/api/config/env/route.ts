@@ -5,6 +5,7 @@ import {
   isVercelApiConfigured,
   saveCredentialsToKV,
   resetCredentialHydration,
+  readAllCredentialsFromKV,
 } from "@/core/credential-store";
 import { detectStorageMode, clearStorageModeCache } from "@/core/storage-mode";
 import { withAdminAuth } from "@/core/with-admin-auth";
@@ -71,8 +72,17 @@ async function getHandler(ctx: PipelineContext) {
   try {
     const store = getEnvStore();
     const vars = await store.read();
+    // Overlay KV-backed credentials. On Vercel/Upstash deployments the
+    // dashboard saves credentials through saveCredentialsToKV() (writes
+    // land under `cred:*` keys), NOT to the .env filesystem. Reading
+    // store.read() alone returned empty values for those keys, so the
+    // Connectors tab rendered placeholders instead of masked dots even
+    // though the connector was Active server-side. Mirror the precedence
+    // used by env-export: KV creds win over env when both are set.
+    const kvCreds = await readAllCredentialsFromKV().catch(() => ({}));
+    const merged: Record<string, string> = { ...vars, ...kvCreds };
     const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(vars)) {
+    for (const [k, v] of Object.entries(merged)) {
       out[k] = reveal ? v : maskValue(k, v);
     }
     // Overlay KV-backed settings so the dashboard always sees the
