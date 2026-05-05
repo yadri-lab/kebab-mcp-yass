@@ -149,15 +149,52 @@ const SAMPLE_TOOL = `{
   ]
 }`;
 
+// 5-line teaser shown on the empty-state — the most "aha!" lines from
+// SAMPLE_TOOL: an input, a tool call that saves its output, and a
+// transform that consumes it via {{}}. Just enough to signal the shape
+// without making the empty state feel like a wall of code.
+const SAMPLE_TOOL_PREVIEW = `"inputs": [{ "name": "task", "type": "string", "required": true }],
+"steps": [
+  { "kind": "tool", "toolName": "vault_read", "args": { "path": "Tasks/Kanban.md" }, "saveAs": "kanban" },
+  { "kind": "transform", "template": "{{kanban}}\\n- [ ] {{task}}", "saveAs": "newKanban" },
+  { "kind": "tool", "toolName": "vault_write", "args": { "path": "Tasks/Kanban.md", "content": "{{newKanban}}" } }
+]`;
+
 // ── Tab ───────────────────────────────────────────────────────────────
 
 export function CustomToolsTab() {
   const [tools, setTools] = useState<CustomTool[]>([]);
   const [loading, setLoading] = useState(true);
-  const [drawer, setDrawer] = useState<{ mode: "new" } | { mode: "edit"; tool: CustomTool } | null>(
-    null
-  );
+  const [drawer, setDrawer] = useState<
+    { mode: "new" } | { mode: "edit"; tool: CustomTool } | { mode: "sample" } | null
+  >(null);
   const [flash, setFlash] = useState<string | null>(null);
+  // Help panel: default open the first time a user lands on this tab. We
+  // persist the *collapsed* bit (mirrors the brief's localStorage key) so
+  // a missing key reads as "not collapsed yet" → keep the panel open.
+  const [helpOpen, setHelpOpen] = useState(true);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("kebab.customtools.help.collapsed");
+      if (saved !== null) setHelpOpen(saved !== "1");
+    } catch {
+      /* localStorage unavailable — keep default (open) */
+    }
+  }, []);
+
+  const toggleHelp = () => {
+    setHelpOpen((v) => {
+      const next = !v;
+      try {
+        // Stored value represents "collapsed": "1" when the panel is closed.
+        localStorage.setItem("kebab.customtools.help.collapsed", next ? "0" : "1");
+      } catch {
+        /* localStorage unavailable — UI state still toggles in-memory */
+      }
+      return next;
+    });
+  };
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -200,7 +237,7 @@ export function CustomToolsTab() {
         <div>
           <h2 className="text-lg font-semibold">Custom Tools</h2>
           <p className="text-sm text-text-dim">
-            Compose existing Kebab tools into new MCP tools — declarative JSON, no code.
+            Define new MCP tools as declarative JSON — paste, test, save.
           </p>
         </div>
         <button
@@ -209,6 +246,85 @@ export function CustomToolsTab() {
         >
           + New custom tool
         </button>
+      </div>
+
+      <div className="border border-border rounded-lg overflow-hidden bg-bg-muted/20">
+        <button
+          type="button"
+          onClick={toggleHelp}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-muted/40 transition-colors"
+          aria-expanded={helpOpen}
+        >
+          <div
+            className="w-7 h-7 rounded-full bg-accent/10 text-accent flex items-center justify-center text-xs font-bold shrink-0"
+            aria-hidden="true"
+          >
+            ?
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-text">How custom tools work</p>
+            <p className="text-xs text-text-dim mt-0.5">
+              {helpOpen
+                ? "Click to collapse."
+                : "What a Custom Tool is, the two step kinds, and how variables flow."}
+            </p>
+          </div>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            aria-hidden="true"
+            className={`text-text-muted shrink-0 transition-transform ${helpOpen ? "rotate-180" : ""}`}
+          >
+            <path
+              d="M3.5 5.25L7 8.75L10.5 5.25"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        {helpOpen && (
+          <div className="border-t border-border px-4 py-4 text-sm text-text-dim space-y-3 bg-bg/40">
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">
+                What it is
+              </h4>
+              <p>
+                A Custom Tool is a JSON-defined sequence of steps that calls existing Kebab tools
+                (vault, slack, gmail…) and shapes the result. The composed tool appears as a regular
+                MCP tool to your AI clients (Claude, Cursor…).
+              </p>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">
+                The two step kinds
+              </h4>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <code className="text-text">tool</code> — invoke another Kebab tool by name. Save
+                  its result under <code className="text-text">saveAs</code> to reuse it.
+                </li>
+                <li>
+                  <code className="text-text">transform</code> — render a Mustache template against
+                  the running context. Use it to format the final output or restructure intermediate
+                  values.
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">
+                Variables
+              </h4>
+              <p>
+                Use <strong className="text-text-dim">{`{{varName}}`}</strong> to inject inputs or
+                saved values from previous steps. Strict Mustache only — no JS.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {flash && (
@@ -220,10 +336,27 @@ export function CustomToolsTab() {
       {loading ? (
         <p className="text-sm text-text-dim">Loading…</p>
       ) : tools.length === 0 ? (
-        <div className="border border-border border-dashed rounded-lg p-8 text-center">
-          <p className="text-sm text-text-dim">
-            No Custom Tools yet. Click <strong>+ New custom tool</strong> to compose your first one.
+        <div className="border border-border border-dashed rounded-lg p-8 space-y-4">
+          <p className="text-sm text-text-dim text-center">
+            No custom tools yet. Here&apos;s what one looks like:
           </p>
+          <pre className="bg-bg-muted/60 border border-border rounded-md p-3 font-mono text-xs text-text-muted overflow-x-auto max-w-2xl mx-auto">
+            {SAMPLE_TOOL_PREVIEW}
+          </pre>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              onClick={() => setDrawer({ mode: "sample" })}
+              className="text-xs font-medium px-3 py-1.5 border border-border rounded-md text-text-dim hover:text-text hover:bg-bg-muted/40"
+            >
+              View full sample
+            </button>
+            <button
+              onClick={() => setDrawer({ mode: "new" })}
+              className="text-xs font-medium px-3 py-1.5 bg-accent text-white rounded-md hover:bg-accent/90"
+            >
+              + Create from scratch
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3">
