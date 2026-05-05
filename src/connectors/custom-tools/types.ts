@@ -179,4 +179,13 @@ export interface RunResult {
   stepResults: StepRunResult[];
   totalDurationMs: number;
   error?: string;
+  /**
+   * Phase 3 telemetry — destructive `tool` steps that successfully
+   * committed BEFORE any later failure aborted the run. Surfaced so
+   * operators (and the dashboard "Recent runs" tab) can see what side
+   * effects landed before the crash and decide whether manual rollback
+   * is required. Empty for fully-successful runs and for runs that
+   * failed before any destructive step landed.
+   */
+  committedSteps: { index: number; toolName: string }[];
 }

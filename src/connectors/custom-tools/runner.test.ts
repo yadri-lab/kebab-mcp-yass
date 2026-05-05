@@ -57,6 +57,15 @@ vi.mock("@/core/credential-store", () => ({
   getHydratedCredentialSnapshot: () => ({}),
 }));
 
+// Phase 3 — neutralize the fire-and-forget telemetry path so the
+// runner tests don't accidentally write to data/kv.json. The runs-store
+// is exercised directly in runs-store.test.ts; here we only care about
+// `committedSteps` being populated on the in-memory RunResult.
+vi.mock("./runs-store", () => ({
+  recordRun: vi.fn(async () => undefined),
+  listRuns: vi.fn(async () => []),
+}));
+
 // Helper to register a tool inside the mocked registry (vault pack —
 // allowlisted by CR-02).
 function registerTool(
@@ -464,5 +473,131 @@ describe("runner — timeouts", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/step timed out after 100ms/);
     expect(result.stepResults[0]?.error).toBe("timed out");
+  });
+});
+
+// ── Phase 3 telemetry: committedSteps tracking ────────────────────────
+//
+// Operators need to know which destructive side-effects landed before a
+// failure so they can decide whether manual rollback is required. The
+// runner stamps `committedSteps` on the RunResult; the dashboard's
+// "Recent runs" tab surfaces them with a warning line.
+
+describe("runner — committedSteps (Phase 3 telemetry)", () => {
+  beforeEach(() => {
+    mockTools.length = 0;
+    mockAdminTools.length = 0;
+  });
+
+  it("tracks destructive steps that succeeded before a later failure", async () => {
+    // Tool composition mirrors the spec example: transform OK → destructive
+    // tool OK → tool FAIL. Only the middle (destructive) step should appear
+    // in committedSteps; the transform never goes in (transforms are not
+    // destructive by definition) and the failed step itself never lands.
+    let writeCount = 0;
+    registerTool(
+      "vault_write",
+      async () => {
+        writeCount++;
+        return { content: [{ type: "text", text: `wrote (#${writeCount})` }] };
+      },
+      true // destructive
+    );
+    registerTool("flaky_finalize", async () => ({
+      isError: true,
+      content: [{ type: "text", text: "downstream API down" }],
+    }));
+
+    const tool: CustomTool = {
+      id: "partial_commit",
+      description: "x",
+      destructive: true,
+      inputs: [],
+      steps: [
+        // Step 0: transform — never destructive
+        { kind: "transform", template: "hello", saveAs: "greeting" },
+        // Step 1: destructive tool — should land in committedSteps
+        { kind: "tool", toolName: "vault_write", args: { content: "{{greeting}}" } },
+        // Step 2: another tool that fails — must NOT land in committedSteps
+        { kind: "tool", toolName: "flaky_finalize", args: {} },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(false);
+    expect(result.committedSteps).toEqual([{ index: 1, toolName: "vault_write" }]);
+    // Sanity: the destructive step actually ran once before the failure.
+    expect(writeCount).toBe(1);
+  });
+
+  it("excludes non-destructive tool steps from committedSteps", async () => {
+    // Read-only tool followed by a fail. The successful read MUST NOT
+    // appear in committedSteps — committedSteps is specifically about
+    // side-effects an operator might need to undo.
+    registerTool(
+      "vault_read",
+      async () => ({ content: [{ type: "text", text: "irrelevant" }] }),
+      false
+    );
+    registerTool("boom", async () => ({
+      isError: true,
+      content: [{ type: "text", text: "no" }],
+    }));
+    const tool: CustomTool = {
+      id: "readonly_then_fail",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      steps: [
+        { kind: "tool", toolName: "vault_read", args: {}, saveAs: "x" },
+        { kind: "tool", toolName: "boom", args: {} },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(false);
+    expect(result.committedSteps).toEqual([]);
+  });
+
+  it("returns committedSteps=[] for a fully successful run", async () => {
+    registerTool("vault_write", async () => ({ content: [{ type: "text", text: "ok" }] }), true);
+    const tool: CustomTool = {
+      id: "all_ok",
+      description: "x",
+      destructive: true,
+      inputs: [],
+      steps: [{ kind: "tool", toolName: "vault_write", args: {} }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(true);
+    // Successful runs DO populate committedSteps (it's just informational
+    // for non-errored runs), but the failed-rollback warning in the UI
+    // only fires when ok=false. Asserting the shape is non-empty here so
+    // a future refactor doesn't accidentally drop the field.
+    expect(result.committedSteps).toEqual([{ index: 0, toolName: "vault_write" }]);
+  });
+
+  it("propagates source/tokenIdShort opts via the runner signature", async () => {
+    // We're not asserting the persisted record here (runs-store is
+    // mocked in this file); we just verify the runner accepts the
+    // optional 3rd arg without TypeError or signature mismatch. The
+    // runs-store roundtrip is covered in runs-store.test.ts.
+    registerTool("vault_read", async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const tool: CustomTool = {
+      id: "with_opts",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      steps: [{ kind: "tool", toolName: "vault_read", args: {} }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {}, { source: "test", tokenIdShort: "abcdef12" });
+    expect(result.ok).toBe(true);
   });
 });

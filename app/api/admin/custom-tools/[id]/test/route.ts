@@ -75,7 +75,18 @@ async function testHandler(ctx: PipelineContext) {
       : {};
 
   try {
-    const result = await runCustomTool(tool, inputs);
+    // Phase 3 — tag the run as a dashboard test invocation so the
+    // "Recent runs" tab can distinguish operator-driven probes from
+    // real MCP transport invocations. tokenIdShort is the first 8
+    // chars of the admin tokenId (sha256 prefix from authStep), used
+    // for attribution in the run history. Never the full secret.
+    const result = await runCustomTool(tool, inputs, {
+      source: "test",
+      // exactOptionalPropertyTypes — only spread the property when it
+      // has a defined value; passing `undefined` explicitly would be a
+      // TS2375 against the optional-but-not-undefined RunCustomToolOptions.
+      ...(ctx.tokenId ? { tokenIdShort: ctx.tokenId.slice(0, 8) } : {}),
+    });
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

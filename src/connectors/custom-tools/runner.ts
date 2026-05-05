@@ -7,6 +7,7 @@ import type { ToolDefinition, ToolResult } from "@/core/types";
 import type { CustomTool, CustomToolStep, RunResult, StepRunResult } from "./types";
 import { expandArgs, renderTemplate } from "./expression";
 import { getActiveCustomToolIds, runWithActiveCustomToolIds } from "./context";
+import { recordRun, type RunRecord } from "./runs-store";
 
 /**
  * Custom Tool runner.
@@ -209,12 +210,34 @@ function buildInitialContext(
  * handler signature to `(args, opts?)` so handlers can opt into
  * cooperative cancellation.
  */
+export interface RunCustomToolOptions {
+  /**
+   * Caller channel — distinguishes dashboard `/test` invocations from
+   * MCP transport invocations in the persisted run history. Defaults
+   * to "mcp" so the manifest wrapper doesn't need to thread anything
+   * through; the test route explicitly passes "test".
+   */
+  source?: "test" | "mcp";
+  /**
+   * sha256-first-8 of the caller's auth token, when known. Recorded on
+   * the run row for attribution. NEVER the full secret. Optional —
+   * the manifest path doesn't surface the request-scoped tokenId today,
+   * so MCP runs typically have this undefined.
+   */
+  tokenIdShort?: string;
+}
+
 export async function runCustomTool(
   tool: CustomTool,
-  inputs: Record<string, unknown>
+  inputs: Record<string, unknown>,
+  opts: RunCustomToolOptions = {}
 ): Promise<RunResult> {
   const startedAt = Date.now();
   const stepResults: StepRunResult[] = [];
+  // Phase 3 — track destructive `tool` steps that successfully completed
+  // before any later abort. Populated as steps land; persisted via
+  // recordRun so operators can see what side effects committed.
+  const committedSteps: { index: number; toolName: string }[] = [];
   const maxStepMs = resolveMaxStepMs(tool);
   const maxTotalMs = resolveMaxTotalMs(tool);
 
@@ -225,25 +248,31 @@ export async function runCustomTool(
   const previousActive = getActiveCustomToolIds();
   if (previousActive.has(tool.id)) {
     const chain = [...previousActive, tool.id].join(" → ");
-    return {
+    const result: RunResult = {
       ok: false,
       result: "",
       stepResults,
       totalDurationMs: 0,
       error: `recursion detected: ${chain}`,
+      committedSteps,
     };
+    fireRecordRun(tool, inputs, result, startedAt, opts);
+    return result;
   }
   const activeIds = new Set(previousActive);
   activeIds.add(tool.id);
 
   if (tool.steps.length > MAX_STEPS) {
-    return {
+    const result: RunResult = {
       ok: false,
       result: "",
       stepResults,
       totalDurationMs: 0,
       error: `too many steps (max ${MAX_STEPS}, got ${tool.steps.length})`,
+      committedSteps,
     };
+    fireRecordRun(tool, inputs, result, startedAt, opts);
+    return result;
   }
 
   // Build the initial context from the inputs.
@@ -251,13 +280,16 @@ export async function runCustomTool(
   try {
     context = buildInitialContext(tool, inputs);
   } catch (err) {
-    return {
+    const result: RunResult = {
       ok: false,
       result: "",
       stepResults,
       totalDurationMs: Date.now() - startedAt,
       error: toMsg(err),
+      committedSteps,
     };
+    fireRecordRun(tool, inputs, result, startedAt, opts);
+    return result;
   }
 
   // Wrap the whole sequence in runWithCredentials so child tools that
@@ -292,7 +324,8 @@ export async function runCustomTool(
       };
       stepResults.push(placeholder);
       try {
-        const { saved, finalText } = await runStep(step, context, activeIds, maxStepMs);
+        const stepOutcome = await runStep(step, context, activeIds, maxStepMs);
+        const { saved, finalText, destructive } = stepOutcome;
         if (step.kind === "tool" && step.saveAs) {
           context[step.saveAs] = saved;
         } else if (step.kind === "transform") {
@@ -308,6 +341,11 @@ export async function runCustomTool(
           durationMs: Date.now() - stepStarted,
           preview: previewOf(saved),
         };
+        // Phase 3 — record destructive `tool` steps that committed.
+        // Transforms and read-only tools never go in this list.
+        if (step.kind === "tool" && destructive) {
+          committedSteps.push({ index: i, toolName: step.toolName });
+        }
       } catch (err) {
         const msg = toMsg(err);
         const isStepTimeout = err instanceof StepTimeoutError;
@@ -373,20 +411,83 @@ export async function runCustomTool(
 
   const totalDurationMs = Date.now() - startedAt;
   if (lastError) {
-    return {
+    const result: RunResult = {
       ok: false,
       result: lastSaved,
       stepResults,
       totalDurationMs,
       error: lastError,
+      committedSteps,
     };
+    fireRecordRun(tool, inputs, result, startedAt, opts);
+    return result;
   }
-  return {
+  const result: RunResult = {
     ok: true,
     result: lastFinalText || lastSaved,
     stepResults,
     totalDurationMs,
+    committedSteps,
   };
+  fireRecordRun(tool, inputs, result, startedAt, opts);
+  return result;
+}
+
+/**
+ * Phase 3 telemetry — fire-and-forget persistence of a finished run.
+ *
+ * Called from every termination point of `runCustomTool` (success,
+ * recursion-guard, oversize, input-validation failure, step error,
+ * total timeout). Keeps the call-site explicit but uniform.
+ *
+ * `void`-returning by design: the caller must NOT await this. KV
+ * failures inside `recordRun` are caught and logged at warn-level
+ * (see runs-store.ts) — this wrapper adds a defensive `.catch` for
+ * synchronous rejections that somehow escape.
+ */
+function fireRecordRun(
+  tool: CustomTool,
+  inputs: Record<string, unknown>,
+  result: RunResult,
+  startedAt: number,
+  opts: RunCustomToolOptions
+): void {
+  let inputsPreview: string | undefined;
+  try {
+    inputsPreview = JSON.stringify(inputs ?? {}).slice(0, 1024);
+  } catch {
+    // Circular / non-JSON input — drop the preview rather than fail.
+    inputsPreview = undefined;
+  }
+
+  // exactOptionalPropertyTypes — assemble the record by spreading
+  // optional fields only when defined. Assigning `error: undefined`
+  // directly would violate TS2375 against `error?: string`.
+  const record: RunRecord = {
+    toolId: tool.id,
+    ok: result.ok,
+    totalMs: result.totalDurationMs,
+    stepCount: tool.steps.length,
+    stepResults: result.stepResults.map((s) => ({
+      index: s.index,
+      kind: s.kind,
+      label: s.label,
+      ok: s.ok,
+      durationMs: s.durationMs,
+      ...(s.error !== undefined ? { error: s.error } : {}),
+    })),
+    committedSteps: result.committedSteps,
+    startedAt: new Date(startedAt).toISOString(),
+    source: opts.source ?? "mcp",
+    ...(result.error !== undefined ? { error: result.error } : {}),
+    ...(inputsPreview !== undefined ? { inputsPreview } : {}),
+    ...(opts.tokenIdShort ? { tokenIdShort: opts.tokenIdShort } : {}),
+  };
+
+  // fire-and-forget OK: Phase 3 telemetry; recordRun catches its own errors and a KV failure must never cascade into a Custom Tool run failure
+  void recordRun(record).catch(() => {
+    /* swallow — telemetry must never affect run outcome */
+  });
 }
 
 /**
@@ -424,7 +525,7 @@ async function runStep(
   context: Record<string, unknown>,
   activeIds: Set<string>,
   maxStepMs: number
-): Promise<{ saved: unknown; finalText: string }> {
+): Promise<{ saved: unknown; finalText: string; destructive: boolean }> {
   if (step.kind === "transform") {
     // Transforms are sync but we still race them against the per-step
     // timeout — guards against a pathological Mustache template (huge
@@ -432,7 +533,7 @@ async function runStep(
     // template engine is fast and this race is a no-op.
     return await withStepTimeout(async () => {
       const rendered = renderTemplate(step.template, context);
-      return { saved: rendered, finalText: rendered };
+      return { saved: rendered, finalText: rendered, destructive: false };
     }, maxStepMs);
   }
 
@@ -468,7 +569,10 @@ async function runStep(
     throw new Error(errText);
   }
   const finalText = toolResultToText(result);
-  return { saved: finalText, finalText };
+  // Phase 3 — surface the underlying registry tool's destructive flag so
+  // the runner can stamp `committedSteps`. Transforms are never
+  // destructive; tool steps inherit the flag from their ToolDefinition.
+  return { saved: finalText, finalText, destructive: !!lookup.tool.destructive };
 }
 
 function toolResultToText(result: ToolResult): string {

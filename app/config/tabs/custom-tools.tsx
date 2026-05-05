@@ -73,6 +73,33 @@ interface RunResult {
   stepResults: StepRunResult[];
   totalDurationMs: number;
   error?: string;
+  /** Phase 3 — destructive steps that committed before any later failure. */
+  committedSteps?: { index: number; toolName: string }[];
+}
+
+/**
+ * Phase 3 — telemetry record returned by `/api/admin/custom-tools/:id/runs`.
+ * Mirrors RunRecord in src/connectors/custom-tools/runs-store.ts.
+ */
+interface RunRecord {
+  toolId: string;
+  ok: boolean;
+  totalMs: number;
+  stepCount: number;
+  error?: string;
+  stepResults: {
+    index: number;
+    kind: "tool" | "transform";
+    label: string;
+    ok: boolean;
+    durationMs: number;
+    error?: string;
+  }[];
+  committedSteps: { index: number; toolName: string }[];
+  inputsPreview?: string;
+  startedAt: string;
+  source: "test" | "mcp";
+  tokenIdShort?: string;
 }
 
 // ── Sample template shown in an empty drawer ──────────────────────────
@@ -466,6 +493,8 @@ function CustomToolDrawer({
             />
           </div>
 
+          {initial && <RecentRunsSection toolId={initial.id} />}
+
           <details className="border border-border rounded-md overflow-hidden">
             <summary className="px-3 py-2 bg-bg-muted cursor-pointer text-sm font-medium">
               Test runner
@@ -569,4 +598,171 @@ function stripStamped(t: CustomTool): Omit<CustomTool, "createdAt" | "updatedAt"
   void _c;
   void _u;
   return rest;
+}
+
+// ── Recent runs (Phase 3) ─────────────────────────────────────────────
+
+/**
+ * Lazy-loaded "Recent runs" section in the edit drawer.
+ *
+ * Lazy because the run history list is bounded but extra work — we
+ * don't fetch it until the operator expands the section. Also
+ * intentionally only mounted for SAVED tools (the parent drawer guards
+ * with `initial && <RecentRunsSection />`); a draft has no id to query
+ * runs for.
+ *
+ * Empty state mirrors the rest of the dashboard ("border-dashed,
+ * text-text-dim"). Failed runs with `committedSteps` get a warning
+ * line so operators see what landed before the crash and can decide
+ * whether to manually roll back.
+ */
+function RecentRunsSection({ toolId }: { toolId: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [runs, setRuns] = useState<RunRecord[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch(
+        `/api/admin/custom-tools/${encodeURIComponent(toolId)}/runs?limit=20`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        setErr(data.error || "Failed to load runs");
+        setRuns(null);
+      } else {
+        setRuns(Array.isArray(data.runs) ? data.runs : []);
+      }
+    } catch (e) {
+      setErr(toMsg(e));
+      setRuns(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [toolId]);
+
+  return (
+    <details
+      className="border border-border rounded-md overflow-hidden"
+      onToggle={(e) => {
+        const next = (e.target as HTMLDetailsElement).open;
+        setOpen(next);
+        if (next && runs === null && !loading) {
+          // fire-and-forget OK: lazy-load on expand; load() owns its own error/loading state via setErr/setLoading
+          void load();
+        }
+      }}
+    >
+      <summary className="px-3 py-2 bg-bg-muted cursor-pointer text-sm font-medium flex items-center justify-between">
+        <span>Recent runs (last 24h)</span>
+        {open && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // fire-and-forget OK: refresh button click; load() owns its own error/loading state
+              void load();
+            }}
+            className="text-[11px] text-text-dim hover:text-text font-normal"
+          >
+            Refresh
+          </button>
+        )}
+      </summary>
+      <div className="p-3 space-y-2">
+        {loading && <p className="text-xs text-text-dim">Loading…</p>}
+        {err && (
+          <p className="text-xs text-red bg-red/10 border border-red/20 rounded p-2 font-mono">
+            {err}
+          </p>
+        )}
+        {!loading && !err && runs !== null && runs.length === 0 && (
+          <p className="text-xs text-text-dim">No runs in the last 24h.</p>
+        )}
+        {!loading && !err && runs !== null && runs.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-text-muted border-b border-border">
+                  <th className="font-medium py-1.5 pr-3">Time</th>
+                  <th className="font-medium py-1.5 pr-3">Status</th>
+                  <th className="font-medium py-1.5 pr-3">Duration</th>
+                  <th className="font-medium py-1.5 pr-3">Source</th>
+                  <th className="font-medium py-1.5">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r, idx) => (
+                  <RunRow key={`${r.startedAt}-${idx}`} run={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function RunRow({ run }: { run: RunRecord }) {
+  const hasCommitted = !run.ok && run.committedSteps && run.committedSteps.length > 0;
+  return (
+    <>
+      <tr className="border-b border-border/50">
+        <td className="py-1.5 pr-3 font-mono text-text-dim whitespace-nowrap">
+          {formatRelative(run.startedAt)}
+        </td>
+        <td className="py-1.5 pr-3">
+          <span
+            className={`text-[11px] font-mono ${run.ok ? "text-accent" : "text-red"}`}
+            title={run.ok ? "Run succeeded" : "Run failed"}
+          >
+            {run.ok ? "✓ ok" : "✗ failed"}
+          </span>
+        </td>
+        <td className="py-1.5 pr-3 font-mono text-text-dim whitespace-nowrap">{run.totalMs}ms</td>
+        <td className="py-1.5 pr-3 font-mono text-text-muted">{run.source}</td>
+        <td
+          className="py-1.5 font-mono text-text-dim max-w-[24rem] truncate"
+          title={run.error || ""}
+        >
+          {run.error ?? ""}
+        </td>
+      </tr>
+      {hasCommitted && (
+        <tr className="border-b border-border/50">
+          <td colSpan={5} className="py-1.5 pr-3">
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              ⚠ {run.committedSteps.length} step
+              {run.committedSteps.length === 1 ? "" : "s"} committed before failure:{" "}
+              <code className="font-mono">
+                {run.committedSteps.map((s) => s.toolName).join(", ")}
+              </code>{" "}
+              — manual rollback may be required.
+            </p>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/**
+ * Render an ISO timestamp as a short "Nm ago" / "Nh ago" string.
+ * Falls back to the local time for anything older than 24h (the TTL
+ * cap, but a clock skew or a freshly-deployed instance might still
+ * surface older entries).
+ */
+function formatRelative(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return new Date(t).toLocaleString();
 }
