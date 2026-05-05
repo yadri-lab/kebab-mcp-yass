@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toMsg } from "@/core/error-utils";
 
 /**
@@ -427,6 +427,112 @@ export function CustomToolsTab() {
 
 // ── Drawer ────────────────────────────────────────────────────────────
 
+// ── Phase 5 helpers ───────────────────────────────────────────────────
+
+/**
+ * Parsed payload returned by the save API on Zod failure.
+ * Mirrors `customToolWriteSchema.safeParse(...).error.issues`.
+ */
+interface ZodIssue {
+  path?: (string | number)[];
+  message: string;
+}
+
+/**
+ * Friendly-message dictionary — substring (or exact) match against the
+ * raw Zod message. We surface the friendly variant prominently and keep
+ * the raw text in muted small print so technical readers still see what
+ * the underlying validator complained about.
+ */
+const FRIENDLY_MESSAGES: { match: string; friendly: string }[] = [
+  {
+    match: "id must be a lowercase snake_case slug, max 64 chars",
+    friendly:
+      "id must be lowercase letters, digits, and underscores only — like `my_tool` or `summarize_inbox`.",
+  },
+  {
+    match: "tool name must be a lowercase slug",
+    friendly:
+      "step.toolName must be the exact name of an existing Kebab tool — try the 'Available tool names' list above.",
+  },
+  {
+    match: "saveAs must be a valid identifier",
+    friendly:
+      "saveAs must be a valid variable name (letters, digits, underscores; must start with a letter or _).",
+  },
+  {
+    match: "estimated cost",
+    friendly:
+      "(see help panel) — reduce step count or replace expensive tools (browser, composio, paywall) with lighter ones.",
+  },
+];
+
+function friendlyMessageFor(raw: string): string | null {
+  for (const entry of FRIENDLY_MESSAGES) {
+    if (raw.includes(entry.match)) return entry.friendly;
+  }
+  return null;
+}
+
+/**
+ * Best-effort extraction of a position from a JSON.parse error message.
+ * V8 emits `... at position 42 ...`; some other runtimes emit
+ * `position 42`. We try both and fall back to no-position.
+ */
+function extractJsonPosition(msg: string): number | null {
+  const m = msg.match(/(?:at )?position (\d+)/);
+  if (m && m[1]) {
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Pretty-print a value for the step-result panel: try JSON.parse +
+ * re-stringify with indent; on failure return the raw text.
+ */
+function prettyJsonOrRaw(text: string): string {
+  if (!text) return "";
+  // Heuristic — only attempt parse if it looks JSON-ish to avoid eating
+  // CPU on large free-text previews. Both `{` and `[` first-char are
+  // strong signals; everything else passes through.
+  const t = text.trim();
+  if (!t || (t[0] !== "{" && t[0] !== "[")) return text;
+  try {
+    const parsed = JSON.parse(t);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Walk a parsed tool definition and pull every `step.toolName` value
+ * out, regardless of step kind (we ignore non-tool steps automatically).
+ * Used by the unknown-toolname warning.
+ */
+function extractToolNames(parsed: unknown): string[] {
+  if (!parsed || typeof parsed !== "object") return [];
+  const steps = (parsed as { steps?: unknown }).steps;
+  if (!Array.isArray(steps)) return [];
+  const names: string[] = [];
+  for (const s of steps) {
+    if (s && typeof s === "object" && "kind" in s && (s as { kind?: unknown }).kind === "tool") {
+      const tn = (s as { toolName?: unknown }).toolName;
+      if (typeof tn === "string" && tn.length > 0) names.push(tn);
+    }
+  }
+  return names;
+}
+
+interface RegistryToolNamesResponse {
+  ok: boolean;
+  names?: string[];
+  packs?: { id: string; enabled: boolean; tools: string[] }[];
+  error?: string;
+}
+
 function CustomToolDrawer({
   initial,
   onClose,
@@ -442,13 +548,51 @@ function CustomToolDrawer({
   const [json, setJson] = useState(initialJson);
   const [testInputsJson, setTestInputsJson] = useState("{}");
   const [error, setError] = useState<string | null>(null);
+  // Phase 5 — Zod issues are now rendered as a structured list, not a
+  // text blob. We keep the raw `error` field for non-Zod errors (network,
+  // generic save crash) and use `issues` for the structured path/message
+  // pairs that the save endpoint returns on schema failure.
+  const [issues, setIssues] = useState<ZodIssue[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<RunResult | null>(null);
 
-  const parseJson = ():
+  // Phase 5/A — JSON syntax error feedback (separate from save errors).
+  const [jsonSyntaxError, setJsonSyntaxError] = useState<string | null>(null);
+  // Phase 5/A — transient "✓ Valid JSON" success badge after format.
+  const [formatSuccess, setFormatSuccess] = useState<boolean>(false);
+  const formatTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Phase 5/B — registry tool names for client-side validation hints.
+  const [registry, setRegistry] = useState<RegistryToolNamesResponse | null>(null);
+  // Phase 5/B — list of unknown toolNames found in current JSON. Re-
+  // computed on Format & validate, on drawer open (after registry loads),
+  // and on save attempts.
+  const [unknownTools, setUnknownTools] = useState<string[]>([]);
+
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Phase 5/G — dry-run checkbox. Default-on iff the current JSON parses
+  // and declares `destructive: true`. Recomputed when the JSON changes
+  // (cheap parse, only on edits) AND on first mount. The user can flip
+  // either way; we don't auto-uncheck once they've manually toggled.
+  const [dryRun, setDryRun] = useState<boolean>(() => {
+    try {
+      const parsed = JSON.parse(initialJson);
+      return parsed && typeof parsed === "object" && parsed.destructive === true;
+    } catch {
+      return false;
+    }
+  });
+  // Track whether the user has manually overridden the auto-default. If
+  // they have, we stop force-syncing the checkbox to the destructive flag
+  // on subsequent JSON edits — their explicit choice wins.
+  const userTouchedDryRun = useRef<boolean>(false);
+
+  // ── A: Parse helper, exposed for save/test/format ─────────────────
+  const parseJson = useCallback(():
     | { ok: true; value: Record<string, unknown> }
-    | { ok: false; err: string } => {
+    | { ok: false; err: string; position?: number } => {
     try {
       const parsed = JSON.parse(json);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -456,18 +600,116 @@ function CustomToolDrawer({
       }
       return { ok: true, value: parsed as Record<string, unknown> };
     } catch (err) {
-      return {
-        ok: false,
-        err: `Invalid JSON: ${toMsg(err)}`,
-      };
+      const msg = toMsg(err);
+      const position = extractJsonPosition(msg);
+      return position !== null ? { ok: false, err: msg, position } : { ok: false, err: msg };
     }
-  };
+  }, [json]);
+
+  // ── B: Load registry tool names on mount ──────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/registry/tool-names", { credentials: "include" });
+        const data = (await res.json()) as RegistryToolNamesResponse;
+        if (!cancelled && data.ok) setRegistry(data);
+      } catch {
+        // Non-fatal — the unknown-tool warning just won't fire.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Recompute unknown tool names whenever the registry resolves and on
+  // first JSON parse. We do NOT recompute on every keystroke (would
+  // flicker the warning); the user gets a fresh check via Format &
+  // validate or save.
+  const recomputeUnknownTools = useCallback(() => {
+    if (!registry?.names) return;
+    const parsed = parseJson();
+    if (!parsed.ok) {
+      setUnknownTools([]);
+      return;
+    }
+    const known = new Set(registry.names);
+    const unknown = extractToolNames(parsed.value).filter((n) => !known.has(n));
+    // Dedupe in display order so the warning copy is stable.
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    for (const n of unknown) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      deduped.push(n);
+    }
+    setUnknownTools(deduped);
+  }, [registry?.names, parseJson]);
+
+  // First scan when the registry list arrives.
+  useEffect(() => {
+    if (registry?.names) recomputeUnknownTools();
+  }, [registry?.names, recomputeUnknownTools]);
+
+  // Sync dry-run default to the parsed `destructive` flag — but only
+  // until the user manually flips it. After that, their choice is
+  // sticky for the lifetime of the drawer.
+  useEffect(() => {
+    if (userTouchedDryRun.current) return;
+    try {
+      const parsed = JSON.parse(json);
+      const next = parsed && typeof parsed === "object" && parsed.destructive === true;
+      setDryRun(next);
+    } catch {
+      /* invalid JSON — leave previous value */
+    }
+  }, [json]);
+
+  // Cleanup the format-success timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (formatTimer.current) clearTimeout(formatTimer.current);
+    };
+  }, []);
+
+  // ── A: Format & validate ──────────────────────────────────────────
+  const formatAndValidate = useCallback(() => {
+    setJsonSyntaxError(null);
+    setFormatSuccess(false);
+    const parsed = parseJson();
+    if (!parsed.ok) {
+      const positionHint = parsed.position !== undefined ? ` (at position ${parsed.position})` : "";
+      setJsonSyntaxError(`JSON syntax error: ${parsed.err}${positionHint}`);
+      return;
+    }
+    // Reformat in place — preserves user intent (no key reordering, no
+    // schema coercion; we use the parsed object verbatim).
+    setJson(JSON.stringify(parsed.value, null, 2));
+    setFormatSuccess(true);
+    if (formatTimer.current) clearTimeout(formatTimer.current);
+    formatTimer.current = setTimeout(() => setFormatSuccess(false), 3000);
+    // Re-scan for unknown tool names against the freshly-parsed payload.
+    if (registry?.names) {
+      const known = new Set(registry.names);
+      const unknown = extractToolNames(parsed.value).filter((n) => !known.has(n));
+      const seen = new Set<string>();
+      const deduped: string[] = [];
+      for (const n of unknown) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        deduped.push(n);
+      }
+      setUnknownTools(deduped);
+    }
+  }, [parseJson, registry?.names]);
 
   const save = async () => {
     setError(null);
+    setIssues(null);
     const parsed = parseJson();
     if (!parsed.ok) {
-      setError(parsed.err);
+      setJsonSyntaxError(`JSON syntax error: ${parsed.err}`);
       return;
     }
     setSaving(true);
@@ -485,15 +727,12 @@ function CustomToolDrawer({
       });
       const data = await res.json();
       if (!data.ok) {
-        const issuesMsg = Array.isArray(data.issues)
-          ? `\n${data.issues
-              .map(
-                (i: { path?: (string | number)[]; message: string }) =>
-                  `  • ${(i.path || []).join(".")}: ${i.message}`
-              )
-              .join("\n")}`
-          : "";
-        setError(`${data.error || "Save failed"}${issuesMsg}`);
+        if (Array.isArray(data.issues)) {
+          setIssues(data.issues as ZodIssue[]);
+          setError(data.error || "Validation failed");
+        } else {
+          setError(data.error || "Save failed");
+        }
       } else {
         onSaved();
       }
@@ -505,10 +744,11 @@ function CustomToolDrawer({
 
   const runTest = async () => {
     setError(null);
+    setIssues(null);
     setTestResult(null);
     const parsed = parseJson();
     if (!parsed.ok) {
-      setError(parsed.err);
+      setJsonSyntaxError(`JSON syntax error: ${parsed.err}`);
       return;
     }
 
@@ -542,6 +782,11 @@ function CustomToolDrawer({
         return;
       }
 
+      // Phase 5/G — body now also carries `dryRun`. The server defaults
+      // to false when omitted, but we always pass the explicit boolean
+      // so the wire format is unambiguous in proxy logs.
+      const testBody = JSON.stringify({ inputs, dryRun });
+
       // If editing an existing tool with the same id, just run it (the
       // saved version on disk wins). Otherwise stage a temporary tool
       // under a __test__ prefix, run, then delete — so the user gets a
@@ -551,7 +796,7 @@ function CustomToolDrawer({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ inputs }),
+          body: testBody,
         });
         const data = (await res.json()) as RunResult;
         setTestResult(data);
@@ -581,7 +826,7 @@ function CustomToolDrawer({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ inputs }),
+            body: testBody,
           });
           const data = (await res.json()) as RunResult;
           setTestResult(data);
@@ -598,6 +843,15 @@ function CustomToolDrawer({
       setError(`Network error: ${toMsg(err)}`);
     }
     setTesting(false);
+  };
+
+  // Convenience for the issue list "→ jump to JSON" buttons. We don't
+  // map paths to character offsets (would require a JSON-with-locations
+  // parser); just focusing the textarea is already a UX improvement
+  // over the unfocused error blob.
+  const jumpToJson = () => {
+    textareaRef.current?.focus();
+    textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   return (
@@ -618,93 +872,161 @@ function CustomToolDrawer({
               Tool definition <span className="text-text-muted text-xs font-normal">(JSON)</span>
             </label>
             <textarea
+              ref={textareaRef}
               value={json}
-              onChange={(e) => setJson(e.target.value)}
+              onChange={(e) => {
+                setJson(e.target.value);
+                // Clearing transient feedback as the user edits keeps the
+                // UI honest — a stale "✓ Valid JSON" badge after edits
+                // would mislead.
+                if (jsonSyntaxError) setJsonSyntaxError(null);
+                if (formatSuccess) setFormatSuccess(false);
+              }}
               rows={20}
               spellCheck={false}
               className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-xs font-mono focus:border-accent focus:outline-none"
             />
           </div>
 
-          {initial && <RecentRunsSection toolId={initial.id} />}
-
-          <details className="border border-border rounded-md overflow-hidden">
-            <summary className="px-3 py-2 bg-bg-muted cursor-pointer text-sm font-medium">
-              Test runner
-            </summary>
-            <div className="p-3 space-y-3">
-              <div>
-                <label className="text-xs font-medium block mb-1">
-                  Test inputs <span className="text-text-muted">(JSON object)</span>
-                </label>
-                <textarea
-                  value={testInputsJson}
-                  onChange={(e) => setTestInputsJson(e.target.value)}
-                  rows={4}
-                  spellCheck={false}
-                  placeholder='{"task": "Buy milk", "priority": "high"}'
-                  className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-xs font-mono focus:border-accent focus:outline-none"
-                />
-              </div>
-              <button
-                onClick={runTest}
-                disabled={testing}
-                className="text-xs font-medium px-3 py-1.5 bg-accent text-white rounded-md hover:bg-accent/90 disabled:opacity-50"
-              >
-                {testing ? "Running…" : "Run test"}
-              </button>
-
-              {testResult && (
-                <div className="space-y-2">
-                  <div
-                    className={`text-xs font-medium ${testResult.ok ? "text-accent" : "text-red"}`}
-                  >
-                    {testResult.ok ? "✓ ok" : "✗ failed"} — {testResult.totalDurationMs}ms
-                    {testResult.error ? ` — ${testResult.error}` : ""}
-                  </div>
-                  <div className="space-y-1">
-                    {testResult.stepResults.map((s) => (
-                      <div
-                        key={s.index}
-                        className={`text-[11px] font-mono px-2 py-1 rounded ${
-                          s.ok ? "bg-bg-muted text-text-dim" : "bg-red/10 text-red"
-                        }`}
-                      >
-                        <div>
-                          {s.ok ? "✓" : "✗"} step[{s.index}] {s.kind}:{s.label} — {s.durationMs}ms
-                        </div>
-                        {s.preview && (
-                          <pre className="mt-1 whitespace-pre-wrap break-words text-text-muted">
-                            {s.preview}
-                          </pre>
-                        )}
-                        {s.error && (
-                          <pre className="mt-1 whitespace-pre-wrap break-words">{s.error}</pre>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {testResult.ok && (
-                    <div>
-                      <label className="text-[11px] font-medium text-text-dim block mb-1">
-                        Final result
-                      </label>
-                      <pre className="bg-bg-muted border border-border rounded-md p-2 text-[11px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                        {testResult.result}
-                      </pre>
+          {/* C: Available tool names hint — collapsed by default to keep
+              the composer dense, but right next to the textarea so the
+              author can copy-paste quickly. */}
+          {registry?.packs && registry.packs.length > 0 && (
+            <details className="border border-border rounded-md overflow-hidden">
+              <summary className="px-3 py-2 bg-bg-muted cursor-pointer text-xs font-medium text-text-dim">
+                Available tool names ({registry.names?.length ?? 0})
+              </summary>
+              <div className="p-3 space-y-2 text-xs">
+                <p className="text-text-muted">
+                  Click a name to copy. Disabled packs are listed but their tools cannot run.
+                </p>
+                {registry.packs.map((p) => (
+                  <div key={p.id}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <code className="font-mono font-semibold text-text">{p.id}</code>
+                      {!p.enabled && (
+                        <span className="text-[10px] uppercase tracking-wide bg-bg-muted text-text-muted px-1.5 py-0.5 rounded border border-border">
+                          disabled
+                        </span>
+                      )}
+                      <span className="text-text-muted">
+                        {p.tools.length} tool{p.tools.length === 1 ? "" : "s"}
+                      </span>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </details>
-
-          {error && (
-            <pre className="bg-red/10 border border-red/20 rounded-md p-3 text-xs text-red whitespace-pre-wrap font-mono">
-              {error}
-            </pre>
+                    <div className="flex flex-wrap gap-1 pl-2">
+                      {p.tools.length === 0 ? (
+                        <span className="text-text-muted italic">no tools</span>
+                      ) : (
+                        p.tools.map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => {
+                              // Best-effort copy — silently no-op when the
+                              // browser blocks clipboard access (insecure
+                              // origin, missing permission). The button
+                              // always visually flashes regardless.
+                              try {
+                                void navigator.clipboard?.writeText(t);
+                              } catch {
+                                /* ignore */
+                              }
+                            }}
+                            title={`Copy "${t}"`}
+                            className="font-mono text-[11px] px-1.5 py-0.5 bg-bg border border-border rounded hover:border-accent hover:text-accent text-text-dim"
+                          >
+                            {t}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
 
+          {/* A/B: action row + JSON feedback */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={formatAndValidate}
+              type="button"
+              className="text-xs font-medium px-3 py-1.5 border border-border rounded-md text-text-dim hover:text-text hover:border-accent"
+            >
+              Format & validate
+            </button>
+            {formatSuccess && (
+              <span className="text-xs text-accent" role="status" aria-live="polite">
+                ✓ Valid JSON
+              </span>
+            )}
+          </div>
+
+          {jsonSyntaxError && (
+            <div className="bg-red/10 border border-red/20 rounded-md p-2 text-xs text-red font-mono">
+              {jsonSyntaxError}
+            </div>
+          )}
+
+          {unknownTools.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-2 text-xs text-amber-700 dark:text-amber-400">
+              ⚠ Unknown tool name{unknownTools.length === 1 ? "" : "s"}:{" "}
+              <code className="font-mono">{unknownTools.join(", ")}</code> — the server may reject
+              save. Browse the &quot;Available tool names&quot; list above.
+            </div>
+          )}
+
+          {/* D: Structured Zod issues list */}
+          {issues && issues.length > 0 && (
+            <div className="bg-red/10 border border-red/20 rounded-md p-3 space-y-2">
+              <p className="text-xs font-medium text-red">
+                {error ?? "Validation failed"} — {issues.length} issue
+                {issues.length === 1 ? "" : "s"}:
+              </p>
+              <ul className="space-y-1.5">
+                {issues.map((iss, idx) => {
+                  const path = (iss.path ?? []).join(".");
+                  const friendly = friendlyMessageFor(iss.message);
+                  return (
+                    <li key={`${path}-${idx}`} className="text-xs flex items-start gap-2 group">
+                      <button
+                        type="button"
+                        onClick={jumpToJson}
+                        title="Focus the JSON editor"
+                        className="text-text-muted hover:text-accent shrink-0 font-mono"
+                      >
+                        →
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        {path && (
+                          <code className="font-mono font-bold text-text block break-all">
+                            {path}
+                          </code>
+                        )}
+                        <span className="text-text-dim">{friendly ?? iss.message}</span>
+                        {friendly && (
+                          <span className="block text-[10px] text-text-muted mt-0.5 font-mono">
+                            ({iss.message})
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Generic non-Zod errors */}
+          {error && !issues && (
+            <div className="bg-red/10 border border-red/20 rounded-md p-3 text-xs text-red font-mono whitespace-pre-wrap">
+              {error}
+            </div>
+          )}
+
+          {/* Action row: Save / Cancel anchored at top so it's reachable
+              even on long JSON bodies. Run-test moved into the (now
+              always-open) test runner below. */}
           <div className="flex items-center gap-3 pt-2 border-t border-border">
             <button
               onClick={save}
@@ -720,8 +1042,129 @@ function CustomToolDrawer({
               Cancel
             </button>
           </div>
+
+          {/* E: Test runner — open by default, no <details> wrapper. */}
+          <div className="border border-border rounded-md p-3 space-y-3">
+            <h3 className="text-sm font-semibold">Test runner</h3>
+            <div>
+              <label className="text-xs font-medium block mb-1">
+                Test inputs <span className="text-text-muted">(JSON object)</span>
+              </label>
+              <textarea
+                value={testInputsJson}
+                onChange={(e) => setTestInputsJson(e.target.value)}
+                rows={4}
+                spellCheck={false}
+                placeholder='{"task": "Buy milk", "priority": "high"}'
+                className="w-full bg-bg-muted border border-border rounded-md px-3 py-2 text-xs font-mono focus:border-accent focus:outline-none"
+              />
+            </div>
+
+            {/* G: Dry-run toggle — sits above Run test so it's the last
+                thing the operator sees before clicking. */}
+            <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={(e) => {
+                  userTouchedDryRun.current = true;
+                  setDryRun(e.target.checked);
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-text">
+                  Dry-run (skip destructive steps, return mocked output)
+                </span>
+                <span className="block text-[11px] text-text-muted">
+                  Read-only tools and transforms still execute.
+                </span>
+              </span>
+            </label>
+
+            <button
+              onClick={runTest}
+              disabled={testing}
+              className="text-xs font-medium px-3 py-1.5 bg-accent text-white rounded-md hover:bg-accent/90 disabled:opacity-50"
+            >
+              {testing ? "Running…" : dryRun ? "Run test (dry-run)" : "Run test"}
+            </button>
+
+            {testResult && <TestResultPanel result={testResult} />}
+          </div>
+
+          {initial && <RecentRunsSection toolId={initial.id} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Phase 5 — extracted result panel so the drawer body stays scannable.
+ *
+ * Each step row shows status, label, duration, then a pretty-printed
+ * preview (JSON.parse → JSON.stringify(..., 2) when possible, raw text
+ * otherwise). The full final-result blob lives in a nested <details>
+ * because it can get large.
+ */
+function TestResultPanel({ result }: { result: RunResult }) {
+  // Detect dry-run from the per-step payload — the server stamps the
+  // `[dry-run skipped]` sentinel on the runner side, so we recognize it
+  // verbatim. Used purely for an unobtrusive header pill.
+  const isDryRun = useMemo(
+    () => result.stepResults.some((s) => s.preview === "[dry-run skipped]"),
+    [result.stepResults]
+  );
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <span className={result.ok ? "text-accent" : "text-red"}>
+          {result.ok ? "✓ ok" : "✗ failed"}
+        </span>
+        <span className="text-text-muted">— {result.totalDurationMs}ms</span>
+        {isDryRun && (
+          <span className="text-[10px] uppercase tracking-wide bg-bg-muted text-text-muted px-1.5 py-0.5 rounded border border-border">
+            dry-run
+          </span>
+        )}
+        {result.error && <span className="text-red">— {result.error}</span>}
+      </div>
+      <div className="space-y-1">
+        {result.stepResults.map((s) => (
+          <StepRow key={s.index} step={s} />
+        ))}
+      </div>
+      {result.ok && (
+        <details className="bg-bg-muted border border-border rounded-md overflow-hidden">
+          <summary className="px-2 py-1.5 cursor-pointer text-[11px] font-medium text-text-dim">
+            Final result
+          </summary>
+          <pre className="border-t border-border p-2 text-[11px] font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto">
+            {prettyJsonOrRaw(result.result)}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function StepRow({ step: s }: { step: StepRunResult }) {
+  return (
+    <div
+      className={`text-[11px] font-mono px-2 py-1 rounded ${
+        s.ok ? "bg-bg-muted text-text-dim" : "bg-red/10 text-red"
+      }`}
+    >
+      <div>
+        {s.ok ? "✓" : "✗"} step[{s.index}] {s.kind}:{s.label} — {s.durationMs}ms
+      </div>
+      {s.preview && (
+        <pre className="mt-1 whitespace-pre-wrap break-words text-text-muted">
+          {prettyJsonOrRaw(s.preview)}
+        </pre>
+      )}
+      {s.error && <pre className="mt-1 whitespace-pre-wrap break-words">{s.error}</pre>}
     </div>
   );
 }

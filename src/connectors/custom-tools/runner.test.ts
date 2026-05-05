@@ -601,3 +601,137 @@ describe("runner — committedSteps (Phase 3 telemetry)", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// ── Phase 5: dry-run mode ─────────────────────────────────────────────
+//
+// The composer drawer ships a "Dry-run (skip destructive steps)"
+// checkbox so an author can exercise the runner — credential plumbing,
+// Mustache renders, allowlist gates — without actually mutating
+// anything. The runner enforces this by short-circuiting any tool step
+// whose underlying registry tool carries `destructive: true`. Read-only
+// tools and transforms execute normally — dry-run is about preventing
+// side-effects, not disabling the runner wholesale.
+
+describe("runner — dry-run (Phase 5)", () => {
+  beforeEach(() => {
+    mockTools.length = 0;
+    mockAdminTools.length = 0;
+  });
+
+  it("skips destructive tool steps and returns mocked previews", async () => {
+    // Read step (non-destructive) → transform → write step (destructive).
+    // With dryRun: true, the read and the transform must execute as usual,
+    // but the write handler must NEVER be invoked.
+    let writeInvocations = 0;
+    registerTool(
+      "vault_read",
+      async () => ({ content: [{ type: "text", text: "## Inbox\n- existing" }] }),
+      false
+    );
+    registerTool(
+      "vault_write",
+      async () => {
+        writeInvocations++;
+        return { content: [{ type: "text", text: "REAL WRITE — should never run" }] };
+      },
+      true
+    );
+
+    const tool: CustomTool = {
+      id: "dry_run_demo",
+      description: "x",
+      destructive: true,
+      inputs: [{ name: "task", type: "string", required: true, description: "" }],
+      steps: [
+        // 0: read → real run, returns "## Inbox\n- existing"
+        { kind: "tool", toolName: "vault_read", args: {}, saveAs: "current" },
+        // 1: transform → real render, sees both `current` and `task`
+        {
+          kind: "transform",
+          template: "{{current}}\n- [ ] {{task}}",
+          saveAs: "next",
+        },
+        // 2: destructive write → SKIPPED, handler never called
+        { kind: "tool", toolName: "vault_write", args: { content: "{{next}}" } },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const result = await runCustomTool(tool, { task: "Buy milk" }, { dryRun: true });
+
+    expect(result.ok).toBe(true);
+    expect(writeInvocations).toBe(0); // hard guarantee: no real write happened
+
+    // Three step rows expected: real read, real transform, mocked write.
+    expect(result.stepResults).toHaveLength(3);
+    expect(result.stepResults[0]?.ok).toBe(true);
+    expect(result.stepResults[0]?.label).toBe("vault_read");
+    expect(result.stepResults[0]?.preview).toContain("existing");
+
+    expect(result.stepResults[1]?.ok).toBe(true);
+    expect(result.stepResults[1]?.kind).toBe("transform");
+    // Transform really rendered → should see both vars composed
+    expect(result.stepResults[1]?.preview).toContain("Buy milk");
+
+    // The write step is the spec contract: ok:true, label is the tool
+    // name, preview is the canonical "[dry-run skipped]" sentinel.
+    expect(result.stepResults[2]?.ok).toBe(true);
+    expect(result.stepResults[2]?.label).toBe("vault_write");
+    expect(result.stepResults[2]?.preview).toBe("[dry-run skipped]");
+
+    // committedSteps stays empty — we explicitly did NOT commit anything,
+    // so the operator's "rollback may be required" warning shouldn't fire.
+    expect(result.committedSteps).toEqual([]);
+  });
+
+  it("does NOT skip read-only tools in dry-run", async () => {
+    let readInvocations = 0;
+    registerTool(
+      "vault_read",
+      async () => {
+        readInvocations++;
+        return { content: [{ type: "text", text: "real read" }] };
+      },
+      false // read-only
+    );
+    const tool: CustomTool = {
+      id: "dry_run_readonly",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      steps: [{ kind: "tool", toolName: "vault_read", args: {}, saveAs: "x" }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {}, { dryRun: true });
+    expect(result.ok).toBe(true);
+    // Read-only handler MUST have run — dry-run only skips destructive.
+    expect(readInvocations).toBe(1);
+    expect(result.stepResults[0]?.preview).toBe("real read");
+  });
+
+  it("dry-run mock keeps Mustache references alive in downstream steps", async () => {
+    // The skipped step's saveAs slot must receive a non-undefined value
+    // so {{<saved>}} in a later transform doesn't error out. We set the
+    // mock to the literal string "[dry-run mock]" — that's the contract.
+    registerTool("vault_write", async () => ({ content: [{ type: "text", text: "real" }] }), true);
+    const tool: CustomTool = {
+      id: "dry_run_chain",
+      description: "x",
+      destructive: true,
+      inputs: [],
+      steps: [
+        // Skipped — saveAs:"out" gets "[dry-run mock]"
+        { kind: "tool", toolName: "vault_write", args: {}, saveAs: "out" },
+        // Real transform — must render the mock string into the result
+        { kind: "transform", template: "after: {{out}}", saveAs: "final" },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {}, { dryRun: true });
+    expect(result.ok).toBe(true);
+    expect(result.result).toBe("after: [dry-run mock]");
+  });
+});

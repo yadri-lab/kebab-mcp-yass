@@ -225,6 +225,21 @@ export interface RunCustomToolOptions {
    * so MCP runs typically have this undefined.
    */
   tokenIdShort?: string;
+  /**
+   * Phase 5 — Dry-run mode. When true, any `tool` step whose target
+   * registry tool carries `destructive: true` is SKIPPED entirely
+   * (handler never invoked) and replaced by a mocked step result with
+   * preview `"[dry-run skipped]"`. The `saveAs` slot, if present,
+   * receives the literal string `"[dry-run mock]"` so subsequent
+   * Mustache transforms keep working without crashing on undefined.
+   *
+   * Read-only `tool` steps and all `transform` steps execute normally
+   * — dry-run is about preventing side-effects (writes, sends, deletes),
+   * not about disabling the runner wholesale. The composer dashboard
+   * defaults this to `true` only when the tool itself declares
+   * `destructive: true`, but the operator can override.
+   */
+  dryRun?: boolean;
 }
 
 export async function runCustomTool(
@@ -324,8 +339,8 @@ export async function runCustomTool(
       };
       stepResults.push(placeholder);
       try {
-        const stepOutcome = await runStep(step, context, activeIds, maxStepMs);
-        const { saved, finalText, destructive } = stepOutcome;
+        const stepOutcome = await runStep(step, context, activeIds, maxStepMs, opts.dryRun);
+        const { saved, finalText, destructive, skipped } = stepOutcome;
         if (step.kind === "tool" && step.saveAs) {
           context[step.saveAs] = saved;
         } else if (step.kind === "transform") {
@@ -339,7 +354,12 @@ export async function runCustomTool(
           label,
           ok: true,
           durationMs: Date.now() - stepStarted,
-          preview: previewOf(saved),
+          // Phase 5 — dry-run skipped steps surface a distinct preview
+          // so the operator visually distinguishes "ran and produced
+          // empty output" from "skipped because dry-run". The `saveAs`
+          // slot still gets `"[dry-run mock]"` (handled inside runStep)
+          // so downstream Mustache renders cleanly.
+          preview: skipped ? "[dry-run skipped]" : previewOf(saved),
         };
         // Phase 3 — record destructive `tool` steps that committed.
         // Transforms and read-only tools never go in this list.
@@ -524,8 +544,9 @@ async function runStep(
   step: CustomToolStep,
   context: Record<string, unknown>,
   activeIds: Set<string>,
-  maxStepMs: number
-): Promise<{ saved: unknown; finalText: string; destructive: boolean }> {
+  maxStepMs: number,
+  dryRun: boolean = false
+): Promise<{ saved: unknown; finalText: string; destructive: boolean; skipped?: boolean }> {
   if (step.kind === "transform") {
     // Transforms are sync but we still race them against the per-step
     // timeout — guards against a pathological Mustache template (huge
@@ -554,6 +575,27 @@ async function runStep(
       `tool "${step.toolName}" is not callable from custom tools (pack "${lookup.blockedPackId}" is not in allowlist)`
     );
   }
+
+  // Phase 5 — Dry-run short-circuit. Resolve allowlist + recursion checks
+  // first (so the operator still gets a "blocked pack" or "recursion"
+  // error in dry-run, which is the *point* of dry-run for diagnostics),
+  // but if the underlying tool is destructive, never invoke its handler.
+  // Read-only tools execute normally — dry-run is about preventing
+  // mutation, not about disabling reads. We return the literal mock
+  // string in `saveAs` slots so downstream Mustache renders cleanly
+  // (a `{{kanban}}` reference would otherwise crash when resolving
+  // against `undefined`).
+  if (dryRun && lookup.tool.destructive) {
+    return {
+      saved: "[dry-run mock]",
+      finalText: "[dry-run skipped]",
+      // Stays `false` so the runner does NOT add this step to
+      // `committedSteps` — we explicitly did NOT commit anything.
+      destructive: false,
+      skipped: true,
+    };
+  }
+
   const expanded = expandArgs(step.args, context);
   const argsObj = (expanded ?? {}) as Record<string, unknown>;
   // NB: we intentionally do NOT pass the signal to `handler(argsObj)`.

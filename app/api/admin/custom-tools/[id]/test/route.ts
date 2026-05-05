@@ -74,6 +74,16 @@ async function testHandler(ctx: PipelineContext) {
       ? ((body as { inputs?: Record<string, unknown> }).inputs ?? {})
       : {};
 
+  // Phase 5 — opt-in dry-run mode. The composer dashboard checks this
+  // by default for tools that declare `destructive: true`, but the
+  // operator can override either way. Only accept a literal `true`
+  // (no truthy coercion) so a stray "false"/null/0 in the body never
+  // accidentally enables it.
+  const dryRun =
+    body && typeof body === "object" && "dryRun" in body
+      ? (body as { dryRun?: unknown }).dryRun === true
+      : false;
+
   try {
     // Phase 3 — tag the run as a dashboard test invocation so the
     // "Recent runs" tab can distinguish operator-driven probes from
@@ -86,6 +96,7 @@ async function testHandler(ctx: PipelineContext) {
       // has a defined value; passing `undefined` explicitly would be a
       // TS2375 against the optional-but-not-undefined RunCustomToolOptions.
       ...(ctx.tokenId ? { tokenIdShort: ctx.tokenId.slice(0, 8) } : {}),
+      ...(dryRun ? { dryRun: true } : {}),
     });
     return NextResponse.json(result);
   } catch (err) {
