@@ -12,7 +12,16 @@
 <p align="center">
   <img src="https://img.shields.io/github/license/Yassinello/kebab-mcp" alt="License: AGPL-3.0" />
   <img src="https://img.shields.io/github/v/release/Yassinello/kebab-mcp?label=version" alt="Version" />
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYassinello%2Fkebab-mcp"><img src="https://img.shields.io/badge/deploy-vercel-%23000?logo=vercel" alt="Deploy on Vercel" /></a>
   <img src="https://img.shields.io/github/stars/Yassinello/kebab-mcp?style=social" alt="GitHub stars" />
+</p>
+
+<p align="center">
+  <strong>Compatible with:</strong>&nbsp;
+  <img src="https://img.shields.io/badge/Claude_Desktop-supported-blue?logo=anthropic" alt="Claude Desktop" />
+  <img src="https://img.shields.io/badge/Cursor-supported-blue?logo=cursor" alt="Cursor" />
+  <img src="https://img.shields.io/badge/Windsurf-supported-blue" alt="Windsurf" />
+  <img src="https://img.shields.io/badge/ChatGPT-supported-blue?logo=openai" alt="ChatGPT" />
 </p>
 
 <p align="center">
