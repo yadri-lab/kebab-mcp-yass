@@ -3,6 +3,7 @@ import {
   customToolSchema,
   customToolWriteSchema,
   type CustomTool,
+  type CustomToolVersion,
   type CustomToolWriteInput,
 } from "./types";
 import { validateTemplate } from "./expression";
@@ -50,6 +51,84 @@ import { estimateToolCost, getMaxCostPerRun, type CostRegistry } from "./cost";
  */
 
 const KV_KEY = "custom-tools:all";
+
+// ── Versioning (Phase 6) ──────────────────────────────────────────────
+//
+// A simple JSON-encoded array under `customtool:versions:<id>`, newest
+// first, capped at MAX_VERSIONS entries. We deliberately don't use the
+// optional `lpushCapped` interface — it's Upstash-only, and a small
+// JSON blob is fine here (10 × tool snapshot ≈ a few KB at worst, well
+// under the 100KB Upstash value cap).
+const MAX_VERSIONS = 10;
+function versionsKey(id: string): string {
+  return `customtool:versions:${id}`;
+}
+
+async function readVersions(id: string): Promise<CustomToolVersion[]> {
+  const kv = getContextKVStore();
+  const raw = await kv.get(versionsKey(id));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Each entry must round-trip the CustomTool schema — anything that
+    // doesn't (because we evolved the schema since it was saved) is
+    // silently dropped rather than blowing up the History panel.
+    const out: CustomToolVersion[] = [];
+    for (const row of parsed) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as { tool?: unknown; supersededAt?: unknown; supersededBy?: unknown };
+      if (typeof r.supersededAt !== "string") continue;
+      const toolRes = customToolSchema.safeParse(r.tool);
+      if (!toolRes.success) continue;
+      const entry: CustomToolVersion = {
+        tool: toolRes.data,
+        supersededAt: r.supersededAt,
+      };
+      if (r.supersededBy && typeof r.supersededBy === "object") {
+        const by = r.supersededBy as { tokenIdShort?: unknown };
+        if (typeof by.tokenIdShort === "string") {
+          entry.supersededBy = { tokenIdShort: by.tokenIdShort };
+        }
+      }
+      out.push(entry);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function writeVersions(id: string, versions: CustomToolVersion[]): Promise<void> {
+  const kv = getContextKVStore();
+  await kv.set(versionsKey(id), JSON.stringify(versions));
+}
+
+/**
+ * Push a previous-snapshot onto the front of the versions list and trim
+ * to MAX_VERSIONS. Best-effort — failures are logged-and-continue rather
+ * than blocking the save (versioning is a UX nicety, not a correctness
+ * invariant; refusing to save because we couldn't write history would be
+ * a worse user outcome).
+ */
+async function pushVersion(
+  prev: CustomTool,
+  supersededBy?: { tokenIdShort?: string }
+): Promise<void> {
+  try {
+    const existing = await readVersions(prev.id);
+    const entry: CustomToolVersion = {
+      tool: prev,
+      supersededAt: new Date().toISOString(),
+      ...(supersededBy ? { supersededBy } : {}),
+    };
+    const next = [entry, ...existing].slice(0, MAX_VERSIONS);
+    await writeVersions(prev.id, next);
+  } catch {
+    // Best-effort — see comment above. The save itself already
+    // succeeded; we don't roll it back if history persistence fails.
+  }
+}
 
 // ── Write queue ───────────────────────────────────────────────────────
 //
@@ -399,6 +478,10 @@ export function updateCustomTool(
     };
     all[idx] = next;
     await writeRaw(all);
+    // Phase 6 — snapshot the prior version for the History UI. Done
+    // *after* the canonical write succeeds so a versioning blip can't
+    // cause the save itself to look failed to the caller.
+    await pushVersion(prev);
     return next;
   });
 }
@@ -409,7 +492,89 @@ export function deleteCustomTool(id: string): Promise<boolean> {
     const next = all.filter((t) => t.id !== id);
     if (next.length === all.length) return false;
     await writeRaw(next);
+    // Phase 6 — drop the version history so a future tool reusing the
+    // same id can't accidentally inherit the old timeline.
+    try {
+      const kv = getContextKVStore();
+      await kv.delete(versionsKey(id));
+    } catch {
+      /* best-effort — orphaned history is harmless, just stale */
+    }
     return true;
+  });
+}
+
+// ── Versioning public API (Phase 6) ───────────────────────────────────
+
+/**
+ * List all preserved snapshots for a tool, newest-first. Capped at
+ * MAX_VERSIONS — older edits have already been dropped on write.
+ */
+export async function listCustomToolVersions(id: string): Promise<CustomToolVersion[]> {
+  return readVersions(id);
+}
+
+/**
+ * Restore the tool to a prior snapshot. The current state is itself
+ * snapshotted onto the front of the versions list (so the rollback
+ * itself can be undone), and the restored version goes through the same
+ * validation pipeline as a fresh write — toolName, cost, destructive
+ * aggregation, templates. Returns null if the tool or version doesn't
+ * exist.
+ *
+ * `versionIndex` is 0-based against `listCustomToolVersions(id)` — 0
+ * means "the most recent prior version", which matches the UI ordering.
+ */
+export function rollbackCustomTool(id: string, versionIndex: number): Promise<CustomTool | null> {
+  return enqueueWrite(async () => {
+    if (!Number.isFinite(versionIndex) || versionIndex < 0) {
+      throw new Error("versionIndex must be a non-negative integer");
+    }
+    const versions = await readVersions(id);
+    const target = versions[versionIndex];
+    if (!target) return null;
+    const all = await readRaw();
+    const idx = all.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+    const prev = all[idx]!;
+
+    // Re-validate the restored snapshot against the live registry.
+    // A tool that was valid 4 edits ago might reference a connector
+    // that's since been removed — better to surface a clear error than
+    // silently re-publish a broken tool.
+    const writeInput: CustomToolWriteInput = {
+      id: target.tool.id,
+      description: target.tool.description,
+      destructive: target.tool.destructive,
+      inputs: target.tool.inputs,
+      steps: target.tool.steps,
+      ...(target.tool.maxStepMs !== undefined ? { maxStepMs: target.tool.maxStepMs } : {}),
+      ...(target.tool.maxTotalMs !== undefined ? { maxTotalMs: target.tool.maxTotalMs } : {}),
+    };
+    const parsed = customToolWriteSchema.parse(writeInput);
+    validateAllTemplates(parsed);
+    const needsRegistry = parsed.steps.some((s) => s.kind === "tool");
+    const known = needsRegistry ? await buildKnownToolFacts() : new Map<string, ToolFacts>();
+    validateAllToolNames(parsed.steps, known);
+    const others = all.filter((t) => t.id !== id);
+    const estimatedCost = validateAndComputeCost(parsed, known, others);
+    const aggDestructive = computeAggregateDestructive(parsed.steps, known);
+
+    const restored: CustomTool = {
+      ...prev,
+      description: parsed.description,
+      destructive: (parsed.destructive ?? false) || aggDestructive,
+      inputs: parsed.inputs ?? [],
+      steps: parsed.steps,
+      estimatedCost,
+      updatedAt: new Date().toISOString(),
+    };
+    all[idx] = restored;
+    await writeRaw(all);
+    // Snapshot the just-replaced state so the rollback itself is
+    // undoable — bumps the cap-trim, but that's the intended trade-off.
+    await pushVersion(prev);
+    return restored;
   });
 }
 

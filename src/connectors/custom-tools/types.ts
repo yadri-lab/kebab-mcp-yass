@@ -143,6 +143,24 @@ export const customToolSchema = z.object({
 
 export type CustomTool = z.infer<typeof customToolSchema>;
 
+// ── Versioning (Phase 6) ──────────────────────────────────────────────
+//
+// Every successful update or rollback pushes the *previous* tool snapshot
+// into a capped, newest-first array under `customtool:versions:<id>`. The
+// store enforces a hard cap (DEFAULT 10 entries) — older history is
+// dropped silently, the assumption being that anything beyond ten edits
+// ago is well outside the "I just broke prod, undo the last save" window
+// the feature is built for.
+
+export interface CustomToolVersion {
+  /** Snapshot of the tool as it was BEFORE the edit that superseded it. */
+  tool: CustomTool;
+  /** ISO timestamp when this version was replaced by a newer save. */
+  supersededAt: string;
+  /** Best-effort attribution for who saved the new version. */
+  supersededBy?: { tokenIdShort?: string };
+}
+
 /**
  * Authoring schema — what the dashboard / API accepts on POST/PUT.
  * Timestamps are stamped server-side; everything else mirrors the stored
