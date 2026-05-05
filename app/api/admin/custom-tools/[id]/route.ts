@@ -49,9 +49,12 @@ async function putHandler(ctx: PipelineContext) {
   } catch (err) {
     const msg = toMsg(err);
     // Author errors (immutable id, invalid template, unknown toolName) → 400.
-    const status = /immutable|template invalid|does not exist or is not callable/i.test(msg)
-      ? 400
-      : 500;
+    const status =
+      /immutable|template invalid|does not exist or is not callable|estimated cost \d+ exceeds limit/i.test(
+        msg
+      )
+        ? 400
+        : 500;
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }

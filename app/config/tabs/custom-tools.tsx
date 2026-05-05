@@ -52,6 +52,8 @@ interface CustomTool {
   destructive: boolean;
   inputs: CustomToolInput[];
   steps: CustomToolStep[];
+  /** Server-computed cost estimate; missing on tools persisted before Phase 2. */
+  estimatedCost?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -215,6 +217,14 @@ export function CustomToolsTab() {
                     <span className="text-[11px] text-text-muted">
                       {t.steps.length} step{t.steps.length === 1 ? "" : "s"}
                     </span>
+                    {typeof t.estimatedCost === "number" && (
+                      <span
+                        className="text-[10px] tracking-wide bg-bg border border-border text-text-muted px-1.5 py-0.5 rounded"
+                        title="Server-estimated cost per run (1–10 points/step depending on pack). Hard cap: 50."
+                      >
+                        ~{t.estimatedCost}pts cost
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-text-dim mb-1">{t.description}</p>
                   <p className="text-[11px] text-text-muted">

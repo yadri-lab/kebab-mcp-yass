@@ -153,4 +153,37 @@ describe("custom-tools store CRUD", () => {
     });
     expect(tool.destructive).toBe(true);
   });
+
+  // Phase 2 — estimatedCost is stamped server-side and surfaces the
+  // coarse cost-per-pack heuristic. Transform-only tools cost 0.
+  it("stamps estimatedCost = 0 on a transform-only tool", async () => {
+    const tool = await createCustomTool(baseTool); // single transform step
+    expect(tool.estimatedCost).toBe(0);
+  });
+
+  // Phase 2 — write-time cost cap. A tool with too many expensive
+  // steps must be refused with a message that names the offending
+  // estimate AND the cap, so the dashboard can show authors how to
+  // remediate.
+  it("rejects a write whose estimated cost exceeds MAX_COST_PER_RUN", async () => {
+    // 6× web_agent → 60 points (cap is 50). Use a known browser tool
+    // name; even if the registry refuses it because BROWSERBASE_*
+    // env vars aren't set in the test, the toolName allowlist still
+    // recognises it via the disabled-manifest force-load (see
+    // buildKnownToolFacts).
+    await expect(
+      createCustomTool({
+        ...baseTool,
+        id: "too_expensive",
+        steps: [
+          { kind: "tool", toolName: "web_agent", args: {} },
+          { kind: "tool", toolName: "web_agent", args: {} },
+          { kind: "tool", toolName: "web_agent", args: {} },
+          { kind: "tool", toolName: "web_agent", args: {} },
+          { kind: "tool", toolName: "web_agent", args: {} },
+          { kind: "tool", toolName: "web_agent", args: {} },
+        ],
+      })
+    ).rejects.toThrow(/estimated cost \d+ exceeds limit \d+/i);
+  });
 });

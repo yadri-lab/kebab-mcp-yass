@@ -107,7 +107,12 @@ async function postHandler(ctx: PipelineContext) {
     // everything else → 500.
     let status: number;
     if (/already exists/i.test(msg)) status = 409;
-    else if (/template invalid|does not exist or is not callable/i.test(msg)) status = 400;
+    else if (
+      /template invalid|does not exist or is not callable|estimated cost \d+ exceeds limit/i.test(
+        msg
+      )
+    )
+      status = 400;
     else status = 500;
     return NextResponse.json({ ok: false, error: msg }, { status });
   }

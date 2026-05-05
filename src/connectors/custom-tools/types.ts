@@ -124,6 +124,18 @@ export const customToolSchema = z.object({
    * from a single-step stall.
    */
   maxTotalMs: z.number().int().positive().max(300_000).optional(),
+  /**
+   * Server-computed cost estimate (write-time, see cost.ts).
+   * 0 for transform-only tools, summed across `tool` steps using a
+   * coarse per-pack heuristic. Surfaced in the dashboard list so
+   * authors can spot expensive compositions at a glance. Always
+   * stamped server-side on create/update; ignored on the write path
+   * (any client-supplied value is overwritten with the freshly-
+   * computed estimate). Optional for read-back compatibility with
+   * tools persisted before this field existed — those round-trip
+   * with `undefined` until the next update.
+   */
+  estimatedCost: z.number().int().nonnegative().optional(),
   /** ISO timestamps — populated by the store. */
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -139,6 +151,9 @@ export type CustomTool = z.infer<typeof customToolSchema>;
 export const customToolWriteSchema = customToolSchema.omit({
   createdAt: true,
   updatedAt: true,
+  // estimatedCost is server-computed; any client-supplied value is
+  // ignored, so we drop it from the write schema entirely.
+  estimatedCost: true,
 });
 
 export type CustomToolWriteInput = z.input<typeof customToolWriteSchema>;

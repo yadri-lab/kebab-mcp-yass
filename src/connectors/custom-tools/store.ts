@@ -9,6 +9,7 @@ import { validateTemplate } from "./expression";
 import { resolveRegistryAsync, ALL_CONNECTOR_LOADERS } from "@/core/registry";
 import { CALLABLE_FROM_CUSTOM_TOOLS } from "./runner";
 import { on } from "@/core/events";
+import { estimateToolCost, getMaxCostPerRun, type CostRegistry } from "./cost";
 
 /**
  * Custom Tools store.
@@ -252,6 +253,44 @@ function computeAggregateDestructive(
   return false;
 }
 
+/**
+ * Phase 2 — Estimate the cost of the inbound tool and reject the
+ * write if it exceeds `MAX_COST_PER_RUN`. The error message names
+ * the offending number AND the cap so authors immediately know how
+ * far they are over budget — and includes a single-sentence
+ * remediation hint pointing at the two levers (step count, cheaper
+ * tools).
+ *
+ * Returns the estimate so the caller can stamp it onto the persisted
+ * tool without recomputing.
+ */
+function validateAndComputeCost(
+  parsed: CustomToolWriteInput,
+  known: Map<string, ToolFacts>,
+  others: CustomTool[]
+): number {
+  const customToolsById = new Map<string, CustomTool | CustomToolWriteInput>();
+  for (const t of others) customToolsById.set(t.id, t);
+  // The tool currently being written needs to be in the map too —
+  // otherwise a self-cycle would resolve to "unknown Custom Tool"
+  // (cap charge) instead of the recursion-guard zero. The cycle
+  // case itself is caught by the runner; here we just need correct
+  // accounting for transitive references in either direction.
+  customToolsById.set(parsed.id, parsed);
+  const registry: CostRegistry = {
+    knownTools: known,
+    customToolsById,
+  };
+  const cost = estimateToolCost(parsed, registry);
+  const cap = getMaxCostPerRun();
+  if (cost > cap) {
+    throw new Error(
+      `estimated cost ${cost} exceeds limit ${cap}. Reduce step count or use cheaper tools.`
+    );
+  }
+  return cost;
+}
+
 function walkStrings(v: unknown, visit: (s: string, path: string) => void, path = ""): void {
   if (v === null || v === undefined) return;
   if (typeof v === "string") {
@@ -294,6 +333,10 @@ export function createCustomTool(input: CustomToolWriteInput): Promise<CustomToo
     if (all.some((t) => t.id === parsed.id)) {
       throw new Error(`a Custom Tool with id "${parsed.id}" already exists`);
     }
+    // Phase 2 — cost validation runs AFTER everything else so the
+    // author sees structural errors first (template, toolName) and
+    // only hits the cost gate once the spec is otherwise valid.
+    const estimatedCost = validateAndComputeCost(parsed, known, all);
     const now = new Date().toISOString();
     // HI-03 — force-set destructive when any step calls a destructive
     // step tool, so the exposed MCP tool can never be less destructive
@@ -303,6 +346,7 @@ export function createCustomTool(input: CustomToolWriteInput): Promise<CustomToo
       ...parsed,
       destructive: (parsed.destructive ?? false) || aggDestructive,
       inputs: parsed.inputs ?? [],
+      estimatedCost,
       createdAt: now,
       updatedAt: now,
     };
@@ -335,6 +379,13 @@ export function updateCustomTool(
     if (parsed.id !== prev.id) {
       throw new Error(`Custom Tool id is immutable (got "${parsed.id}", existing "${prev.id}")`);
     }
+    // Phase 2 — cost gate. We exclude the previous version of this
+    // tool from `others` so that a self-reference (Custom Tool A
+    // calling its own previous incarnation) is correctly handled by
+    // the recursion-guard inside `estimateToolCost` rather than
+    // double-counting against the stored row.
+    const others = all.filter((t) => t.id !== id);
+    const estimatedCost = validateAndComputeCost(parsed, known, others);
     // HI-03 — same aggregation as create.
     const aggDestructive = computeAggregateDestructive(parsed.steps, known);
     const next: CustomTool = {
@@ -343,6 +394,7 @@ export function updateCustomTool(
       destructive: (parsed.destructive ?? false) || aggDestructive,
       inputs: parsed.inputs ?? [],
       steps: parsed.steps,
+      estimatedCost,
       updatedAt: new Date().toISOString(),
     };
     all[idx] = next;
