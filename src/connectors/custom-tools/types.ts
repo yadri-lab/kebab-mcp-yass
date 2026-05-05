@@ -101,6 +101,29 @@ export const customToolSchema = z.object({
   destructive: z.boolean().default(false),
   inputs: z.array(customToolInputSchema).default([]),
   steps: z.array(customToolStepSchema).min(1, "a Custom Tool needs at least one step"),
+  /**
+   * Per-step timeout override (milliseconds). When set, replaces the
+   * env-driven default `CUSTOM_TOOLS_MAX_STEP_MS` (which itself falls
+   * back to 15_000ms). Capped at 120_000ms so a misconfigured tool
+   * cannot lock the Vercel function for the full 5 min.
+   *
+   * Leave `undefined` to inherit the env default — that's the correct
+   * choice for ~95% of tools. Only override when a step is known to
+   * legitimately take longer (paywall_read, web_agent) or shorter
+   * (cheap local transforms where you want hard fail-fast).
+   */
+  maxStepMs: z.number().int().positive().max(120_000).optional(),
+  /**
+   * Total run timeout override (milliseconds). When set, replaces the
+   * env-driven default `CUSTOM_TOOLS_MAX_TOTAL_MS` (fallback 45_000ms).
+   * Capped at 300_000ms (5 min — Vercel hard ceiling for Pro plans).
+   *
+   * Total timeout aborts the entire run, not just the slowest step;
+   * the in-flight step is marked timed-out and the run reports a
+   * `total timeout exceeded` error so the author can distinguish it
+   * from a single-step stall.
+   */
+  maxTotalMs: z.number().int().positive().max(300_000).optional(),
   /** ISO timestamps — populated by the store. */
   createdAt: z.string(),
   updatedAt: z.string(),

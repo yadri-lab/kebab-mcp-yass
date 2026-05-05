@@ -1,6 +1,7 @@
 import { getEnabledPacksLazy } from "@/core/registry";
 import { runWithCredentials } from "@/core/request-context";
 import { getHydratedCredentialSnapshot } from "@/core/credential-store";
+import { getConfigInt } from "@/core/config-facade";
 import { toMsg } from "@/core/error-utils";
 import type { ToolDefinition, ToolResult } from "@/core/types";
 import type { CustomTool, CustomToolStep, RunResult, StepRunResult } from "./types";
@@ -33,6 +34,56 @@ import { getActiveCustomToolIds, runWithActiveCustomToolIds } from "./context";
 
 const MAX_STEPS = 32;
 const PREVIEW_LIMIT = 240;
+
+/**
+ * Default per-step timeout. A single Custom Tool step (one tool call
+ * or one Mustache render) may not exceed this without timing out.
+ * Override with `CUSTOM_TOOLS_MAX_STEP_MS` env var or per-tool
+ * `maxStepMs` field.
+ */
+const DEFAULT_MAX_STEP_MS = 15_000;
+
+/**
+ * Default total run timeout. The whole sequence of steps must complete
+ * within this window or the runner aborts with a `total timeout
+ * exceeded` error. Override with `CUSTOM_TOOLS_MAX_TOTAL_MS` env var
+ * or per-tool `maxTotalMs` field.
+ */
+const DEFAULT_MAX_TOTAL_MS = 45_000;
+
+function resolveMaxStepMs(tool: CustomTool): number {
+  if (typeof tool.maxStepMs === "number" && tool.maxStepMs > 0) return tool.maxStepMs;
+  const fromEnv = getConfigInt("CUSTOM_TOOLS_MAX_STEP_MS", DEFAULT_MAX_STEP_MS);
+  return fromEnv > 0 ? fromEnv : DEFAULT_MAX_STEP_MS;
+}
+
+function resolveMaxTotalMs(tool: CustomTool): number {
+  if (typeof tool.maxTotalMs === "number" && tool.maxTotalMs > 0) return tool.maxTotalMs;
+  const fromEnv = getConfigInt("CUSTOM_TOOLS_MAX_TOTAL_MS", DEFAULT_MAX_TOTAL_MS);
+  return fromEnv > 0 ? fromEnv : DEFAULT_MAX_TOTAL_MS;
+}
+
+/**
+ * Symbol thrown by the per-step timeout race so the runner can
+ * distinguish a real handler error from a timeout we induced.
+ */
+class StepTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`step timed out after ${ms}ms`);
+    this.name = "StepTimeoutError";
+  }
+}
+
+/**
+ * Symbol thrown by the total-run timeout race. Caught at the runner
+ * top level so the error message can mention which step was in flight.
+ */
+class TotalTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`total timeout exceeded after ${ms}ms`);
+    this.name = "TotalTimeoutError";
+  }
+}
 
 /**
  * CR-02 — Allowlist of connectors callable from Custom Tools.
@@ -135,6 +186,28 @@ function buildInitialContext(
  * `runCustomTool` for tool B from inside A's step, B inherits the set
  * of active ids from the outer A context automatically — so A→B→A is
  * caught at the second `tool_a` lookup, not after a stack overflow.
+ *
+ * ## Timeouts
+ *
+ * Two layered timeouts protect against slow / hung steps:
+ *  - **Per-step** (`CUSTOM_TOOLS_MAX_STEP_MS` or `tool.maxStepMs`,
+ *    default 15s, max 120s): each individual step must resolve in
+ *    this window. The step is marked `ok: false, error: "timed out"`
+ *    and the run aborts on the first timeout.
+ *  - **Total** (`CUSTOM_TOOLS_MAX_TOTAL_MS` or `tool.maxTotalMs`,
+ *    default 45s, max 300s): the full sequence of steps must complete
+ *    within this window. If hit, the in-flight step is marked
+ *    timed-out and the run error is `total timeout exceeded`.
+ *
+ * For `tool` steps, an `AbortController` is created and an abort is
+ * signalled on timeout — but the underlying handler signature is a
+ * single `(args)` argument (see `ToolDefinition.handler` in core), so
+ * the signal is **not** propagated to the handler. The handler keeps
+ * running in the background; the runner moves on. This is acceptable
+ * for an MVP: the operator gets a clear error and the lambda will
+ * tear down the orphaned promise. A future iteration may widen the
+ * handler signature to `(args, opts?)` so handlers can opt into
+ * cooperative cancellation.
  */
 export async function runCustomTool(
   tool: CustomTool,
@@ -142,6 +215,8 @@ export async function runCustomTool(
 ): Promise<RunResult> {
   const startedAt = Date.now();
   const stepResults: StepRunResult[] = [];
+  const maxStepMs = resolveMaxStepMs(tool);
+  const maxTotalMs = resolveMaxTotalMs(tool);
 
   // Recursion guard — direct or transitive. Read the set already on the
   // call stack (empty Set if we're the outermost invocation), reject if
@@ -195,45 +270,106 @@ export async function runCustomTool(
   let lastError: string | undefined;
   let lastFinalText = "";
 
-  await runWithCredentials(credSnapshot, () =>
-    runWithActiveCustomToolIds(activeIds, async () => {
-      for (let i = 0; i < tool.steps.length; i++) {
-        const step = tool.steps[i]!;
-        const stepStarted = Date.now();
-        const label = step.kind === "tool" ? step.toolName : "<transform>";
-        try {
-          const { saved, finalText } = await runStep(step, context, activeIds);
-          if (step.kind === "tool" && step.saveAs) {
-            context[step.saveAs] = saved;
-          } else if (step.kind === "transform") {
-            context[step.saveAs] = saved;
-          }
-          lastSaved = String(saved ?? "");
-          lastFinalText = finalText;
-          stepResults.push({
-            index: i,
-            kind: step.kind,
-            label,
-            ok: true,
-            durationMs: Date.now() - stepStarted,
-            preview: previewOf(saved),
-          });
-        } catch (err) {
-          const msg = toMsg(err);
-          lastError = `step[${i}] (${label}): ${msg}`;
-          stepResults.push({
-            index: i,
-            kind: step.kind,
-            label,
-            ok: false,
-            durationMs: Date.now() - stepStarted,
-            error: msg,
-          });
-          return; // abort on first error — explicit, no continue-on-error
+  // Total-run timeout — racing the entire step loop against a wall
+  // clock. On timeout, the in-flight step is patched to `ok: false`
+  // (it would otherwise be missing from stepResults entirely, since
+  // the loop body hasn't pushed a result for it yet).
+  const runStepsLoop = async (): Promise<void> => {
+    for (let i = 0; i < tool.steps.length; i++) {
+      const step = tool.steps[i]!;
+      const stepStarted = Date.now();
+      const label = step.kind === "tool" ? step.toolName : "<transform>";
+      // Pre-register a placeholder so a total-timeout fired DURING
+      // this step still produces a row for it. Replaced below on
+      // success / step-error.
+      const placeholder: StepRunResult = {
+        index: i,
+        kind: step.kind,
+        label,
+        ok: false,
+        durationMs: 0,
+        error: "in-flight",
+      };
+      stepResults.push(placeholder);
+      try {
+        const { saved, finalText } = await runStep(step, context, activeIds, maxStepMs);
+        if (step.kind === "tool" && step.saveAs) {
+          context[step.saveAs] = saved;
+        } else if (step.kind === "transform") {
+          context[step.saveAs] = saved;
         }
+        lastSaved = String(saved ?? "");
+        lastFinalText = finalText;
+        stepResults[i] = {
+          index: i,
+          kind: step.kind,
+          label,
+          ok: true,
+          durationMs: Date.now() - stepStarted,
+          preview: previewOf(saved),
+        };
+      } catch (err) {
+        const msg = toMsg(err);
+        const isStepTimeout = err instanceof StepTimeoutError;
+        lastError = `step[${i}] (${label}): ${msg}`;
+        stepResults[i] = {
+          index: i,
+          kind: step.kind,
+          label,
+          ok: false,
+          durationMs: isStepTimeout ? maxStepMs : Date.now() - stepStarted,
+          error: isStepTimeout ? "timed out" : msg,
+        };
+        return; // abort on first error — explicit, no continue-on-error
       }
-    })
-  );
+    }
+  };
+
+  let totalTimer: ReturnType<typeof setTimeout> | undefined;
+  const totalTimeoutPromise = new Promise<never>((_, reject) => {
+    totalTimer = setTimeout(() => reject(new TotalTimeoutError(maxTotalMs)), maxTotalMs);
+  });
+
+  try {
+    await runWithCredentials(credSnapshot, () =>
+      runWithActiveCustomToolIds(activeIds, () =>
+        Promise.race([runStepsLoop(), totalTimeoutPromise])
+      )
+    );
+  } catch (err) {
+    if (err instanceof TotalTimeoutError) {
+      // Find the in-flight step (the last placeholder still marked
+      // `error: "in-flight"`) and patch it to `timed out`. If no
+      // placeholder is in flight (e.g. the loop hadn't entered yet),
+      // we just report the total timeout without a per-step row.
+      const inFlight = stepResults.findIndex((s) => s.error === "in-flight");
+      let inFlightLabel = "?";
+      if (inFlight >= 0) {
+        const existing = stepResults[inFlight]!;
+        inFlightLabel = existing.label;
+        stepResults[inFlight] = {
+          ...existing,
+          ok: false,
+          durationMs: maxTotalMs,
+          error: "timed out",
+        };
+      }
+      lastError = `step[${inFlight >= 0 ? inFlight : "?"}] (${inFlightLabel}): ${err.message}`;
+    } else {
+      // Programmer error inside the inner runners — surface as a
+      // run-level failure rather than letting it bubble to the caller.
+      lastError = toMsg(err);
+    }
+  } finally {
+    if (totalTimer) clearTimeout(totalTimer);
+  }
+
+  // Drop any placeholder rows still marked "in-flight" — only happens
+  // if the inner runner was stopped mid-step. The patched row above
+  // already replaced the in-flight step the operator cares about.
+  for (let i = stepResults.length - 1; i >= 0; i--) {
+    if (stepResults[i]?.error === "in-flight") stepResults.splice(i, 1);
+  }
 
   const totalDurationMs = Date.now() - startedAt;
   if (lastError) {
@@ -253,14 +389,51 @@ export async function runCustomTool(
   };
 }
 
+/**
+ * Race a promise against a per-step timeout. On timeout, signals the
+ * abort controller (best-effort cooperative cancellation — current
+ * `ToolDefinition.handler` signature does not accept a signal, but the
+ * controller is created anyway so a future widening can propagate it
+ * without API churn) and rejects with a `StepTimeoutError`.
+ *
+ * The underlying `inner` keeps running in the background after a
+ * timeout — there's no way to truly cancel a Promise. The Vercel
+ * function will reap it on tear-down.
+ */
+async function withStepTimeout<T>(
+  inner: (signal: AbortSignal) => Promise<T>,
+  maxStepMs: number
+): Promise<T> {
+  const ctrl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort();
+      reject(new StepTimeoutError(maxStepMs));
+    }, maxStepMs);
+  });
+  try {
+    return await Promise.race([inner(ctrl.signal), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function runStep(
   step: CustomToolStep,
   context: Record<string, unknown>,
-  activeIds: Set<string>
+  activeIds: Set<string>,
+  maxStepMs: number
 ): Promise<{ saved: unknown; finalText: string }> {
   if (step.kind === "transform") {
-    const rendered = renderTemplate(step.template, context);
-    return { saved: rendered, finalText: rendered };
+    // Transforms are sync but we still race them against the per-step
+    // timeout — guards against a pathological Mustache template (huge
+    // partial recursion) locking the event loop. In practice the
+    // template engine is fast and this race is a no-op.
+    return await withStepTimeout(async () => {
+      const rendered = renderTemplate(step.template, context);
+      return { saved: rendered, finalText: rendered };
+    }, maxStepMs);
   }
 
   // tool step
@@ -282,7 +455,13 @@ async function runStep(
   }
   const expanded = expandArgs(step.args, context);
   const argsObj = (expanded ?? {}) as Record<string, unknown>;
-  const result: ToolResult = await lookup.tool.handler(argsObj);
+  // NB: we intentionally do NOT pass the signal to `handler(argsObj)`.
+  // The current `ToolDefinition.handler` signature is single-argument
+  // (`Record<string, unknown>`); widening it would touch 80+ tools.
+  // The signal is created and the timeout fires correctly — handlers
+  // that exceed the budget are abandoned in the background and the
+  // step is reported as timed out.
+  const result: ToolResult = await withStepTimeout(() => lookup.tool.handler(argsObj), maxStepMs);
 
   if (result.isError) {
     const errText = toolResultToText(result) || "tool returned isError without a text payload";

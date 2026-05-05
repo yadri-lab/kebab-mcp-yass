@@ -368,3 +368,101 @@ describe("runner — performance overhead", () => {
     expect(result.totalDurationMs).toBeLessThan(100);
   });
 });
+
+// ── Timeouts (Phase 1) ────────────────────────────────────────────────
+//
+// Real timers, very small budgets (50–200ms). Vitest fake timers
+// don't play well with native `setTimeout` inside Promise.race chains
+// — easier and more honest to use real timers here. Each timeout test
+// stays under 1s wall-clock so the suite remains fast.
+
+describe("runner — timeouts", () => {
+  beforeEach(() => {
+    mockTools.length = 0;
+    mockAdminTools.length = 0;
+    delete process.env.CUSTOM_TOOLS_MAX_STEP_MS;
+    delete process.env.CUSTOM_TOOLS_MAX_TOTAL_MS;
+  });
+
+  it("step timeout fires when a tool step exceeds maxStepMs", async () => {
+    // A handler that sleeps longer than the budget.
+    registerTool("slow_read", async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      return { content: [{ type: "text", text: "never" }] };
+    });
+    const tool: CustomTool = {
+      id: "slow_tool",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      steps: [{ kind: "tool", toolName: "slow_read", args: {}, saveAs: "x" }],
+      maxStepMs: 50,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/step\[0\] \(slow_read\): step timed out after 50ms/);
+    expect(result.stepResults).toHaveLength(1);
+    expect(result.stepResults[0]?.ok).toBe(false);
+    expect(result.stepResults[0]?.error).toBe("timed out");
+    expect(result.stepResults[0]?.durationMs).toBe(50);
+  });
+
+  it("total timeout fires when cumulative step time exceeds maxTotalMs", async () => {
+    // Each step sleeps 80ms; budget is 100ms total. Step 0 finishes
+    // (80ms), step 1 starts at 80ms and the total fires at 100ms — so
+    // the in-flight step is step 1.
+    registerTool("eighty", async () => {
+      await new Promise((r) => setTimeout(r, 80));
+      return { content: [{ type: "text", text: "ok" }] };
+    });
+    const tool: CustomTool = {
+      id: "two_slow",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      steps: [
+        { kind: "tool", toolName: "eighty", args: {}, saveAs: "a" },
+        { kind: "tool", toolName: "eighty", args: {}, saveAs: "b" },
+      ],
+      maxStepMs: 500, // not the binding constraint
+      maxTotalMs: 100,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/total timeout exceeded after 100ms/);
+    expect(result.error).toMatch(/step\[1\] \(eighty\)/);
+    // Step 0 succeeded; step 1 was patched as timed-out by the total
+    // timeout handler.
+    expect(result.stepResults[0]?.ok).toBe(true);
+    expect(result.stepResults[1]?.ok).toBe(false);
+    expect(result.stepResults[1]?.error).toBe("timed out");
+  });
+
+  it("per-tool maxStepMs override beats env default", async () => {
+    process.env.CUSTOM_TOOLS_MAX_STEP_MS = "10000";
+    registerTool("medium", async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      return { content: [{ type: "text", text: "x" }] };
+    });
+    const tool: CustomTool = {
+      id: "override_step",
+      description: "x",
+      destructive: false,
+      inputs: [],
+      // The env says 10s — plenty. The tool overrides to 100ms — the
+      // 200ms sleep MUST trip this override despite the relaxed env.
+      steps: [{ kind: "tool", toolName: "medium", args: {}, saveAs: "x" }],
+      maxStepMs: 100,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await runCustomTool(tool, {});
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/step timed out after 100ms/);
+    expect(result.stepResults[0]?.error).toBe("timed out");
+  });
+});
