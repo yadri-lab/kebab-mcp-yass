@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { listCustomTools, createCustomTool } from "@/connectors/custom-tools/store";
+import {
+  listCustomTools,
+  createCustomTool,
+  cleanupOrphanTestTools,
+} from "@/connectors/custom-tools/store";
 import { customToolWriteSchema } from "@/connectors/custom-tools/types";
 import { resolveRegistryAsync, ALL_CONNECTOR_LOADERS } from "@/core/registry";
 import { withAdminAuth } from "@/core/with-admin-auth";
@@ -31,6 +35,17 @@ import { toMsg } from "@/core/error-utils";
 
 async function getHandler() {
   try {
+    // Bonus A — fire-and-forget sweep of orphaned `t__test_*` tools left
+    // behind by browser tabs that were closed mid-test or by network
+    // blips that aborted the cleanup leg. Piggy-backs on every list view
+    // so we don't need a cron or a separate worker; the sweep itself is
+    // cheap (one KV read + at-most one KV write under the existing
+    // serialization queue). Errors are swallowed because a failing sweep
+    // must not break the admin list view.
+    // fire-and-forget OK: opportunistic GC, never blocks the response
+    void cleanupOrphanTestTools().catch(() => {
+      /* best-effort GC */
+    });
     const tools = await listCustomTools();
     return NextResponse.json({ ok: true, tools });
   } catch (err) {

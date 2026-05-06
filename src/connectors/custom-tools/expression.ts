@@ -254,6 +254,40 @@ function stringify(v: unknown): string {
   }
 }
 
+// ── Root variable extraction (used by write-time cross-step validation) ──
+
+/**
+ * Walk the parsed AST and collect every distinct ROOT identifier that
+ * appears in a `{{var}}`, `{{var.field}}`, `{{#var}}…`, or `{{^var}}…`
+ * tag. Section nodes also contribute their inner-body refs, so a template
+ * like `{{#user}}{{user.name}}{{/user}}` returns `["user"]` (not
+ * `["user", "user"]` — the set dedupes).
+ *
+ * Returns a Set so callers can do O(1) membership checks against the
+ * `availableNames` set built by `validateCrossStepReferences`.
+ *
+ * Errors out the same way `parse` does (malformed templates) — callers
+ * that already validated via `validateTemplate` won't see those because
+ * the parse already passed once.
+ */
+export function extractRootVars(template: string): Set<string> {
+  const ast = parse(template);
+  const out = new Set<string>();
+  collectRoots(ast, out);
+  return out;
+}
+
+function collectRoots(nodes: Node[], out: Set<string>): void {
+  for (const node of nodes) {
+    if (node.kind === "text") continue;
+    // Both `var` and `section` nodes have a `path` whose first segment
+    // is the root identifier.
+    const root = node.path[0];
+    if (root) out.add(root);
+    if (node.kind === "section") collectRoots(node.body, out);
+  }
+}
+
 // ── Args expansion (used by the runner) ───────────────────────────────
 
 /**

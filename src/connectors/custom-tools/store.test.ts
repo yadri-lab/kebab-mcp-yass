@@ -10,9 +10,11 @@ import {
   deleteCustomTool,
   primeCustomToolsCache,
   listCustomToolsSync,
+  cleanupOrphanTestTools,
   _resetCustomToolsCacheForTests,
   _resetKnownToolFactsCacheForTests,
 } from "./store";
+import { getContextKVStore } from "@/core/request-context";
 import { resetKVStoreCache } from "@/core/kv-store";
 
 describe("custom-tools store CRUD", () => {
@@ -185,5 +187,130 @@ describe("custom-tools store CRUD", () => {
         ],
       })
     ).rejects.toThrow(/estimated cost \d+ exceeds limit \d+/i);
+  });
+
+  // ── Bonus C — cross-step variable validation at write time ──────────
+
+  it("rejects a write whose transform references a variable not in inputs and not produced by an earlier step", async () => {
+    await expect(
+      createCustomTool({
+        ...baseTool,
+        id: "typo_var",
+        // input is `task`, the template references `taks` (typo)
+        steps: [{ kind: "transform", template: "- [ ] {{taks}}", saveAs: "line" }],
+      })
+    ).rejects.toThrow(/unknown variable 'taks'.*not in inputs/i);
+  });
+
+  it("rejects when step 2 references a variable that step 1 forgot to saveAs", async () => {
+    await expect(
+      createCustomTool({
+        ...baseTool,
+        id: "missing_saveas",
+        steps: [
+          // step 0 transforms but does not save — `intermediate` is never in availableNames
+          { kind: "transform", template: "hello {{task}}", saveAs: "intermediate_typo" },
+          // step 1 references the wrong name
+          { kind: "transform", template: "wrap[{{intermediate}}]", saveAs: "out" },
+        ],
+      })
+    ).rejects.toThrow(/step\[1\].*unknown variable 'intermediate'/i);
+  });
+
+  it("accepts dotted-access on a known root (we only check the root segment)", async () => {
+    // The runner resolves `{{user.name}}` against whatever `user` is —
+    // we can't know the shape at write time, but the ROOT must be
+    // declared. As long as `user` is in inputs, dotted access passes.
+    const tool = await createCustomTool({
+      ...baseTool,
+      id: "dotted_ok",
+      inputs: [{ name: "user", type: "string", required: true, description: "" }],
+      steps: [{ kind: "transform", template: "hi {{user.name}}", saveAs: "line" }],
+    });
+    expect(tool.id).toBe("dotted_ok");
+  });
+
+  it("accepts a saveAs reference as input to the next step", async () => {
+    const tool = await createCustomTool({
+      ...baseTool,
+      id: "chain_ok",
+      inputs: [{ name: "task", type: "string", required: true, description: "" }],
+      steps: [
+        { kind: "transform", template: "- [ ] {{task}}", saveAs: "line" },
+        { kind: "transform", template: "Wrapped: {{line}}", saveAs: "out" },
+      ],
+    });
+    expect(tool.id).toBe("chain_ok");
+  });
+
+  it("validates root-var references inside templated tool-step args", async () => {
+    await expect(
+      createCustomTool({
+        ...baseTool,
+        id: "tool_arg_typo",
+        inputs: [{ name: "name", type: "string", required: true, description: "" }],
+        steps: [
+          {
+            kind: "tool",
+            toolName: "vault_read",
+            args: { path: "Notes/{{nmae}}.md" }, // typo: nmae
+          },
+        ],
+      })
+    ).rejects.toThrow(/unknown variable 'nmae'/i);
+  });
+
+  // ── Bonus A — orphan cleanup of t__test_* tools ─────────────────────
+
+  it("cleanupOrphanTestTools deletes test tools older than 5 minutes", async () => {
+    // Stage one fresh test tool (NOT an orphan) and one ancient one.
+    // The store doesn't expose a "set createdAt" knob, so we write the
+    // KV array directly to plant an old timestamp in the id suffix.
+    const sixMinAgo = Date.now() - 6 * 60 * 1000;
+    const oldId = `t__test_old_${sixMinAgo.toString(36)}`;
+    const recentId = `t__test_recent_${Date.now().toString(36)}`;
+
+    await createCustomTool({ ...baseTool, id: oldId });
+    await createCustomTool({ ...baseTool, id: recentId });
+    // Sanity — both present.
+    expect((await listCustomTools()).map((t) => t.id).sort()).toEqual([oldId, recentId].sort());
+
+    const { deleted } = await cleanupOrphanTestTools();
+    expect(deleted).toBe(1);
+    const remaining = await listCustomTools();
+    expect(remaining.map((t) => t.id)).toEqual([recentId]);
+  });
+
+  it("cleanupOrphanTestTools deletes test tools whose suffix can't be parsed as a timestamp", async () => {
+    // No underscore-separated timestamp at all, AND id matches `^[a-z][a-z0-9_]{0,63}$`
+    // since lowercase + digits + underscore are allowed by customToolIdPattern.
+    const malformedId = "t__test_no_timestamp_at_all";
+    await createCustomTool({ ...baseTool, id: malformedId });
+    const { deleted } = await cleanupOrphanTestTools();
+    expect(deleted).toBeGreaterThanOrEqual(1);
+    const ids = (await listCustomTools()).map((t) => t.id);
+    expect(ids).not.toContain(malformedId);
+  });
+
+  it("cleanupOrphanTestTools leaves real (non-prefixed) tools alone", async () => {
+    await createCustomTool(baseTool); // id: todo_add — no t__test_ prefix
+    const { deleted } = await cleanupOrphanTestTools();
+    expect(deleted).toBe(0);
+    expect((await listCustomTools()).map((t) => t.id)).toContain("todo_add");
+  });
+
+  it("cleanupOrphanTestTools also drops version history for swept ids", async () => {
+    const sixMinAgo = Date.now() - 6 * 60 * 1000;
+    const oldId = `t__test_versioned_${sixMinAgo.toString(36)}`;
+    await createCustomTool({ ...baseTool, id: oldId });
+    // Update once to force a version-history entry (pushVersion).
+    await updateCustomTool(oldId, { ...baseTool, id: oldId, description: "edited" });
+    const kv = getContextKVStore();
+    const before = await kv.get(`customtool:versions:${oldId}`);
+    expect(before).toBeTruthy();
+
+    await cleanupOrphanTestTools();
+    const after = await kv.get(`customtool:versions:${oldId}`);
+    expect(after).toBeFalsy();
   });
 });

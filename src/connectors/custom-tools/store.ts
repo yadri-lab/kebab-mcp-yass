@@ -6,7 +6,7 @@ import {
   type CustomToolVersion,
   type CustomToolWriteInput,
 } from "./types";
-import { validateTemplate } from "./expression";
+import { validateTemplate, extractRootVars } from "./expression";
 import { resolveRegistryAsync, ALL_CONNECTOR_LOADERS } from "@/core/registry";
 import { CALLABLE_FROM_CUSTOM_TOOLS } from "./runner";
 import { on } from "@/core/events";
@@ -207,6 +207,83 @@ function validateAllTemplates(tool: CustomToolWriteInput): void {
 }
 
 /**
+ * Cross-step variable resolution check (Bonus C).
+ *
+ * Walk the steps in declaration order, threading a running set of
+ * "available" variable names that starts as `inputs[].name` and grows
+ * by each step's `saveAs`. For every Mustache reference encountered
+ * (in transform `template` strings or templated `tool` step `args`),
+ * verify the ROOT identifier is in the available set at THAT point
+ * in the sequence.
+ *
+ * Why root-only: dotted access (`{{user.name}}`) drills into a value
+ * the runner produced — we can only meaningfully reason about whether
+ * `user` exists, not whether `user.name` is a present field on
+ * whatever shape it eventually holds.
+ *
+ * Throws on the FIRST genuinely-unknown reference with a precise
+ * step index + variable name + message. We deliberately stop on the
+ * first violation rather than aggregating because:
+ *   - a typo in step 1 cascades — `userName` missing in step 1 likely
+ *     means it's also missing in step 4, and reporting one error per
+ *     step would bury the lede;
+ *   - the dashboard surfaces ONE error at a time anyway (the form's
+ *     toast/banner), so aggregating just delays useful feedback.
+ *
+ * False-negative tolerance: an empty-string render is the Mustache
+ * default for missing variables, and some authors lean on that for
+ * "optional" fields. We do NOT block this — a variable that's
+ * defined SOMEWHERE in the visible chain (inputs OR any earlier
+ * `saveAs`) passes the check even if its presence is conditional.
+ * Only references that are NEVER reachable get rejected.
+ */
+function validateCrossStepReferences(tool: CustomToolWriteInput): void {
+  const availableNames = new Set<string>();
+  for (const input of tool.inputs ?? []) {
+    availableNames.add(input.name);
+  }
+
+  for (let i = 0; i < tool.steps.length; i++) {
+    const step = tool.steps[i]!;
+    const refs: Set<string> = new Set();
+
+    if (step.kind === "transform") {
+      try {
+        for (const r of extractRootVars(step.template)) refs.add(r);
+      } catch {
+        // Already caught by validateAllTemplates — bail out cleanly
+        // instead of double-reporting.
+        return;
+      }
+    } else {
+      // walk args, collecting every root referenced in any string leaf
+      let badParse = false;
+      walkStrings(step.args, (s) => {
+        if (badParse) return;
+        try {
+          for (const r of extractRootVars(s)) refs.add(r);
+        } catch {
+          badParse = true;
+        }
+      });
+      if (badParse) return;
+    }
+
+    for (const ref of refs) {
+      if (!availableNames.has(ref)) {
+        throw new Error(
+          `step[${i}]: template references unknown variable '${ref}' ` +
+            `(not in inputs and not produced by an earlier step)`
+        );
+      }
+    }
+
+    // After the step, its `saveAs` becomes available to subsequent steps.
+    if (step.saveAs) availableNames.add(step.saveAs);
+  }
+}
+
+/**
  * Snapshot of the merged registry as a flat lookup `name → { packId,
  * destructive }`. Used by both write-time validators (HI-02 toolName
  * check + HI-03 destructive aggregation). Walking the registry once and
@@ -387,6 +464,91 @@ function walkStrings(v: unknown, visit: (s: string, path: string) => void, path 
   }
 }
 
+// ── Orphan-test-tool cleanup (Bonus A) ────────────────────────────────
+
+/**
+ * Test-tool id prefix used by the dashboard's "Test" button — see
+ * `app/config/tabs/custom-tool-edit-page.tsx`. The format is
+ *   `t__test_<id-prefix>_<base36 Date.now()>`
+ * Tools written under this prefix are scratch artifacts the dashboard
+ * creates to invoke the runner before saving the real tool. Under
+ * normal operation they are deleted immediately after the test run,
+ * but if the browser tab is closed mid-test, the lambda is killed, or
+ * a network blip aborts the cleanup leg, they persist in KV and clutter
+ * the admin list view + the MCP tool surface (`primeCustomToolsCache`
+ * picks them up as if they were real tools).
+ */
+const TEST_TOOL_PREFIX = "t__test_";
+const ORPHAN_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Sweep test-tool orphans older than ORPHAN_MAX_AGE_MS (or with an
+ * unparseable timestamp suffix). Runs in fire-and-forget mode from the
+ * admin list endpoint so each list view becomes a natural trigger —
+ * cheap, no cron required, no separate background worker process.
+ *
+ * Returns `{ deleted }` so callers/tests can assert the count, but the
+ * primary caller (the GET handler) ignores the result.
+ *
+ * Concurrency: the same `enqueueWrite` queue used by create/update
+ * serializes the write — two parallel sweeps cooperate cleanly. The
+ * sweep is itself a single read-modify-write under that queue.
+ */
+export function cleanupOrphanTestTools(): Promise<{ deleted: number }> {
+  return enqueueWrite(async () => {
+    const all = await readRaw();
+    const now = Date.now();
+    const survivors: CustomTool[] = [];
+    const orphanIds: string[] = [];
+
+    for (const t of all) {
+      if (!t.id.startsWith(TEST_TOOL_PREFIX)) {
+        survivors.push(t);
+        continue;
+      }
+      // Format: t__test_<idPrefix>_<base36 timestamp>. Take the LAST
+      // underscore-segment as the timestamp because the id-prefix can
+      // legitimately contain underscores.
+      const tail = t.id.slice(TEST_TOOL_PREFIX.length);
+      const lastUnderscore = tail.lastIndexOf("_");
+      let isOrphan = false;
+      if (lastUnderscore < 0) {
+        // No timestamp segment at all — definitely an orphan (or a
+        // hand-crafted id that happened to share the prefix; either
+        // way, prefixed test ids should not be hand-crafted).
+        isOrphan = true;
+      } else {
+        const ts = parseInt(tail.slice(lastUnderscore + 1), 36);
+        if (!Number.isFinite(ts) || ts <= 0) {
+          isOrphan = true;
+        } else if (now - ts > ORPHAN_MAX_AGE_MS) {
+          isOrphan = true;
+        }
+      }
+
+      if (isOrphan) orphanIds.push(t.id);
+      else survivors.push(t);
+    }
+
+    if (orphanIds.length === 0) return { deleted: 0 };
+
+    await writeRaw(survivors);
+    // Drop versions history for swept ids so reuse of the same id
+    // doesn't inherit a stale timeline.
+    const kv = getContextKVStore();
+    await Promise.all(
+      orphanIds.map(async (id) => {
+        try {
+          await kv.delete(versionsKey(id));
+        } catch {
+          /* best-effort */
+        }
+      })
+    );
+    return { deleted: orphanIds.length };
+  });
+}
+
 // ── Public CRUD ───────────────────────────────────────────────────────
 
 export async function listCustomTools(): Promise<CustomTool[]> {
@@ -402,6 +564,7 @@ export function createCustomTool(input: CustomToolWriteInput): Promise<CustomToo
   return enqueueWrite(async () => {
     const parsed = customToolWriteSchema.parse(input);
     validateAllTemplates(parsed);
+    validateCrossStepReferences(parsed);
     // Only walk the registry if we actually need it — transform-only
     // Custom Tools require neither toolName validation nor destructive
     // aggregation, and the registry walk is the slow part of a write.
@@ -442,6 +605,7 @@ export function updateCustomTool(
   return enqueueWrite(async () => {
     const parsed = customToolWriteSchema.parse(patch);
     validateAllTemplates(parsed);
+    validateCrossStepReferences(parsed);
     // Only walk the registry if we actually need it — transform-only
     // Custom Tools require neither toolName validation nor destructive
     // aggregation, and the registry walk is the slow part of a write.
@@ -553,6 +717,7 @@ export function rollbackCustomTool(id: string, versionIndex: number): Promise<Cu
     };
     const parsed = customToolWriteSchema.parse(writeInput);
     validateAllTemplates(parsed);
+    validateCrossStepReferences(parsed);
     const needsRegistry = parsed.steps.some((s) => s.kind === "tool");
     const known = needsRegistry ? await buildKnownToolFacts() : new Map<string, ToolFacts>();
     validateAllToolNames(parsed.steps, known);
