@@ -162,4 +162,53 @@ describe("credential-store SEC-02", () => {
       });
     });
   });
+
+  it("hydrateCredentialsFromKV retries after a transient KV failure", async () => {
+    // Regression: pre-fix `let hydrated = true` was set BEFORE awaiting
+    // the KV fetch, so a single transient error (timeout, network blip)
+    // poisoned the lambda forever — subsequent calls short-circuited
+    // on the flag and never reloaded, surfacing as permanent
+    // "missing env" for connectors whose creds only live in KV.
+    stubKv._store.set("cred:RETRY_TEST_KEY", "loaded-after-retry");
+
+    // First call: scan throws once.
+    let callCount = 0;
+    stubKv.scan.mockImplementationOnce(async () => {
+      callCount++;
+      throw new Error("simulated KV timeout");
+    });
+
+    await hydrateCredentialsFromKV();
+    // First attempt failed: snapshot stays empty.
+    expect(getHydratedCredentialSnapshot().RETRY_TEST_KEY).toBeUndefined();
+    expect(callCount).toBe(1);
+
+    // Second call: scan succeeds (the mockImplementationOnce only
+    // overrode the first call). Without the fix, this short-circuits
+    // on the hydrated flag and never touches KV.
+    await hydrateCredentialsFromKV();
+    expect(getHydratedCredentialSnapshot().RETRY_TEST_KEY).toBe("loaded-after-retry");
+  });
+
+  it("hydrateCredentialsFromKV dedupes concurrent callers", async () => {
+    // Two parallel callers must observe a single in-flight fetch
+    // (no thundering herd against Upstash on cold start).
+    stubKv._store.set("cred:CONCURRENT_TEST_KEY", "shared-value");
+    let scanCalls = 0;
+    stubKv.scan.mockImplementation(async (_cursor: string, opts?: { match?: string }) => {
+      scanCalls++;
+      // Tiny await so the second caller has time to enter the function.
+      await new Promise((r) => setImmediate(r));
+      const allKeys = Array.from(stubKv._store.keys());
+      const match = opts?.match;
+      const filtered = match?.endsWith("*")
+        ? allKeys.filter((k) => k.startsWith(match.slice(0, -1)))
+        : allKeys;
+      return { cursor: "0", keys: filtered };
+    });
+
+    await Promise.all([hydrateCredentialsFromKV(), hydrateCredentialsFromKV()]);
+    expect(scanCalls).toBe(1);
+    expect(getHydratedCredentialSnapshot().CONCURRENT_TEST_KEY).toBe("shared-value");
+  });
 });

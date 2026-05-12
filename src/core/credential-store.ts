@@ -102,11 +102,19 @@ export async function saveCredentialsToKV(vars: Record<string, string>): Promise
 
 // ── Hydration ──────────────────────────────────────────────────────
 
-let hydrated = false;
+// Memoized promise instead of a boolean flag. The pre-fix `let hydrated`
+// pattern set the flag *before* awaiting the KV fetch — so a transient
+// failure (timeout, network blip) left the lambda permanently in a
+// "claims hydrated, snapshot empty" state. Every subsequent request on
+// that lambda then read missing-env for connectors whose credentials
+// were actually in KV. Memoizing the promise (and clearing it on
+// failure) lets concurrent callers share one in-flight fetch while
+// allowing the next caller to retry after a failure.
+let hydrationPromise: Promise<void> | null = null;
 
 /**
  * Load all `cred:*` keys from KV into the in-process snapshot.
- * Runs once per process (idempotent). Skips keys already in
+ * Runs once per process on success (idempotent). Skips keys already in
  * `process.env` from boot — boot env vars (Vercel dashboard, .env)
  * take precedence.
  *
@@ -115,18 +123,19 @@ let hydrated = false;
  * credentials map, (b) the boot env snapshot, (c) the hydrated
  * snapshot — in that priority order.
  *
- * Called lazily from the transport entry path.
+ * Called lazily from the transport entry path and from
+ * `resolveRegistryAsync()` (dashboard render). On a failed KV fetch the
+ * cached promise is dropped so the next caller retries instead of
+ * inheriting a poisoned cache.
  */
 export async function hydrateCredentialsFromKV(): Promise<void> {
-  if (hydrated) return;
-  hydrated = true;
+  if (hydrationPromise) return hydrationPromise;
+  hydrationPromise = (async () => {
+    const kv = getContextKVStore();
+    // Only hydrate if we have real KV (Upstash) — ephemeral /tmp KV
+    // on Vercel without Upstash doesn't survive cold starts anyway.
+    if (kv.kind !== "upstash") return;
 
-  const kv = getContextKVStore();
-  // Only hydrate if we have real KV (Upstash) — ephemeral /tmp KV
-  // on Vercel without Upstash doesn't survive cold starts anyway.
-  if (kv.kind !== "upstash") return;
-
-  try {
     const keys = await kvScanAll(kv, `${CRED_PREFIX}*`);
     if (keys.length === 0) return;
 
@@ -145,16 +154,22 @@ export async function hydrateCredentialsFromKV(): Promise<void> {
     if (keys.length > 0) {
       console.log(`[Kebab MCP] Hydrated ${keys.length} credential(s) from KV (SEC-02 snapshot)`);
     }
-  } catch (err) {
+  })().catch((err: unknown) => {
     console.warn("[Kebab MCP] Failed to hydrate credentials from KV:", toMsg(err));
-  }
+    // Drop the cached promise so the next call retries. Without this,
+    // a transient KV blip would lock the lambda into "snapshot empty"
+    // forever, surfacing as "missing env" for every connector whose
+    // credentials only live in KV.
+    hydrationPromise = null;
+  });
+  return hydrationPromise;
 }
 
 /**
  * Reset the hydration flag. Test-only.
  */
 export function resetHydrationFlag(): void {
-  hydrated = false;
+  hydrationPromise = null;
   hydratedSnapshot = {};
 }
 
@@ -163,7 +178,7 @@ export function resetHydrationFlag(): void {
  * Called after credentials are saved to KV to ensure they're visible.
  */
 export function resetCredentialHydration(): void {
-  hydrated = false;
+  hydrationPromise = null;
 }
 
 /**
