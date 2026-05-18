@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Completed 69-04-PLAN.md (linkedin_send_inmail) — UNI-08 closed
-last_updated: "2026-05-18T18:27:46.522Z"
+stopped_at: Completed 69-05-PLAN.md (linkedin_list_pending) — UNI-10 closed
+last_updated: "2026-05-18T18:35:06.325Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 ## Current Position
 
 Phase: 69 — LinkedIn Writes Completion — EXECUTING
-Plan: 4 of 6 complete (Wave 2 plan 03 shipped — linkedin_send_message tool + 13 tests; UNI-07 closed)
+Plan: 5 of 6 complete (Wave 2 plan 03 shipped — linkedin_send_message tool + 13 tests; UNI-07 closed)
 Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 shipped + live-validated 2026-05-18.
 Status: Ready to execute
 Last activity: 2026-05-18
@@ -1221,6 +1221,7 @@ Exit condition for operator attention:
 - Dedup-hit path STILL writes a fresh audit row (T-68-06-04 mitigation) — operator must see EACH repeat attempt, not just the original
 - D-38..D-41 implementation — checkUnipileRateLimit, fail-CLOSED default, env-overridable caps, ISO weekly bucket helper. Module standalone; Wave 2/3 will integrate.
 - Plan 04 (UNI-08): linkedin_send_inmail shipped with D-48 balance bracketing via client.request.send escape hatch + D-29 all-null premium gate + D-26 z.literal(true) allow_inmail safety belt + D-50 startNewChat options.linkedin.inmail=true; verified=providerOk (no 10s message-poll for InMail, planner-discretion per PATTERNS L415, revisit phase 71 if silent-failure operator reports surface)
+- Phase 69 Plan 05 (UNI-10): linkedin_list_pending shipped — read-only cursor-paginated invitations list with client-side age_days computation + older_than_days filter (D-35), MAX_PAGES=10 safety cap (D-36), D-37 read-only invariant negative-tested
 
 ### Phase 38 (unchanged)
 
@@ -1453,5 +1454,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 69-04-PLAN.md (linkedin_send_inmail) — UNI-08 closed
+Stopped at: Completed 69-05-PLAN.md (linkedin_list_pending) — UNI-10 closed
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
