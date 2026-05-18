@@ -157,6 +157,19 @@ export const ALL_CONNECTOR_LOADERS: ConnectorLoaderEntry[] = [
     loader: () => import("@/connectors/apify/manifest").then((m) => m.apifyConnector),
   },
   {
+    id: "unipile",
+    label: "Unipile (LinkedIn writes)",
+    description:
+      "Send LinkedIn connection requests and read relationship status via Unipile's managed-browser API.",
+    requiredEnvVars: ["UNIPILE_DSN", "UNIPILE_TOKEN"],
+    // Wave 0 stub: 0 tools. Plan 06 will bump to 2
+    // (linkedin_send_connection + linkedin_get_relationship_status) in the
+    // SAME commit that populates manifest.tools — registry-metadata-consistency
+    // contract test requires toolCount === manifest.tools.length at all times.
+    toolCount: 0,
+    loader: () => import("@/connectors/unipile/manifest").then((m) => m.unipileConnector),
+  },
+  {
     id: "github",
     label: "GitHub Issues",
     description: "List, create, comment on, and close GitHub issues across repos.",
