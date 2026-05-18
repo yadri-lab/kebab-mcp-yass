@@ -30,6 +30,12 @@ import {
   UnipileAccountRestrictedError,
   UnipileNotConnectedError,
   Unipile5xxError,
+  // Phase 69 / Plan 01 — new subclasses (D-23, D-26, D-29, D-45).
+  UnipileInmailNotAuthorizedError,
+  UnipileInmailRequiresPremiumError,
+  UnipileRecipientUnreachableError,
+  UnipileInvalidRequestError,
+  UnipileAttachmentTooLargeError,
 } from "../errors";
 
 const FakeUnsuccessful = hoist.FakeUnsuccessful;
@@ -45,6 +51,12 @@ describe("Phase 68 / Plan 02 — classifyUnipileError", () => {
     [500, undefined, "error_unipile_5xx"],
     [502, undefined, "error_unipile_5xx"],
     [503, undefined, "error_unipile_5xx"],
+    // Phase 69 / Plan 01 — D-45 (UNI-26) + D-29 new branches.
+    [400, "invalid_parameters", "error_invalid_request"],
+    [422, "invalid_recipient", "error_recipient_unreachable"],
+    [422, "inmail_requires_premium", "error_inmail_requires_premium"],
+    [403, "inmail_requires_premium", "error_inmail_requires_premium"],
+    [401, "inmail_requires_premium", "error_inmail_requires_premium"],
   ])("status %i type=%s → %s", (status, type, expected) => {
     const body = type === undefined ? { status } : { status, type };
     expect(classifyUnipileError(new FakeUnsuccessful(body))).toBe(expected);
@@ -111,5 +123,55 @@ describe("Phase 68 / Plan 02 — typed error classes", () => {
     expect(restricted.recovery).toBeTruthy();
     expect(notConn.recovery).toBeTruthy();
     expect(fiveXx.recovery).toBeTruthy();
+  });
+});
+
+describe("Phase 69 / Plan 01 — new typed error classes (D-23, D-26, D-29, D-45)", () => {
+  it("UnipileInmailNotAuthorizedError — name, NOT retryable, recovery present", () => {
+    const e = new UnipileInmailNotAuthorizedError("allow_inmail not set");
+    expect(e.name).toBe("UnipileInmailNotAuthorizedError");
+    expect(e.retryable).toBe(false);
+    expect(e.recovery).toBeTruthy();
+    expect(e.userMessage).toMatch(/allow_inmail/);
+  });
+
+  it("UnipileInmailRequiresPremiumError — name, NOT retryable, recovery present", () => {
+    const e = new UnipileInmailRequiresPremiumError("403 inmail_requires_premium");
+    expect(e.name).toBe("UnipileInmailRequiresPremiumError");
+    expect(e.retryable).toBe(false);
+    expect(e.recovery).toBeTruthy();
+    expect(e.userMessage).toMatch(/Premium|Sales Navigator|Recruiter/);
+  });
+
+  it("UnipileRecipientUnreachableError — name, NOT retryable, recovery present", () => {
+    const e = new UnipileRecipientUnreachableError("422 invalid_recipient");
+    expect(e.name).toBe("UnipileRecipientUnreachableError");
+    expect(e.retryable).toBe(false);
+    expect(e.recovery).toBeTruthy();
+    expect(e.userMessage).toMatch(/not reachable/);
+  });
+
+  it("UnipileInvalidRequestError — name, NOT retryable, recovery present", () => {
+    const e = new UnipileInvalidRequestError("400 invalid_parameters");
+    expect(e.name).toBe("UnipileInvalidRequestError");
+    expect(e.retryable).toBe(false);
+    expect(e.recovery).toBeTruthy();
+    expect(e.userMessage).toMatch(/malformed|invalid/);
+  });
+
+  it("UnipileAttachmentTooLargeError — name, NOT retryable, embeds size + 15MB limit", () => {
+    const e = new UnipileAttachmentTooLargeError("attachment[0] too big", 20_000_000);
+    expect(e.name).toBe("UnipileAttachmentTooLargeError");
+    expect(e.retryable).toBe(false);
+    expect(e.recovery).toBeTruthy();
+    expect(e.message).toContain("20000000");
+    expect(e.message).toContain("15728640"); // 15 MB byte limit baked into the message
+    expect(e.userMessage).toMatch(/15 MB/);
+  });
+
+  it("new classes preserve `cause` when passed", () => {
+    const root = new Error("root");
+    const e = new UnipileInmailNotAuthorizedError("wrapped", { cause: root });
+    expect(e.cause).toBe(root);
   });
 });

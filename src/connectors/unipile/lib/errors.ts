@@ -96,11 +96,104 @@ export class Unipile5xxError extends McpToolError {
   }
 }
 
+/**
+ * Phase 69 / Plan 01 — NEW error subclasses (D-23, D-26, D-29, D-45).
+ *
+ * Each subclass mirrors the phase-68 shape (extends McpToolError, sets
+ * `this.name` after super) so caller-side `instanceof` checks and
+ * audit-log classifiers stay consistent.
+ */
+
+/** D-26: caller did not set `allow_inmail: true` on linkedin_send_inmail (operator-side gate). */
+export class UnipileInmailNotAuthorizedError extends McpToolError {
+  constructor(message: string, opts?: { cause?: Error }) {
+    super({
+      code: ErrorCode.INVALID_INPUT,
+      toolName: "unipile",
+      message,
+      userMessage: "InMail not authorized — set allow_inmail: true to confirm credit usage.",
+      retryable: false,
+      cause: opts?.cause,
+      recovery: "Re-call the tool with allow_inmail: true if you want to spend an InMail credit.",
+    });
+    this.name = "UnipileInmailNotAuthorizedError";
+  }
+}
+
+/** D-29: account lacks Premium / Sales Nav / Recruiter — no InMail credits available. */
+export class UnipileInmailRequiresPremiumError extends McpToolError {
+  constructor(message: string, opts?: { cause?: Error }) {
+    super({
+      code: ErrorCode.AUTH_FAILED,
+      toolName: "unipile",
+      message,
+      userMessage:
+        "This LinkedIn account does not have InMail credits. Upgrade to Premium, Sales Navigator, or Recruiter.",
+      retryable: false,
+      cause: opts?.cause,
+      recovery: "Use linkedin_send_connection (free) or upgrade the LinkedIn account.",
+    });
+    this.name = "UnipileInmailRequiresPremiumError";
+  }
+}
+
+/** D-45 (UNI-26): 422 invalid_recipient — recipient out-of-network / deleted / privacy-blocked. */
+export class UnipileRecipientUnreachableError extends McpToolError {
+  constructor(message: string, opts?: { cause?: Error }) {
+    super({
+      code: ErrorCode.NOT_FOUND,
+      toolName: "unipile",
+      message,
+      userMessage:
+        "Recipient is not reachable from this LinkedIn account (out of network, deleted, or privacy-blocked).",
+      retryable: false,
+      cause: opts?.cause,
+      recovery: "Verify the profile URL or try a different account that may be connected.",
+    });
+    this.name = "UnipileRecipientUnreachableError";
+  }
+}
+
+/** D-45 (UNI-26): 400 invalid_parameters — request to LinkedIn was malformed. */
+export class UnipileInvalidRequestError extends McpToolError {
+  constructor(message: string, opts?: { cause?: Error }) {
+    super({
+      code: ErrorCode.INVALID_INPUT,
+      toolName: "unipile",
+      message,
+      userMessage: "Request to LinkedIn was malformed (invalid parameters).",
+      retryable: false,
+      cause: opts?.cause,
+      recovery:
+        "Check the profile URL format, note length (≤300 chars), and attachment count (≤5).",
+    });
+    this.name = "UnipileInvalidRequestError";
+  }
+}
+
+/** D-23: attachment size exceeds the LinkedIn 15 MB hard limit. */
+export class UnipileAttachmentTooLargeError extends McpToolError {
+  constructor(message: string, sizeBytes: number) {
+    super({
+      code: ErrorCode.INVALID_INPUT,
+      toolName: "unipile",
+      message: `${message} (size: ${sizeBytes} bytes, limit: 15728640)`,
+      userMessage: "Attachment exceeds the 15 MB LinkedIn limit.",
+      retryable: false,
+      recovery: "Compress the file or remove it.",
+    });
+    this.name = "UnipileAttachmentTooLargeError";
+  }
+}
+
 export type UnipileErrorResult =
   | "error_rate_limit"
   | "error_account_restricted"
   | "error_not_connected"
-  | "error_unipile_5xx";
+  | "error_unipile_5xx"
+  | "error_recipient_unreachable" // NEW D-45 (UNI-26)
+  | "error_invalid_request" // NEW D-45 (UNI-26)
+  | "error_inmail_requires_premium"; // NEW D-29
 
 /**
  * Maps an arbitrary thrown value (typically from the Unipile SDK) onto the
@@ -120,7 +213,18 @@ export function classifyUnipileError(err: unknown): UnipileErrorResult {
 
   if (status === 429) return "error_rate_limit";
   if (status === 422 && type.includes("cannot_resend")) return "error_rate_limit"; // LinkedIn-side cap
-  if (status === 401 || status === 403) return "error_account_restricted";
+  // Phase 69 / D-45 (UNI-26) — specific 422 variants BEFORE the generic fall-through.
+  if (status === 422 && type.includes("invalid_recipient")) return "error_recipient_unreachable";
+  if (status === 422 && type.includes("inmail_requires_premium"))
+    return "error_inmail_requires_premium"; // D-29
+  // Phase 69 / D-45 (UNI-26) — distinct 400 mapping (was previously falling through to 5xx).
+  if (status === 400 && type.includes("invalid_parameters")) return "error_invalid_request";
+  if (status === 401 || status === 403) {
+    // Phase 69 / D-29 — 403/401 with explicit inmail premium hint maps to the premium error,
+    // NOT the generic account-restricted bucket (the operator needs to upgrade, not reconnect).
+    if (type.includes("inmail_requires_premium")) return "error_inmail_requires_premium";
+    return "error_account_restricted";
+  }
   if (status === 404) return "error_not_connected";
   if (status >= 500) return "error_unipile_5xx";
   return "error_unipile_5xx";

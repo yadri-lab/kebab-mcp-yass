@@ -38,14 +38,36 @@ import { getContextKVStore } from "@/core/request-context";
 /** D-08: audit log TTL is 90 days. Upstash respects EX; FilesystemKV ignores (dev only). */
 export const AUDIT_TTL_SECONDS = 90 * 24 * 60 * 60; // 7,776,000
 
-/** D-15: result enum (locked). NEVER add 'pending' — D-13/D-14 eliminate that state. */
+/**
+ * D-15: result enum (locked phase-68 order — extended in phase 69 / Plan 01).
+ *
+ * NEVER add 'pending' — D-13/D-14 eliminate that state.
+ *
+ * Phase 69 additions (D-23, D-26, D-29, D-32, D-43, D-45) appended below the
+ * phase-68 members; ordering of phase-68 members is preserved so existing
+ * dashboards / audit-log queries that rely on declaration order continue to
+ * work. Discriminator strings (alphabetical inside the phase-69 block) chosen
+ * to keep the surface scannable.
+ */
 export type AuditResult =
+  // Phase 68 (locked — DO NOT reorder)
   | "success"
   | "unverified_timeout"
   | "error_rate_limit"
   | "error_account_restricted"
   | "error_not_connected"
-  | "error_unipile_5xx";
+  | "error_unipile_5xx"
+  // Phase 69 — CONTEXT-mandated (7 new, alphabetical)
+  | "dry_run" // D-32 — engage dry_run audit row (no provider call)
+  | "error_attachment_too_large" // D-23
+  | "error_inmail_not_authorized" // D-26
+  | "error_inmail_requires_premium" // D-29
+  | "error_invalid_request" // D-45 (UNI-26)
+  | "error_rate_limit_kebab" // D-43 — distinct from Unipile-side 429
+  | "error_recipient_unreachable" // D-45 (UNI-26)
+  // Phase 69 — Claude's discretion (RESEARCH §6 recommended, 2 bonus)
+  | "error_inmail_recipient_not_eligible"
+  | "error_inmail_cap_exceeded";
 
 /** D-07: audit row schema. note_text is NEVER persisted — only params_hash. */
 export interface AuditRow {
