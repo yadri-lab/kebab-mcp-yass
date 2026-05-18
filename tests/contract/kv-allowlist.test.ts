@@ -100,6 +100,20 @@ const ALLOWLIST = new Set<string>([
   // design (the key is non-tenanted; same allowlist rationale as
   // app/api/config/update/route.ts above).
   "app/api/config/env/route.ts",
+  // Phase 70 / Plan 01 / UNI-12 / D-56: Account → Tenant reverse index is
+  // intentionally root-scoped. The Unipile webhook ingress route has NO
+  // tenant context until the dispatcher reads `account_id` from the
+  // (verified) payload and looks up the owning tenant via this index.
+  // Mapping is written by the operator dashboard's account-claim flow
+  // (NOT in this phase) + opportunistically by the dispatcher (Plan 02).
+  // The webhook route entry below shares the same rationale.
+  "src/connectors/unipile/webhook/account-tenant-index.ts",
+  // Phase 70 / Plan 01 / UNI-12 / D-54: Unipile webhook route uses root-scope
+  // getKVStore() for cross-tenant idempotency keys
+  // (`unipile:webhook:event:<event_id>`). The route has NO tenant context
+  // at ingress — the dispatcher resolves the tenant AFTER the dedup row is
+  // written, via the account-tenant reverse index above.
+  "app/api/unipile/webhook/route.ts",
   // Scripts (not runtime server code)
   "scripts/kv-compact.ts",
 ]);
