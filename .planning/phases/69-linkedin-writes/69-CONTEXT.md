@@ -74,6 +74,16 @@ Complete the LinkedIn write tool suite started in phase 68. Ship 4 new tools + 1
 - **D-44:** UNI-25 (URL query string normalization) — extend `SLUG_RE` regex in `lib/identifiers.ts` to allow `\?[^/]*` suffix. Add 3 tests for `?originalSubdomain=fr`, `?miniProfileUrn=...`, `?utm_source=...`.
 - **D-45:** UNI-26 (4xx error mis-classification) — add 2 new enum members to `lib/errors.ts`: `error_recipient_unreachable` (422 invalid_recipient) + `error_invalid_request` (400 invalid_parameters). Map in `classifyUnipileError()`.
 
+### Amendments After Research (2026-05-18, post-RESEARCH.md)
+
+The researcher LIVE-verified 3 SDK assumptions in CONTEXT were incorrect. Corrections (locked):
+
+- **D-46 (amends D-23):** Attachment shape is `{filename: string, mimetype: string, base64: string}` decoded server-side, NOT browser `File[]` (MCP tools run server-side, browser File API unavailable). SDK accepts `Array<[string, Buffer]>` — we wrap.
+- **D-47 (amends D-24):** Verify-after-write for `send_message` polls `client.messaging.getAllMessagesFromChat({chat_id, limit: 5})` at 5s + 10s, checks max `timestamp` where `is_sender === 1`. The `last_message_at` field doesn't exist on `LinkedinUserProfileSchema` (researcher verified by reading SDK types). Strict-boolean semantics unchanged — 10s timeout = `verified: false`.
+- **D-48 (amends D-28):** InMail credits NOT returned by send. Source of truth = `GET /api/v1/linkedin/inmail_balance?account_id=...` (LIVE-verified: account `eYRQtT4kTxq0Ns1XjP38MQ` has 150 Sales Nav credits). Tool calls balance BEFORE + AFTER send to derive `credits_used` / `credits_remaining`. SDK doesn't expose this method → use `client.request.send()` escape hatch. Cache balance reads for 60s to avoid quota burn on read.
+- **D-49 (overrides D-42):** Order in handler is **dedup-FIRST, rate-limit SECOND**. Researcher Q4: rate-limit-first leaks quota on dedup hits (the rate-limiter increments before realizing it's a no-op). Dedup-first means dedup hits don't count against the daily cap (correct semantics — same call shouldn't count twice).
+- **D-50:** InMail sent via `messaging.startNewChat({account_id, attendees_ids: [provider_id], text, options: {linkedin: {api: "classic", inmail: true}}})`. NOT a separate `users.sendInmail` SDK method (researcher confirmed). Same MCP tool API surface as CONTEXT defined; only implementation detail changes.
+
 ### Claude's Discretion
 - Choice of attachment validation library (recommend: native `File.size` check, no new dep)
 - Whether `linkedin_engage` accepts `note?` param (recommend: yes, passed through to send_connection branch only)

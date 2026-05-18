@@ -16,6 +16,30 @@
 
 ## Active Phase
 
+### Phase 69: LinkedIn Writes
+
+**Goal:** Complete the LinkedIn write tool suite started in phase 68. Ship 4 new tools (`linkedin_send_message` 1st-degree DM with attachments + verify-after-write, `linkedin_send_inmail` explicit paid with credits bracketing + premium gate, `linkedin_engage` super-tool with degree-based routing + dry_run, `linkedin_list_pending` cleanup helper) + 1 KV-backed per-account rate-limiter (fail-closed by default, daily/weekly windows, env-overridable caps). Retrofit `linkedin_send_connection` (phase 68) with the rate-limiter. Close 2 phase-68 backlog items (UNI-25 URL query string + UNI-26 4xx mis-classification). Bump manifest toolCount 2 → 6.
+
+**Requirements:** UNI-07, UNI-08, UNI-09, UNI-10, UNI-11, UNI-25, UNI-26
+
+**Depends on:** Phase 68 (foundation: client, retry, errors, identifiers, audit, dedup, CRM-bridge, send_connection)
+
+**Plans:** 6 plans
+
+Plans:
+- [ ] 69-01-PLAN.md — Wave 1: Foundation extensions — lib/errors.ts (+5 classes UnipileInmail* + UnipileRecipientUnreachable + UnipileInvalidRequest + UnipileAttachmentTooLarge, +3 enum members, +4 classifyUnipileError branches) + lib/audit.ts (+9 AuditResult members incl. dry_run + error_rate_limit_kebab) + lib/identifiers.ts (SLUG_RE +query/+fragment per D-44) + NEW lib/account.ts (extracted resolveAccountId — anti-drift across 4 tools) (UNI-25, UNI-26)
+- [ ] 69-02-PLAN.md — Wave 1: lib/rate-limiter.ts — per-account/per-tool day+week KV counters, fail-closed default (D-40), env-overridable caps (D-39: 25/100/50/15 defaults), retry_after as ISO timestamps + 12+ tests covering all 4 D-40 paths (UNI-11)
+- [ ] 69-03-PLAN.md — Wave 2: tools/linkedin-send-message.ts — 9-step handler (dedup→account→rate-limit→attachment-decode→degree-check→CRM→startNewChat→verify→audit), 1st-degree gate (D-22), attachments {filename,mimetype,base64}→[filename,Buffer] tuples (D-46), verify-after-write via getAllMessagesFromChat polling (D-47) + 9+ tests (UNI-07)
+- [ ] 69-04-PLAN.md — Wave 2: tools/linkedin-send-inmail.ts — 13-step handler with balance bracketing (D-48 escape hatch via client.request.send), allow_inmail literal(true) gate (D-26), max_inmail_credits cap (D-27), premium gate via inmail_balance all-null check (D-29), startNewChat with options.linkedin.inmail=true (D-50), credits_used/credits_remaining derived from balance-before vs balance-after (D-28 fallback to null on post-send fetch failure) + 10+ tests (UNI-08)
+- [ ] 69-05-PLAN.md — Wave 2: tools/linkedin-list-pending.ts — read-only paginated cursor loop over getAllInvitationsSent, age_days computed client-side from parsed_datetime, older_than_days client-side filter (D-35, SDK has NO since param), default limit 100 max 500 (D-36), destructive: false (D-37) + 7+ tests (UNI-10)
+- [ ] 69-06-PLAN.md — Wave 3: tools/linkedin-engage.ts super-tool — degree-routed dispatcher (D-31), dry_run early-return BEFORE provider calls (D-32) writes audit row with result: 'dry_run' (D-33), delegates to send_message/send_connection/send_inmail handlers + RETROFIT send_connection.ts (dedup-FIRST per D-49 rate-limit insert) + manifest wiring (4 new defineTool entries, toolCount 2→6) + registry.ts toolCount bump + content/docs/connectors.md + README.md tool count updates (UNI-09 + UNI-07/08/10/11 wiring)
+
+**Wave structure:** Wave 1 parallel (01, 02 — no inter-dep). Wave 2 parallel (03, 04, 05 — all depend on Wave 1 outputs). Wave 3 single (06 — depends on Waves 1+2; super-tool delegates to all 3 Wave-2 handlers).
+
+---
+
+## Completed Phases (current milestone)
+
 ### Phase 68: Unipile Foundation
 
 **Goal:** Wire Unipile SDK into Kebab as a new connector. Ship the first write tool (`linkedin_send_connection`) end-to-end with verify-after-write, dedup, audit log, and Twenty CRM outbox. Re-validate the Antoine Vercken connect flow that failed 2026-05-18 with Browserbase.
@@ -39,7 +63,7 @@ Plans:
 - ✅ `linkedin_send_connection` envelope on operator's own profile: `verified:false` strict boolean (D-13/D-14), `crm_sync:"pending"` literal (D-14), `audit_id` UUID generated, `dedup_hit:false` first call.
 - ✅ Dedup works: second identical call returns `dedup_hit:true` and short-circuits before SDK call.
 - ✅ Bug fix `115ddd3`: DSN double-prefix issue (`https://https://...`) when operator sets `UNIPILE_DSN` with protocol already included (the Unipile dashboard default format). Now tolerated by `normalizeDsn()`.
-- ⚠ 2 imperfections deferred to backlog: UNI-25 (URL with query string mis-classified) + UNI-26 (Unipile 4xx mis-classified as `error_unipile_5xx`). Both routed to phase 69/71. See `.planning/milestones/v0.17-unipile-connector-ROADMAP.md`.
+- ⚠ 2 imperfections deferred to backlog: UNI-25 (URL with query string mis-classified) + UNI-26 (Unipile 4xx mis-classified as `error_unipile_5xx`). Both routed to phase 69 (closed via Plan 01 — SLUG_RE + classifyUnipileError extensions).
 
 The original Antoine Vercken slug (failed with Browserbase) was not the literal value `antoinevercken` (Unipile returned `invalid_recipient`). The re-validation premise — "any LinkedIn write would silently no-op on Browserbase" — was instead validated by the strict envelope + audit + dedup behavior on operator's own profile; the rigid boolean `verified` field prevents any future silent failure regardless of target profile.
 
@@ -78,7 +102,7 @@ Plans:
 - [x] 063-02-PLAN.md — Move helper to src/core/update-check.ts + new cron route at /api/cron/update-check with BOOTSTRAP_EXEMPT marker + vercel.json registration + 6 unit tests (CRON-01)
 - [x] 063-03-PLAN.md — formatRelativeTime helper + Overview banner "checked Xh ago" indicator + Refresh icon button calling ?force=1 with 30s debounce (CRON-03)
 
-## Completed Phases (current milestone)
+## Completed Phases (prior milestone — v0.13)
 
 ### Phase 61: In-Dashboard Updates
 
