@@ -14,11 +14,15 @@
  *   get <url>     → linkedin_get_relationship_status on any profile URL
  *   send-self     → linkedin_send_connection on operator's own profile (expects upstream rejection)
  *   send <url>    → linkedin_send_connection on any profile URL (ACTUALLY SENDS AN INVITATION)
+ *   engage-dry <url> → linkedin_engage with dry_run:true (zero-risk preview)
+ *   list-pending  → linkedin_list_pending (read-only)
  *   antoine       → re-validation of the 2026-05-18 Antoine Vercken / Browserbase failure
  */
 
 import { handleLinkedinGetRelationshipStatus } from "../src/connectors/unipile/tools/linkedin-get-relationship-status";
 import { handleLinkedinSendConnection } from "../src/connectors/unipile/tools/linkedin-send-connection";
+import { handleLinkedinEngage } from "../src/connectors/unipile/tools/linkedin-engage";
+import { handleLinkedinListPending } from "../src/connectors/unipile/tools/linkedin-list-pending";
 
 const SELF_URL = "https://linkedin.com/in/yassineht";
 const ANTOINE_URL = "https://linkedin.com/in/antoinevercken";
@@ -85,6 +89,27 @@ async function main() {
         actor_user_id: "smoke-test",
       });
       printResult(`SEND connection — ${target}${note ? ` (note: "${note}")` : ""}`, r);
+      break;
+    }
+    case "engage-dry": {
+      if (!target) {
+        console.error(
+          "usage: npx tsx --env-file=.env scripts/smoke-unipile.ts engage-dry <profile_url>"
+        );
+        process.exit(1);
+      }
+      const r = await handleLinkedinEngage({
+        profile_url: target,
+        message: "Bonjour, ravi de te recontacter !",
+        dry_run: true,
+        actor_user_id: "smoke-test-engage-dry",
+      });
+      printResult(`ENGAGE dry_run — ${target}`, r);
+      break;
+    }
+    case "list-pending": {
+      const r = await handleLinkedinListPending({});
+      printResult(`LIST pending invitations`, r);
       break;
     }
     case "antoine": {
