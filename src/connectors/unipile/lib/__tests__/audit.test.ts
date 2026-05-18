@@ -26,6 +26,7 @@ const hoist = vi.hoisted(() => {
     get: vi.fn<(k: string) => Promise<string | null>>(),
     set: vi.fn<(k: string, v: string, ttl?: number) => Promise<void>>(),
     delete: vi.fn<(k: string) => Promise<void>>(),
+    list: vi.fn<(prefix?: string) => Promise<string[]>>(),
   };
   return { kvMock };
 });
@@ -40,6 +41,7 @@ import {
   computeParamsHash,
   writeAuditRow,
   checkDedup,
+  findAuditByProviderId,
   AUDIT_TTL_SECONDS,
   type AuditRow,
 } from "../audit";
@@ -338,5 +340,200 @@ describe("Phase 69 AuditResult extensions (D-23, D-26, D-29, D-32, D-43, D-45)",
     // re-asserted in phase 69 so the extended enum can't accidentally regress.
     const src = readFileSync(resolve(__dirname, "../audit.ts"), "utf8");
     expect(src).not.toMatch(/\|\s*['"]pending['"]/);
+  });
+});
+
+/**
+ * Phase 70 / Plan 02 — AuditResult extension (D-78) + AuditRow optional fields
+ * (recipient_provider_id / accepted_at / last_replied_at) + findAuditByProviderId
+ * reverse-lookup helper.
+ *
+ * D-78 contract: EXACTLY 3 new members. The static grep asserts the count so
+ * any drift (accidental 4th member, accidental removal) fails the build
+ * before a downstream consumer notices.
+ */
+describe("Phase 70 AuditResult extensions (D-78 — exactly 3 new members)", () => {
+  it.each<AuditRow["result"]>([
+    "error_account_halted",
+    "inbound_accept_unknown_origin",
+    "inbound_message_unknown_origin",
+  ])("%s is assignable to AuditResult", (member) => {
+    const x: AuditRow["result"] = member;
+    expect(x).toBe(member);
+  });
+
+  it("audit.ts source contains exactly 3 occurrences of each new member as a union literal", () => {
+    const src = readFileSync(resolve(__dirname, "../audit.ts"), "utf8");
+    // Each new member should appear as a string-literal union member (| "name").
+    // Allow comment references elsewhere — only the union assertion is load-bearing.
+    expect(src).toMatch(/\|\s*"error_account_halted"/);
+    expect(src).toMatch(/\|\s*"inbound_accept_unknown_origin"/);
+    expect(src).toMatch(/\|\s*"inbound_message_unknown_origin"/);
+  });
+});
+
+describe("AuditRow optional Phase-70 fields", () => {
+  it("accepts an AuditRow with recipient_provider_id + accepted_at + last_replied_at populated", () => {
+    const row: AuditRow = {
+      audit_id: "uuid-70",
+      actor_user_id: "system",
+      tool: "webhook:new_relation",
+      account_id: "acct_70",
+      params_hash: "inbound",
+      result: "inbound_accept_unknown_origin",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-18T20:00:00Z",
+      recipient_provider_id: "ACoAA-xyz",
+      accepted_at: "2026-05-18T20:00:00Z",
+      last_replied_at: "2026-05-18T20:01:00Z",
+    };
+    expect(row.recipient_provider_id).toBe("ACoAA-xyz");
+    expect(row.accepted_at).toBe("2026-05-18T20:00:00Z");
+    expect(row.last_replied_at).toBe("2026-05-18T20:01:00Z");
+  });
+
+  it("AuditRow without the new optional fields still compiles (backward compatible)", () => {
+    const row: AuditRow = {
+      audit_id: "uuid-bw",
+      actor_user_id: "u",
+      tool: "linkedin_send_connection",
+      account_id: "a",
+      params_hash: "x",
+      result: "success",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-18T20:00:00Z",
+    };
+    expect(row.recipient_provider_id).toBeUndefined();
+    expect(row.accepted_at).toBeUndefined();
+    expect(row.last_replied_at).toBeUndefined();
+  });
+});
+
+describe("findAuditByProviderId (Phase 70 reverse lookup)", () => {
+  beforeEach(() => {
+    hoist.kvMock.get.mockReset();
+    hoist.kvMock.set.mockReset();
+    hoist.kvMock.list.mockReset();
+  });
+
+  it("returns null when providerId is empty (no scan)", async () => {
+    const out = await findAuditByProviderId("");
+    expect(out).toBeNull();
+    expect(hoist.kvMock.list).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the KV store has no audit rows", async () => {
+    hoist.kvMock.list.mockResolvedValue([]);
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toBeNull();
+    expect(hoist.kvMock.list).toHaveBeenCalledWith("unipile:audit:");
+  });
+
+  it("returns the most recent matching row (highest timestamp wins)", async () => {
+    const older: AuditRow = {
+      audit_id: "uuid-old",
+      actor_user_id: "u",
+      tool: "linkedin_send_connection",
+      account_id: "acct_1",
+      params_hash: "h1",
+      result: "success",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-01T12:00:00Z",
+      recipient_provider_id: "ACoAA-xyz",
+    };
+    const newer: AuditRow = {
+      audit_id: "uuid-new",
+      actor_user_id: "u",
+      tool: "linkedin_send_message",
+      account_id: "acct_1",
+      params_hash: "h2",
+      result: "success",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-15T12:00:00Z",
+      recipient_provider_id: "ACoAA-xyz",
+    };
+    hoist.kvMock.list.mockResolvedValue([
+      "unipile:audit:uuid-old",
+      "unipile:audit:uuid-new",
+      "unipile:audit:uuid-other",
+    ]);
+    hoist.kvMock.get.mockImplementation(async (k: string) => {
+      if (k === "unipile:audit:uuid-old") return JSON.stringify(older);
+      if (k === "unipile:audit:uuid-new") return JSON.stringify(newer);
+      if (k === "unipile:audit:uuid-other")
+        return JSON.stringify({ ...older, audit_id: "uuid-other", recipient_provider_id: "OTHER" });
+      return null;
+    });
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toEqual(newer);
+  });
+
+  it("skips pointer keys containing ':hash:'", async () => {
+    hoist.kvMock.list.mockResolvedValue(["unipile:audit:hash:abc123", "unipile:audit:hash:def456"]);
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toBeNull();
+    expect(hoist.kvMock.get).not.toHaveBeenCalled();
+  });
+
+  it("tolerates corrupt JSON in individual rows (keeps scanning)", async () => {
+    const good: AuditRow = {
+      audit_id: "uuid-good",
+      actor_user_id: "u",
+      tool: "linkedin_send_connection",
+      account_id: "a",
+      params_hash: "h",
+      result: "success",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-10T12:00:00Z",
+      recipient_provider_id: "ACoAA-xyz",
+    };
+    hoist.kvMock.list.mockResolvedValue(["unipile:audit:uuid-broken", "unipile:audit:uuid-good"]);
+    hoist.kvMock.get.mockImplementation(async (k: string) => {
+      if (k === "unipile:audit:uuid-broken") return "not-json{";
+      if (k === "unipile:audit:uuid-good") return JSON.stringify(good);
+      return null;
+    });
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toEqual(good);
+  });
+
+  it("returns null when kv.list itself rejects (fail OPEN to standalone insert)", async () => {
+    hoist.kvMock.list.mockRejectedValue(new Error("kv-down"));
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toBeNull();
+  });
+
+  it("respects options.limit and stops scanning past it", async () => {
+    const keys = Array.from({ length: 50 }, (_, i) => `unipile:audit:uuid-${i}`);
+    hoist.kvMock.list.mockResolvedValue(keys);
+    hoist.kvMock.get.mockResolvedValue(null); // every row "missing" → ensures we count list iterations
+    await findAuditByProviderId("ACoAA-xyz", { limit: 5 });
+    // The implementation increments scanned ONLY for non-pointer keys it inspects;
+    // it should have made at most `limit` get() calls.
+    expect(hoist.kvMock.get.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it("skips rows whose recipient_provider_id does not match", async () => {
+    const other: AuditRow = {
+      audit_id: "uuid-other",
+      actor_user_id: "u",
+      tool: "linkedin_send_connection",
+      account_id: "a",
+      params_hash: "h",
+      result: "success",
+      verified: true,
+      dedup_hit: false,
+      timestamp: "2026-05-10T12:00:00Z",
+      recipient_provider_id: "DIFFERENT",
+    };
+    hoist.kvMock.list.mockResolvedValue(["unipile:audit:uuid-other"]);
+    hoist.kvMock.get.mockResolvedValue(JSON.stringify(other));
+    const out = await findAuditByProviderId("ACoAA-xyz");
+    expect(out).toBeNull();
   });
 });

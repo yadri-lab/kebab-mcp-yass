@@ -67,9 +67,22 @@ export type AuditResult =
   | "error_recipient_unreachable" // D-45 (UNI-26)
   // Phase 69 — Claude's discretion (RESEARCH §6 recommended, 2 bonus)
   | "error_inmail_recipient_not_eligible"
-  | "error_inmail_cap_exceeded";
+  | "error_inmail_cap_exceeded"
+  // Phase 70 — Plan 02 (D-78 — EXACTLY 3 new members; do NOT add a 4th here)
+  | "error_account_halted" // D-65 halt-flag gate on write tools (Plan 70-03 retrofit)
+  | "inbound_accept_unknown_origin" // D-61 fallback when new_relation has no matching audit row
+  | "inbound_message_unknown_origin"; // D-63 fallback when message_received has no matching audit row
 
-/** D-07: audit row schema. note_text is NEVER persisted — only params_hash. */
+/**
+ * D-07: audit row schema. note_text is NEVER persisted — only params_hash.
+ *
+ * Phase 70 / Plan 02 (D-61 / D-63 / D-78): three OPTIONAL fields appended
+ * for inbound-event enrichment. All three are backward-compatible — phase
+ * 68/69 writers do not populate them, and the absence is meaningful (it
+ * means the row has never been touched by an inbound webhook). The
+ * `findAuditByProviderId` helper below treats absence as "no match" rather
+ * than a hard failure.
+ */
 export interface AuditRow {
   audit_id: string;
   actor_user_id: string;
@@ -80,6 +93,28 @@ export interface AuditRow {
   verified: boolean;
   dedup_hit: boolean;
   timestamp: string; // ISO-8601 UTC
+  /**
+   * Phase 70 / Plan 02 (D-61): recipient's Unipile `provider_id` — written
+   * by future phase-71 write-tool updates so the `new_relation` /
+   * `message_received` handlers can reverse-lookup the originating audit
+   * row. Phase 68/69 writers do NOT populate this; the lookup helper
+   * (`findAuditByProviderId`) tolerates absence by returning null, which
+   * causes the handlers to fall back to inserting a standalone
+   * `inbound_*_unknown_origin` row (D-61 / D-78).
+   */
+  recipient_provider_id?: string;
+  /**
+   * Phase 70 / Plan 02 (D-61): set by the `new_relation` handler when an
+   * existing audit row is enriched. Absence means the original send has
+   * not (yet) been accepted by the recipient.
+   */
+  accepted_at?: string;
+  /**
+   * Phase 70 / Plan 02 (D-63): set by the `message_received` handler when
+   * an existing audit row is enriched. Absence means we have not yet seen
+   * any inbound reply for this row.
+   */
+  last_replied_at?: string;
 }
 
 /** Generate a UUIDv4 audit_id. */
@@ -166,6 +201,61 @@ export async function checkDedup(paramsHash: string): Promise<AuditRow | null> {
     const parsed = JSON.parse(raw) as AuditRow;
     if (parsed && typeof parsed.audit_id === "string") return parsed;
     return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Phase 70 / Plan 02 (D-61 / D-78) — reverse-lookup an audit row by
+ * `recipient_provider_id`. Used by the `new_relation` and
+ * `message_received` webhook handlers to enrich the originating audit row
+ * with `accepted_at` / `last_replied_at` timestamps.
+ *
+ * Returns the most recent matching row (highest `timestamp`), or `null`
+ * on: empty providerId, empty store, scan failure, exhaustion of the
+ * bounded `limit`, or simply no match.
+ *
+ * Bounded scan rationale (T-70-02-05): a tenant accumulates ~25 connect
+ * sends/day × 90-day TTL ≈ 2,250 rows steady state. Default limit of 200
+ * covers ~7 days of activity — adequate because the `new_relation` event
+ * arrives up to 8 hours after the original send (D-77 spec) and almost
+ * always within 48 hours in practice. Operators can raise the limit if
+ * the connect cadence increases. The scan never throws — kv.list rejection
+ * fails OPEN (returns null), which causes the handler to fall through to
+ * the `inbound_*_unknown_origin` standalone insert (D-61 design).
+ *
+ * Pointer keys (`unipile:audit:hash:*`) are skipped — they hold dup-row
+ * JSON for the dedup index and would cause double-counting of matches.
+ */
+export async function findAuditByProviderId(
+  providerId: string,
+  options?: { limit?: number }
+): Promise<AuditRow | null> {
+  if (!providerId) return null;
+  const limit = options?.limit ?? 200;
+  try {
+    const kv = getContextKVStore();
+    const keys = await kv.list("unipile:audit:");
+    let best: AuditRow | null = null;
+    let scanned = 0;
+    for (const key of keys) {
+      if (key.includes(":hash:")) continue; // skip dedup pointer keys
+      if (scanned >= limit) break;
+      scanned++;
+      const raw = await kv.get(key);
+      if (!raw) continue;
+      try {
+        const row = JSON.parse(raw) as AuditRow;
+        if (row && row.recipient_provider_id === providerId) {
+          if (!best || row.timestamp > best.timestamp) best = row;
+        }
+      } catch {
+        // Corrupt row — skip and keep scanning (defensive, same shape as checkDedup)
+        continue;
+      }
+    }
+    return best;
   } catch {
     return null;
   }

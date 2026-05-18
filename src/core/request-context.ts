@@ -112,3 +112,26 @@ export function runWithCredentials<T>(
   };
   return requestContext.run(next, fn);
 }
+
+/**
+ * Run `fn` with the given `tenantId` ambient in the request context.
+ *
+ * Thin wrapper over `requestContext.run` that preserves any existing
+ * credential overrides so callers downstream can still read
+ * `getCredential(...)` the same way they would mid-request.
+ *
+ * Phase 70 / Plan 02 webhook handlers use this to enter tenant scope
+ * AFTER resolving `accountId → tenantId` via the root-scope reverse
+ * index — at that point the lambda has no ambient tenant context (the
+ * webhook ingress route runs anonymously via the static-secret path),
+ * so the handler must establish one before any KV write so
+ * `getContextKVStore()` prefixes correctly.
+ */
+export function runWithTenant<T>(tenantId: string, fn: () => T | Promise<T>): T | Promise<T> {
+  const existing = requestContext.getStore();
+  const next: RequestContextData = {
+    tenantId,
+    credentials: existing?.credentials,
+  };
+  return requestContext.run(next, fn);
+}
