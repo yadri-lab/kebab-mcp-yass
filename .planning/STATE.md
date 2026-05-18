@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
-status: verifying
-stopped_at: Completed 70-02-PLAN.md
-last_updated: "2026-05-18T22:29:46.457Z"
+status: in_progress
+stopped_at: Completed 71-01-PLAN.md
+last_updated: "2026-05-18T23:15:00.000Z"
 last_activity: 2026-05-19
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 2
-  total_plans: 15
-  completed_plans: 14
-  percent: 93
+  total_plans: 18
+  completed_plans: 16
+  percent: 89
 ---
 
 # Project State
@@ -20,18 +20,53 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-16)
 
-**Current focus:** Phase 70 — Webhooks Ingress + Halt-Flag Retrofit (CODE-COMPLETE — 3/3 plans shipped; awaiting phase-verifier pass)
-**Next:** Phase 71 — Hardening (kill switches, metrics, audit query API/tool UNI-22, multi-tenant verification, docs). 1 phase remaining in v0.17 milestone.
+**Current focus:** Phase 71 — Unipile Hardening (1/3 plans shipped — UNI-20 kill-switch closed; UNI-21 metrics + UNI-22 audit-query API remaining).
+**Next:** Phase 71 Plan 02 (metrics endpoints) then Plan 03 (audit query + docs).
 
 ## Current Position
 
-Phase: 70 — Webhooks Ingress — CODE-COMPLETE (3/3 plans shipped; UNI-12 + UNI-13 + UNI-14 + UNI-15 all closed)
-Plan: 3 of 3 complete (Wave 3 plan 70-03 shipped — halt-check Step 0 retrofit on all 4 LinkedIn write tools; UNI-13 closed end-to-end)
-Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 + 69 shipped; phase 70 code-complete 2026-05-19.
-Status: Phase complete — ready for verification
+Phase: 71 — Unipile Hardening — IN PROGRESS (1/3 plans shipped — UNI-20 closed by plan 71-01)
+Plan: 1 of 3 complete (Wave 1 plan 71-01 shipped — Step -1 kill-switch retrofit on all 4 LinkedIn write tools + manifest probe; UNI-20 closed end-to-end)
+Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 + 69 + 70 shipped; phase 71 in progress 2026-05-19.
+Status: Plan complete — ready for next plan (71-02)
 Last activity: 2026-05-19
 
 ## Session Continuity
+
+Phase 71 Plan 71-01 completed 2026-05-19 (~20 min) — first plan of phase 71 shipped; all 4 LinkedIn write tools now honor the global kill switch (UNI-20 closed end-to-end).
+
+  - 2 atomic commits on main (pre-commit hooks green: lint-staged + prettier + eslint + contract-test + doc-counts + typecheck each time).
+    Task-level commit list:
+    · ebf72b6 feat(71-01): ship kill-switch helper + AuditResult/TestConnectionResult extensions (UNI-20)
+    · 217dccb feat(71-01): retrofit Step -1 kill-switch on 4 LinkedIn write tools + manifest probe (UNI-20)
+
+  - **What landed (Phase 71 Plan 71-01):**
+    · NEW src/connectors/unipile/lib/kill-switch.ts (32 LOC) — `isWritesDisabled()` reading `KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED` (primary) `??` `LINKEDIN_TOOLS_DISABLED` (legacy alias per D-86) via `getConfig()` (NEVER process.env per D-89). Truthy = `"true"` or `"1"`.
+    · NEW src/connectors/unipile/lib/__tests__/kill-switch.test.ts (104 LOC, 8 tests) — unset / primary-true / primary-1 / legacy-true / legacy-1 / both-set-primary-wins / falsy-strings / primary-called-first.
+    · MOD src/connectors/unipile/lib/audit.ts — appended `| "error_writes_disabled"` at end of AuditResult union (D-88, phase-71 block comment, no reordering of prior members).
+    · MOD src/core/types.ts — `TestConnectionResult.writes_disabled?: boolean` optional field (D-88, backward-compatible).
+    · MOD 4 write tools (linkedin-send-{connection,message,inmail,engage}.ts) — Step -1 kill-switch block inserted between `paramsHash` setup and Step 0a account-resolve. Writes 1 minimal audit row (account_id="" per D-20 precedent), returns `error_writes_disabled` envelope, NO downstream calls.
+    · MOD src/connectors/unipile/manifest.ts — probe() return shape extended with `writes_disabled?: boolean`; all 3 return sites populate it; success message suffixed with `— ⚠ writes disabled` when active.
+    · MOD 4 tool test files + manifest.test.ts — `killSwitchMock` plumbing + 6 new test cases (1 per tool + 4 manifest probe tests).
+
+  - **Zero auto-fixes / zero deviations** — plan executed exactly as written.
+
+  - **Phase 71 backlog status:**
+    · UNI-20 (kill switches) — CLOSED in Plan 71-01.
+    · UNI-21 (daily quota metrics) — open (Plan 71-02).
+    · UNI-22 (audit query API + tool) — open (Plan 71-02 or 71-03).
+    · UNI-23 (docs) — open (Plan 71-03).
+    · UNI-24 (multi-tenant verification) — open (Plan 71-03).
+
+  - **Verification:**
+    · 24 unipile test files, **346 tests passing** (was 328; +18 new in this plan).
+    · Static grep positive guards: `isWritesDisabled(` = 2 per write-tool source file × 4 = 8 + 2 in manifest = 10; `KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED` + `LINKEDIN_TOOLS_DISABLED` both present in kill-switch.ts; `error_writes_disabled` present in audit.ts union literal.
+    · Static grep negative guards: NO process.env in kill-switch.ts (code-side); NO isWritesDisabled in 2 read tools (unchanged); NO scope creep (no TwentyAdapter / notifyEvent / whatsapp_send / toolCount: 7 / new MCP tool / new connector).
+    · Manifest stays at 6 tools, registry stays at 6, docs stay at 97 tools / 17 connectors. No new MCP tools registered.
+
+---
+
+## Previous Session: Phase 70 Plan 70-03
 
 Phase 70 Plan 70-03 completed 2026-05-19 (~20 min) — final plan of phase 70 shipped; all 4 LinkedIn write tools now honor the halt flag (UNI-13 closed end-to-end).
 
