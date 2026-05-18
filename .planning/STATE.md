@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Completed 69-02-PLAN.md (rate-limiter) — UNI-11 closed
-last_updated: "2026-05-18T18:04:34.558Z"
+stopped_at: Completed 69-03-PLAN.md (linkedin_send_message) — UNI-07 closed
+last_updated: "2026-05-18T20:15:00.000Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
-  percent: 67
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State
@@ -21,19 +21,87 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Current focus:** Phase 69 — LinkedIn Writes Completion
-**Next:** Plan 02 (Wave 1) — `lib/rate-limiter.ts` per-account day+week KV counters, fail-closed default (D-40), env-overridable caps (D-39: 25/100/50/15 defaults), retry_after as ISO timestamps + 12+ tests covering all 4 D-40 paths (UNI-11). Plan 02 is independent of Plan 01 — Wave 1 plans were planned to run in parallel; we executed 01 first per sequential mode.
+**Next:** Plan 04 (Wave 2) — `tools/linkedin-send-inmail.ts` — 13-step handler with balance bracketing (D-48 escape hatch via client.request.send), allow_inmail literal(true) gate (D-26), max_inmail_credits cap (D-27), premium gate via inmail_balance all-null check (D-29), startNewChat with options.linkedin.inmail=true (D-50), credits_used/credits_remaining derived from balance-before vs balance-after (D-28 fallback to null on post-send fetch failure) + 10+ tests (UNI-08). Wave 2 was planned for parallel execution; sequential mode executed 03 first.
 
 ## Current Position
 
 Phase: 69 — LinkedIn Writes Completion — EXECUTING
-Plan: 2 of 6 complete (Wave 1 plan 01 shipped — lib foundation extensions + UNI-25/UNI-26 closed)
+Plan: 3 of 6 complete (Wave 2 plan 03 shipped — linkedin_send_message tool + 13 tests; UNI-07 closed)
 Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 shipped + live-validated 2026-05-18.
 Status: Ready to execute
 Last activity: 2026-05-18
 
 ## Session Continuity
 
-Phase 69 Plan 01 completed 2026-05-18 (~17 min) — Wave 1 foundation extensions code-complete; ready for Plan 02 (rate-limiter, independent) or Wave 2 plans (03/04/05, all now unblocked).
+Phase 69 Plan 03 completed 2026-05-18 (~7.5 min) — Wave 2 first tool shipped; `linkedin_send_message` ready to wire (manifest in Wave 3 Plan 06).
+
+  - 2 atomic commits on main (pre-commit hooks green: lint-staged + contract-test + doc-counts + typecheck each time).
+    Task-level commit list:
+    · 0531e35 feat(69-03): linkedin_send_message — 9-step handler (D-22 degree gate + D-46 attachments + D-47 verify-poll)
+    · f8019bd test(69-03): linkedin_send_message — 13 test cases (all D-22/D-46/D-47/D-49 + WARNING-6 paths)
+
+  - **What landed (Phase 69 Plan 03):**
+    · NEW src/connectors/unipile/tools/linkedin-send-message.ts — 551 LOC, 9-step
+      handler implementing D-22 (1st-degree gate) / D-25 (recipient_degree in
+      envelope, raw text NEVER persisted) / D-46 (server-side base64→Buffer
+      decode for attachments, 15MB cap, 5-file limit, 4 mimetypes) / D-47
+      (verify-after-write via messaging.getAllMessagesFromChat polling at
+      5s+10s) / D-49 + WARNING-6 (handler order dedup → account →
+      attachment-decode → degree-check → rate-limit → CRM → startNewChat →
+      verify → audit; pre-flight refusals do NOT call rate-limiter per
+      RESEARCH §4.7). 9 writeAuditRow call sites (one per terminal code path).
+    · NEW src/connectors/unipile/tools/__tests__/linkedin-send-message.test.ts
+      — 464 LOC, 13 vi.hoisted SDK+KV+rate-limiter mock tests. Covers happy
+      path verified=true (Test 1), poll timeout verified=false strict-boolean
+      (Test 2), dedup hit no rate-limit call (Test 3), rate-limit block (Test
+      4), 16MB attachment pre-flight reject no rate-limit call (Test 5),
+      attachment round-trip ≤15MB (Test 6), degree-2 refusal no rate-limit
+      call (Test 7), DISTANCE_3 historical spelling (Test 7b), SDK 503 →
+      error_unipile_5xx (Test 8), 422 invalid_recipient → error_recipient_unreachable
+      (Test 8b — Wave 1 Plan 01 classifier integration), 0/≥2 LinkedIn
+      accounts D-20 (Tests 9/10), explicit account_id bypass (Test 11).
+
+  - **2 Rule 3 auto-fixes during execution:**
+    · `exactOptionalPropertyTypes: true` strict carry from phase 68 D-13/D-14:
+      `resolveAccountId({account_id: args.account_id})` rejected because
+      `args.account_id` is `string | undefined`. Fixed by conditional
+      spread: `args.account_id !== undefined ? {account_id: args.account_id} : {}`.
+      Same pattern needed in Tests 9/10 (omit property entirely instead of
+      `account_id: undefined`).
+    · eslint `no-useless-assignment` blocked first pre-commit attempt on Task 1
+      because `let degree: 1|2|3|null = null` was reassigned unconditionally
+      before any read. Fixed by removing initializer; definite-assignment
+      satisfied because every catch path returns early.
+
+  - **Phase 69 backlog cleared:**
+    · UNI-07 (linkedin_send_message tool) — CLOSED. 1st-degree DM tool shipped
+      with attachments + verify-after-write. Manifest wiring deferred to
+      Wave 3 Plan 06 per plan scope.
+
+  - **STATE notes:**
+    · `.planning/` is gitignored — STATE.md / ROADMAP.md / SUMMARY.md are
+      local-only bookkeeping artifacts. Source-of-truth for execution is the
+      git log on `main`.
+    · No live Unipile calls made in this plan (pure type/mock work). Live
+      UNIPILE_DSN + UNIPILE_TOKEN credentials remain available for Wave 3
+      Plan 06 live smoke test (Antoine Vercken DM after manifest wiring).
+
+---
+
+## Previous Session: Phase 69 Plan 02
+
+Phase 69 Plan 02 completed 2026-05-18 (~13 min) — rate-limiter shipped; ready for Wave 2 plans (03/04/05).
+
+  - 3 atomic commits on main: 656f564 (rate-limiter source), e021f8b (14 tests), 430525a (docs).
+  - lib/rate-limiter.ts — checkUnipileRateLimit per D-38/D-39/D-40/D-41.
+  - 14 tests covering all 4 D-40 paths + INFO 7 weekly env-override.
+  - UNI-11 CLOSED.
+
+---
+
+## Previous Session: Phase 69 Plan 01
+
+Phase 69 Plan 01 completed 2026-05-18 (~17 min) — Wave 1 foundation extensions code-complete.
 
   - 3 atomic commits on main (pre-commit hooks green: lint-staged + contract-test + doc-counts + typecheck each time).
     Task-level commit list:
