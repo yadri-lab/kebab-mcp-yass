@@ -1,23 +1,32 @@
 import { UnipileClient } from "unipile-node-sdk";
-import type { ConnectorManifest, ToolDefinition } from "@/core/types";
+import { defineTool, type ConnectorManifest, type ToolDefinition } from "@/core/types";
 import { getConfig } from "@/core/config-facade";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
+import {
+  linkedinSendConnectionSchema,
+  handleLinkedinSendConnection,
+} from "./tools/linkedin-send-connection";
+import {
+  linkedinGetRelationshipStatusSchema,
+  handleLinkedinGetRelationshipStatus,
+} from "./tools/linkedin-get-relationship-status";
 
 const log = getLogger("CONNECTOR:unipile");
 
 /**
- * Phase 68 / Plan 01 — Wave 0 stub manifest.
+ * Phase 68 / Plan 06 — manifest with the 2 LinkedIn tools wired.
  *
- * Exposes the Unipile connector tile in /config with zero tools. Real
- * tools (linkedin_send_connection + linkedin_get_relationship_status)
- * land in Plan 06; this scaffold is here so:
- *  - parallel Wave 1 plans (client/identifiers/audit/crm-bridge) don't
- *    collide on manifest.ts edits,
- *  - the connector tile shows the operator that DSN + TOKEN are
- *    recognized BEFORE any tools ship,
- *  - the registry-metadata-consistency contract test passes with
- *    toolCount: 0 matching tools.length === 0.
+ * Replaces the Wave 0 stub (Plan 01) with the real surface:
+ *  - `linkedin_send_connection` (destructive WRITE) — verify-after-write,
+ *    D-13/D-14/D-15/D-20 envelope locked.
+ *  - `linkedin_get_relationship_status` (read) — D-21 envelope
+ *    {degree, connection_status}.
+ *
+ * Tools are exposed via a lazy `get tools()` getter (mirrors
+ * apify/manifest.ts) so any future env-driven filtering (e.g. an
+ * `UNIPILE_TOOLS` allowlist akin to `APIFY_ACTORS`) can read process.env
+ * at resolve time rather than module load.
  *
  * Decision references:
  *  - D-19 (CONTEXT.md): testConnection uses client.account.getAll() and
@@ -115,6 +124,35 @@ A [Unipile](https://www.unipile.com) account with at least one LinkedIn account 
     }
     return probe(dsn, token);
   },
-  // Stub — Plan 06 replaces this with the real 2-tool surface.
-  tools: [] as ToolDefinition[],
+  get tools(): ToolDefinition[] {
+    return buildTools();
+  },
 };
+
+function buildTools(): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "linkedin_send_connection",
+      description:
+        "Send a LinkedIn connection request via Unipile. Verified-after-write (3 polls @ 2s/5s/10s). " +
+        "DEDUP: same (profile_url, note) combination is blocked for 90 days — change the note to retry. " +
+        "Returns {provider_ok, verified, crm_sync: 'pending', dedup_hit, audit_id, invitation_id?, error?}.",
+      schema: linkedinSendConnectionSchema,
+      handler: async (args) =>
+        handleLinkedinSendConnection(args as Parameters<typeof handleLinkedinSendConnection>[0]),
+      destructive: true,
+    }),
+    defineTool({
+      name: "linkedin_get_relationship_status",
+      description:
+        "Read the network distance (1/2/3/null) of a LinkedIn profile relative to the connected account. " +
+        "Returns {degree: 1|2|3|null, connection_status: string}.",
+      schema: linkedinGetRelationshipStatusSchema,
+      handler: async (args) =>
+        handleLinkedinGetRelationshipStatus(
+          args as Parameters<typeof handleLinkedinGetRelationshipStatus>[0]
+        ),
+      destructive: false,
+    }),
+  ];
+}

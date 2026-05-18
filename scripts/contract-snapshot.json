@@ -523,6 +523,27 @@
     "destructive": false
   },
   {
+    "name": "linkedin_get_relationship_status",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "profile_url"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "linkedin_send_connection",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "actor_user_id",
+      "crm_log",
+      "note",
+      "profile_url"
+    ],
+    "destructive": true
+  },
+  {
     "name": "mcp_backup_export",
     "pack": "admin",
     "schemaKeys": [],

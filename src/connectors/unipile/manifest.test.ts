@@ -34,15 +34,26 @@ beforeEach(() => {
   ctorCalls.length = 0;
 });
 
-describe("unipileConnector manifest (Phase 68 / Plan 01 stub)", () => {
+describe("unipileConnector manifest (Phase 68 / Plan 06 — 2 tools wired)", () => {
   it("exposes id 'unipile' and exact requiredEnvVars per D-19", () => {
     expect(unipileConnector.id).toBe("unipile");
     expect(unipileConnector.label).toBe("Unipile (LinkedIn writes)");
     expect(unipileConnector.requiredEnvVars).toEqual(["UNIPILE_DSN", "UNIPILE_TOKEN"]);
   });
 
-  it("exposes zero tools in the Wave 0 stub (real tools land in Plan 06)", () => {
-    expect(unipileConnector.tools).toEqual([]);
+  it("exposes exactly 2 tools: linkedin_send_connection + linkedin_get_relationship_status", () => {
+    const names = unipileConnector.tools.map((t) => t.name);
+    expect(names).toEqual(["linkedin_send_connection", "linkedin_get_relationship_status"]);
+  });
+
+  it("marks linkedin_send_connection as destructive (write tool)", () => {
+    const send = unipileConnector.tools.find((t) => t.name === "linkedin_send_connection");
+    expect(send?.destructive).toBe(true);
+  });
+
+  it("marks linkedin_get_relationship_status as non-destructive (read tool)", () => {
+    const read = unipileConnector.tools.find((t) => t.name === "linkedin_get_relationship_status");
+    expect(read?.destructive).toBe(false);
   });
 
   it("testConnection returns ok:false when DSN missing", async () => {
