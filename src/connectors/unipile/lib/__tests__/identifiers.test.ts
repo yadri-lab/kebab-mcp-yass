@@ -92,6 +92,34 @@ describe("normalizeProfileUrl (D-12)", () => {
   });
 });
 
+describe("normalizeProfileUrl — D-44 query string + fragment support (UNI-25)", () => {
+  it.each([
+    [
+      "https://www.linkedin.com/in/john-doe?originalSubdomain=fr",
+      "https://linkedin.com/in/john-doe",
+    ],
+    [
+      "https://linkedin.com/in/jane?miniProfileUrn=urn%3Ali%3Afs_miniProfile%3AACoAAA",
+      "https://linkedin.com/in/jane",
+    ],
+    [
+      "https://linkedin.com/in/bob?utm_source=newsletter&utm_campaign=q2",
+      "https://linkedin.com/in/bob",
+    ],
+    ["https://fr.linkedin.com/in/marie?originalSubdomain=fr", "https://linkedin.com/in/marie"],
+    ["https://linkedin.com/in/alice/#contact-info", "https://linkedin.com/in/alice"],
+  ])("D-44: normalizes %s -> %s", (input, expected) => {
+    expect(normalizeProfileUrl(input)).toBe(expected);
+  });
+
+  it("D-44: existing inputs without query/fragment unchanged (regression guard)", () => {
+    // Sanity check that the regex extension does not perturb the phase-68 paths.
+    expect(normalizeProfileUrl("https://linkedin.com/in/antoine-vercken")).toBe(
+      "https://linkedin.com/in/antoine-vercken"
+    );
+  });
+});
+
 describe("urnCacheKey", () => {
   it("is deterministic for the same input", () => {
     const k1 = urnCacheKey("https://linkedin.com/in/antoine-vercken");

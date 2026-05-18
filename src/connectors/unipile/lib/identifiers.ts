@@ -44,11 +44,21 @@ export const URN_TTL_SECONDS = 30 * 24 * 60 * 60;
  *
  * Slug character class: [a-zA-Z0-9_%-]+ (LinkedIn slugs are URL-safe).
  *
- * Note on ReDoS (T-68-03-04): bounded alternation + simple char class — not
- *   vulnerable to catastrophic backtracking.
+ * Phase 69 / D-44 (UNI-25): two trailing non-capturing groups accept an
+ *   optional query string (`?…`) and an optional fragment (`#…`) — both
+ *   forbidden from containing `/` to keep the slug capture unambiguous. This
+ *   fixes the phase-68 backlog item where pasted URLs like
+ *   `?originalSubdomain=fr`, `?miniProfileUrn=…`, and `?utm_source=…` were
+ *   rejected as malformed. The slug capture group is unchanged so
+ *   `normalizeProfileUrl` still strips query + fragment by design.
+ *
+ * Note on ReDoS (T-68-03-04 + D-44 follow-up): bounded alternation + simple
+ *   char classes (`[a-zA-Z0-9\-_%]+`, `[^#/]*`) — no nested quantifiers, no
+ *   catastrophic backtracking surface. The two new groups are at the tail
+ *   anchored by `$`, so they collapse to a single linear scan.
  */
 const SLUG_RE =
-  /^(?:https?:\/\/)?(?:www\.|(?:fr|de|es|it|pt|nl|pl|tr|zh|ja|ko|ar|ru)\.)?linkedin\.com\/in\/([a-zA-Z0-9\-_%]+)\/?$/;
+  /^(?:https?:\/\/)?(?:www\.|(?:fr|de|es|it|pt|nl|pl|tr|zh|ja|ko|ar|ru)\.)?linkedin\.com\/in\/([a-zA-Z0-9\-_%]+)\/?(?:\?[^#/]*)?(?:#[^/]*)?$/;
 
 /**
  * D-12 normalization: lowercase slug, strip trailing slash, strip locale

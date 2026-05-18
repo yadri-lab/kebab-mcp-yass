@@ -17,6 +17,8 @@
  * Mocks: getContextKVStore via vi.hoisted() — same canonical pattern as
  * Plan 03's identifiers.test.ts (vitest 4.x mock-factory hoisting).
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const hoist = vi.hoisted(() => {
@@ -285,5 +287,56 @@ describe("API surface (D-06: NO dedup bypass parameter)", () => {
     // computeParamsHash takes a single object arg — Function.length counts named
     // parameters before any defaults / rest. 1 = single object literal.
     expect(computeParamsHash.length).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * Phase 69 / Plan 01 — AuditResult extension assertions.
+ *
+ * The 9 new members are checked two ways:
+ *  1. Type-level assignability — each literal flows into a typed AuditResult
+ *     local, so any drift on the union breaks the build before the test runs.
+ *  2. Runtime equality — confirms the literal survives transpilation.
+ *
+ * Plus an explicit anti-pattern grep mirroring T-68-04-04: 'pending' must
+ * NEVER appear in audit.ts as an AuditResult union member.
+ */
+describe("Phase 69 AuditResult extensions (D-23, D-26, D-29, D-32, D-43, D-45)", () => {
+  it.each<AuditRow["result"]>([
+    "dry_run",
+    "error_attachment_too_large",
+    "error_inmail_not_authorized",
+    "error_inmail_requires_premium",
+    "error_invalid_request",
+    "error_rate_limit_kebab",
+    "error_recipient_unreachable",
+    "error_inmail_recipient_not_eligible",
+    "error_inmail_cap_exceeded",
+  ])("%s is assignable to AuditResult", (member) => {
+    const x: AuditRow["result"] = member;
+    expect(x).toBe(member);
+  });
+
+  it("phase-68 members are still present (locked, unchanged order)", () => {
+    const phase68: Array<AuditRow["result"]> = [
+      "success",
+      "unverified_timeout",
+      "error_rate_limit",
+      "error_account_restricted",
+      "error_not_connected",
+      "error_unipile_5xx",
+    ];
+    phase68.forEach((m) => {
+      const x: AuditRow["result"] = m;
+      expect(x).toBe(m);
+    });
+  });
+
+  it("AuditResult union does NOT contain 'pending' (D-13/D-14 strict-boolean invariant)", () => {
+    // Static source-code grep — fails loud if any future commit reintroduces
+    // 'pending' as an AuditResult union member. Mirrors T-68-04-04 guard but
+    // re-asserted in phase 69 so the extended enum can't accidentally regress.
+    const src = readFileSync(resolve(__dirname, "../audit.ts"), "utf8");
+    expect(src).not.toMatch(/\|\s*['"]pending['"]/);
   });
 });
