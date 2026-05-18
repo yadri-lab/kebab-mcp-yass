@@ -60,6 +60,12 @@ Ship the foundation of `src/connectors/unipile/`: manifest registration, lazy SD
 - **D-16:** **No auto re-poll** in phase 68. Caller (Claude / CRM) is responsible for re-calling `linkedin_get_relationship_status` later if they want to refresh state. Phase 71 may add a metric `unipile_send_unverified_count` so we detect if `verified: false` rate becomes anomalous.
 - **D-17:** CRM display semantics (when phase 70 integration lands): `verified: false` → CRM shows **"Erreur d'envoi - retry"** (red icon). NOT "envoyée orange ambigu". Operator must explicitly re-trigger.
 
+### Amendments After Research (2026-05-18, post-RESEARCH.md)
+- **D-18:** All `unipile:*` KV keys are **tenant-prefixed** via `getContextKVStore()` (e.g. `tenant:<id>:unipile:audit:<audit_id>`). The admin DELETE eviction endpoint uses the root-scope escape hatch (like phase 53 metrics). Resolves RESEARCH.md Open Q2.
+- **D-19:** `testConnection()` implementation calls `client.account.getAll()` and verifies `≥1 LinkedIn account` is connected. Returns `unhealthy` if no LinkedIn account is wired, even if the API token itself is valid. Reason: silent "active but unusable" connectors mislead operators. Resolves RESEARCH.md Open Q3 (the CONTEXT.md `/account/me` reference is incorrect — the SDK doesn't expose it).
+- **D-20:** `account_id` param on `linkedin_send_connection` is **optional**. Resolution rules: (a) if exactly one LinkedIn account is connected → use it silently; (b) if zero → throw `error_no_linkedin_account`; (c) if multiple → throw `error_account_id_required` with the list of available accounts in the error body. Resolves RESEARCH.md Open Q4.
+- **D-21:** `linkedin_get_relationship_status` envelope in phase 68 = `{degree, connection_status}` only. The `last_message_at` + `has_replied` fields from CONTEXT.md's earlier draft are **dropped from phase 68** — Unipile doesn't expose them on `getProfile`. Will be added in phase 69 when messaging tools (`client.messaging.getAllMessagesFromChat`) land. Resolves RESEARCH.md Open Q5.
+
 ### Claude's Discretion
 - Choice of hashing function for `params_hash` (SHA-256 truncated to 16 hex chars recommended for KV key efficiency)
 - Internal structure of `client.ts` retry middleware (axios interceptor, fetch wrapper, SDK middleware — whatever the SDK supports natively)
