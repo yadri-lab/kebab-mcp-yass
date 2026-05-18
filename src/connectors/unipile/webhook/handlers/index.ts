@@ -1,20 +1,34 @@
 /**
- * Phase 70 / Plan 01 / Task 2 — Handlers barrel (placeholder).
+ * Phase 70 / Plan 02 / Task 2 — Handlers barrel (side-effect registration).
  *
- * Plan 02 will REPLACE this file with real handler registrations:
+ * Importing this module wires the 3 real webhook handlers into the
+ * dispatcher's mutable `_handlers` hook table. The route does the
+ * side-effect import:
  *
- *   import { _handlers } from "../dispatcher";
- *   import { handleMessageReceived } from "./new-message";
- *   import { handleNewRelation }     from "./new-relation";
- *   import { handleAccountStatus }   from "./account-status";
+ *   import "@/connectors/unipile/webhook/handlers";
  *
- *   _handlers.messageReceived = handleMessageReceived;
- *   _handlers.newRelation     = handleNewRelation;
- *   _handlers.accountStatus   = handleAccountStatus;
+ * After this side-effect runs, `dispatchEventAsync` invokes the real
+ * handlers instead of the Plan 70-01 noop stubs.
  *
- * Until then, this file is a no-op `export {};` so that the side-effect
- * import in `app/api/unipile/webhook/route.ts` resolves without error.
- * The dispatcher's default `noopHandler` (which log.warn-s) handles every
- * event in the interim.
+ * Why a barrel and not direct cross-imports inside `dispatcher.ts`:
+ *   - Avoids a cyclic import (handlers depend on
+ *     `dispatcher.resolveTenantFromAccountId`; dispatcher would
+ *     otherwise depend on the handler modules).
+ *   - Lets Plan 70-01 ship + be unit-testable BEFORE Plan 70-02 writes
+ *     the real handlers — dispatcher tests stub `_handlers.X` directly.
+ *   - This module is the single place that pulls both sides together.
+ *
+ * Module-load side effect: the three assignments below run exactly once
+ * (Node module cache deduplicates), so importing the barrel from
+ * multiple places is safe.
  */
+import { _handlers } from "../dispatcher";
+import { handleAccountStatus } from "./account-status";
+import { handleNewRelation } from "./new-relation";
+import { handleMessageReceived } from "./new-message";
+
+_handlers.accountStatus = handleAccountStatus;
+_handlers.newRelation = handleNewRelation;
+_handlers.messageReceived = handleMessageReceived;
+
 export {};
