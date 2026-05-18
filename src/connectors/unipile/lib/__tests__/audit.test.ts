@@ -372,6 +372,23 @@ describe("Phase 70 AuditResult extensions (D-78 — exactly 3 new members)", () 
   });
 });
 
+/**
+ * Phase 71 / Plan 71-01 — AuditResult extension (D-88) — global kill switch
+ * member. Mirrors the Phase 70 D-78 shape: append at the END of the union,
+ * 1 new member, block-comment annotation, no reordering of earlier members.
+ */
+describe("Phase 71 AuditResult extension (D-88 — error_writes_disabled)", () => {
+  it("error_writes_disabled is assignable to AuditResult", () => {
+    const x: AuditRow["result"] = "error_writes_disabled";
+    expect(x).toBe("error_writes_disabled");
+  });
+
+  it("audit.ts source contains error_writes_disabled as a union literal", () => {
+    const src = readFileSync(resolve(__dirname, "../audit.ts"), "utf8");
+    expect(src).toMatch(/\|\s*"error_writes_disabled"/);
+  });
+});
+
 describe("AuditRow optional Phase-70 fields", () => {
   it("accepts an AuditRow with recipient_provider_id + accepted_at + last_replied_at populated", () => {
     const row: AuditRow = {

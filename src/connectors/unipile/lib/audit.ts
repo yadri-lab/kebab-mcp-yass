@@ -71,7 +71,9 @@ export type AuditResult =
   // Phase 70 — Plan 02 (D-78 — EXACTLY 3 new members; do NOT add a 4th here)
   | "error_account_halted" // D-65 halt-flag gate on write tools (Plan 70-03 retrofit)
   | "inbound_accept_unknown_origin" // D-61 fallback when new_relation has no matching audit row
-  | "inbound_message_unknown_origin"; // D-63 fallback when message_received has no matching audit row
+  | "inbound_message_unknown_origin" // D-63 fallback when message_received has no matching audit row
+  // Phase 71 — Plan 71-01 (D-88) — NEW
+  | "error_writes_disabled"; // global kill switch tripped (KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED=true)
 
 /**
  * D-07: audit row schema. note_text is NEVER persisted — only params_hash.

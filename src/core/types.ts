@@ -115,6 +115,13 @@ export interface TestConnectionResult {
   message: string;
   /** Optional debug detail shown under the ok/fail message in the wizard. */
   detail?: string;
+  /**
+   * Phase 71 / D-88 (UNI-20): connectors that support write tools may surface a
+   * global kill-switch state here so the /config → Connectors tile can render
+   * the warning. Optional + backward-compatible — connectors with no write
+   * surface (or no kill switch) leave it unset.
+   */
+  writes_disabled?: boolean;
 }
 
 /** Pack manifest — groups related tools */
