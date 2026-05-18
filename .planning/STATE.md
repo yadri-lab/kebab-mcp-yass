@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
-status: Phase 68 COMPLETE ✓ — code shipped + live-validated against real Unipile tenant. 2 imperfections logged as UNI-25/UNI-26 backlog. Phases 69-71 PENDING.
-stopped_at: Phase 68 live-validation successful 2026-05-18 — GRS returns degree:1 for real 1st-degree contact, send envelope strict-boolean, dedup works, DSN double-prefix bug fixed (115ddd3). Next phase 69 (LinkedIn writes completion) when ready.
-last_updated: "2026-05-18T16:50:00Z"
+milestone_name: — Unipile Connector
+status: executing
+stopped_at: Completed 69-02-PLAN.md (rate-limiter) — UNI-11 closed
+last_updated: "2026-05-18T18:04:34.558Z"
 last_activity: 2026-05-18
 progress:
-  total_phases: 4
+  total_phases: 2
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
-  percent: 25
+  total_plans: 12
+  completed_plans: 8
+  percent: 67
 ---
 
 # Project State
@@ -20,18 +20,73 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-16)
 
-**Current focus:** Phase 68 — Unipile Foundation
-**Next:** Plan 06 (Wave 3) — linkedin_send_connection (8-step handler + D-13 verify + D-14 envelope + D-20 account_id rules) + linkedin_get_relationship_status (D-21 {degree, connection_status}) + manifest wire (toolCount 0→2) + doc-counts. All Wave 2 dependencies (Plans 02/03/04/05) are now landed.
+**Current focus:** Phase 69 — LinkedIn Writes Completion
+**Next:** Plan 02 (Wave 1) — `lib/rate-limiter.ts` per-account day+week KV counters, fail-closed default (D-40), env-overridable caps (D-39: 25/100/50/15 defaults), retry_after as ISO timestamps + 12+ tests covering all 4 D-40 paths (UNI-11). Plan 02 is independent of Plan 01 — Wave 1 plans were planned to run in parallel; we executed 01 first per sequential mode.
 
 ## Current Position
 
-Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 6 of 6 complete (Wave 2 fully shipped — SDK primitives + URL→URN resolver + admin eviction + audit log + dedup + CRM bridge skeleton)
-Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
+Phase: 69 — LinkedIn Writes Completion — EXECUTING
+Plan: 2 of 6 complete (Wave 1 plan 01 shipped — lib foundation extensions + UNI-25/UNI-26 closed)
+Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 shipped + live-validated 2026-05-18.
 Status: Ready to execute
 Last activity: 2026-05-18
 
 ## Session Continuity
+
+Phase 69 Plan 01 completed 2026-05-18 (~17 min) — Wave 1 foundation extensions code-complete; ready for Plan 02 (rate-limiter, independent) or Wave 2 plans (03/04/05, all now unblocked).
+
+  - 3 atomic commits on main (pre-commit hooks green: lint-staged + contract-test + doc-counts + typecheck each time).
+    Task-level commit list:
+    · f4069ac feat(69-01): extend unipile errors.ts (+5 classes / +3 enum / +4 classifier branches) + audit.ts AuditResult (+9 members)
+    · e66fdb8 feat(69-01): audit tests for phase-69 AuditResult members + identifiers SLUG_RE D-44 fix
+    · f0d46cf feat(69-01): extract resolveAccountId into shared lib/account.ts (D-20 anti-drift)
+
+  - **What landed (Phase 69 Plan 01):**
+    · src/connectors/unipile/lib/errors.ts — +5 typed McpToolError subclasses
+      (UnipileInmailNotAuthorizedError D-26, UnipileInmailRequiresPremiumError D-29,
+      UnipileRecipientUnreachableError + UnipileInvalidRequestError D-45,
+      UnipileAttachmentTooLargeError D-23). +3 UnipileErrorResult union members.
+      +4 classifyUnipileError branches (specific-first ordering: 422 invalid_recipient,
+      422 inmail_requires_premium, 400 invalid_parameters, 401/403 inmail_requires_premium).
+      Uses ErrorCode.INVALID_INPUT in place of RESEARCH-quoted VALIDATION_FAILED
+      (which is not exported from src/core/errors.ts — same adaptation phase-68 took).
+    · src/connectors/unipile/lib/audit.ts — AuditResult union extended from 6 → 15
+      (7 CONTEXT-mandated + 2 RESEARCH §6 bonus: error_inmail_recipient_not_eligible +
+      error_inmail_cap_exceeded). Phase-68 member order preserved.
+    · src/connectors/unipile/lib/identifiers.ts — SLUG_RE +2 trailing non-capturing
+      groups (?:\?[^#/]*)?(?:#[^/]*)? for query + fragment. UNI-25 closed.
+    · NEW src/connectors/unipile/lib/account.ts — shared D-20 resolveAccountId helper,
+      ~60 LOC, wraps account.getAll() in withRetry per D-16. AccountResolution
+      discriminated-union type exported.
+    · src/connectors/unipile/lib/__tests__/{errors,audit,identifiers,account}.test.ts
+      — +30 test cases across the 4 files. Whole unipile suite: 146/146 green.
+
+  - **2 Rule 3 auto-fixes during execution:**
+    · audit.ts AuditResult enum extension folded into Task 1 commit (f4069ac) — was
+      originally scoped to Task 2, but Task 1 alone broke typecheck because
+      send-connection.ts:254/291 assigns UnipileErrorResult into AuditRow.result.
+      Tests for the new enum members stayed in Task 2's commit (e66fdb8). Source-level
+      coupling resolved at commit time; test-author-per-task discipline preserved.
+    · ErrorCode.VALIDATION_FAILED → ErrorCode.INVALID_INPUT in 3 new error classes
+      (RESEARCH §7.1 quote referenced a non-existent enum member; phase-68 errors.ts
+      header JSDoc documented the same adaptation pattern for AUTH_FAILED /
+      EXTERNAL_API_ERROR).
+
+  - **Phase 69 backlog cleared:**
+    · UNI-25 (URL with query string mis-classified) — CLOSED via SLUG_RE D-44.
+    · UNI-26 (Unipile 4xx mis-classified as error_unipile_5xx) — CLOSED via
+      new classifier branches for 400 invalid_parameters / 422 invalid_recipient.
+
+  - **STATE notes:**
+    · `.planning/` is gitignored — STATE.md / ROADMAP.md / SUMMARY.md are local-only
+      bookkeeping artifacts. Source-of-truth for execution is the git log on `main`.
+    · No live Unipile calls made in this plan (pure type/regex/extraction work).
+      Live UNIPILE_DSN + UNIPILE_TOKEN credentials remain available for Wave 2/3
+      smoke tests.
+
+---
+
+## Previous Session: Phase 68
 
 Phase 68 Plan 06 completed 2026-05-18 (~11 min) — phase 68 code-complete; awaiting live Antoine Vercken re-validation by operator.
 
@@ -113,8 +168,10 @@ Phase 68 Plan 06 completed 2026-05-18 (~11 min) — phase 68 code-complete; awai
       suite (110/110). docs/CONNECTORS.md untouched per PATTERNS.md.
     · MANUAL LIVE VALIDATION PENDING: operator must run the Antoine Vercken
       re-test with real UNIPILE_DSN + UNIPILE_TOKEN to confirm:
+
       1. verified: true achievable within 17s budget against production
          Unipile (Assumption A3 reality check).
+
       2. Dedup blocks the second identical call.
       3. 1-char note change bypasses dedup as designed.
     · Phase 68 status: code-complete, awaiting live signal.
@@ -1094,6 +1151,7 @@ Exit condition for operator attention:
 - Plan 06 ships 2 tools wired in same commit as toolCount 0→2 — registry-metadata-consistency contract forbids partial state
 - D-20 account_id resolver kept as local helper per tool (write writes audit row on failure; read returns degraded envelope) — extracting would leak error-path complexity into shared lib
 - Dedup-hit path STILL writes a fresh audit row (T-68-06-04 mitigation) — operator must see EACH repeat attempt, not just the original
+- D-38..D-41 implementation — checkUnipileRateLimit, fail-CLOSED default, env-overridable caps, ISO weekly bucket helper. Module standalone; Wave 2/3 will integrate.
 
 ### Phase 38 (unchanged)
 
@@ -1326,5 +1384,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 68-06-PLAN.md (phase 68 code-complete — awaiting live Antoine Vercken re-validation)
+Stopped at: Completed 69-02-PLAN.md (rate-limiter) — UNI-11 closed
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
