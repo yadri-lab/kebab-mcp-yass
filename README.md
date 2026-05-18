@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">Kebab MCP</h1>
-  <p align="center"><strong>Your personal AI backend. One endpoint. 93+ tools. Deploy in 5 minutes.</strong></p>
+  <p align="center"><strong>Your personal AI backend. One endpoint. 97+ tools. Deploy in 5 minutes.</strong></p>
 </p>
 
 <p align="center">
@@ -49,7 +49,7 @@
    ┌────────────────────────────────────────────────────────────────────┐
    │                Kebab MCP  (your Vercel deploy)                     │
    │                                                                    │
-   │   /api/mcp  →  registry  →  93+ tools across 17 connectors         │
+   │   /api/mcp  →  registry  →  97+ tools across 17 connectors         │
    │                                                                    │
    │   Dashboard at /config: enable connectors, write Skills,           │
    │   add custom HTTP API tools, watch live logs.                      │
@@ -62,14 +62,14 @@
    └────────────────────────────────────────────────────────────────────┘
 ```
 
-**What it is.** A self-hosted MCP server framework that ships with 93+ pre-built tools across 17 connectors. Deploys to Vercel free tier. Open-source, AGPL-3.0.
+**What it is.** A self-hosted MCP server framework that ships with 97+ pre-built tools across 17 connectors. Deploys to Vercel free tier. Open-source, AGPL-3.0.
 
 **Why it exists.** Every AI client wants its own MCP server. Five clients × five tool sources = 25 half-broken integrations. Kebab is one backend that every client talks to.
 
 **What you get:**
 
 - ✅ **One deploy, one endpoint** — every AI client speaks to the same `https://your-fork.vercel.app/api/mcp`
-- ✅ **93+ tools, no code** — Gmail, Calendar, Drive, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Apify, Browser, Unipile (LinkedIn writes), paywalled articles, custom Skills, custom HTTP APIs
+- ✅ **97+ tools, no code** — Gmail, Calendar, Drive, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Apify, Browser, Unipile (LinkedIn writes), paywalled articles, custom Skills, custom HTTP APIs
 - ✅ **Your tokens, your KV** — credentials live in your Upstash; we have no servers, no telemetry, no lock-in
 - ✅ **Dashboard included** — enable/disable connectors live, run any tool from the playground, write Skills in markdown, watch logs
 

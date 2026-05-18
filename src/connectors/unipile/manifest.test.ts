@@ -34,26 +34,36 @@ beforeEach(() => {
   ctorCalls.length = 0;
 });
 
-describe("unipileConnector manifest (Phase 68 / Plan 06 — 2 tools wired)", () => {
+describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
   it("exposes id 'unipile' and exact requiredEnvVars per D-19", () => {
     expect(unipileConnector.id).toBe("unipile");
     expect(unipileConnector.label).toBe("Unipile (LinkedIn writes)");
     expect(unipileConnector.requiredEnvVars).toEqual(["UNIPILE_DSN", "UNIPILE_TOKEN"]);
   });
 
-  it("exposes exactly 2 tools: linkedin_send_connection + linkedin_get_relationship_status", () => {
+  it("exposes exactly 6 tools (Phase 69 complete — 2 from phase 68 + 4 from phase 69)", () => {
     const names = unipileConnector.tools.map((t) => t.name);
-    expect(names).toEqual(["linkedin_send_connection", "linkedin_get_relationship_status"]);
+    expect(names).toEqual([
+      "linkedin_send_connection",
+      "linkedin_get_relationship_status",
+      "linkedin_send_message",
+      "linkedin_send_inmail",
+      "linkedin_engage",
+      "linkedin_list_pending",
+    ]);
   });
 
-  it("marks linkedin_send_connection as destructive (write tool)", () => {
-    const send = unipileConnector.tools.find((t) => t.name === "linkedin_send_connection");
-    expect(send?.destructive).toBe(true);
-  });
-
-  it("marks linkedin_get_relationship_status as non-destructive (read tool)", () => {
-    const read = unipileConnector.tools.find((t) => t.name === "linkedin_get_relationship_status");
-    expect(read?.destructive).toBe(false);
+  it.each([
+    ["linkedin_send_connection", true],
+    ["linkedin_get_relationship_status", false],
+    ["linkedin_send_message", true],
+    ["linkedin_send_inmail", true],
+    ["linkedin_engage", true],
+    ["linkedin_list_pending", false],
+  ])("%s destructive flag = %s", (name, destructive) => {
+    const t = unipileConnector.tools.find((tool) => tool.name === name);
+    expect(t).toBeDefined();
+    expect(t?.destructive).toBe(destructive);
   });
 
   it("testConnection returns ok:false when DSN missing", async () => {

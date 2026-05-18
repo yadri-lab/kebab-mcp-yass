@@ -11,17 +11,41 @@ import {
   linkedinGetRelationshipStatusSchema,
   handleLinkedinGetRelationshipStatus,
 } from "./tools/linkedin-get-relationship-status";
+import {
+  linkedinSendMessageSchema,
+  handleLinkedinSendMessage,
+} from "./tools/linkedin-send-message";
+import { linkedinSendInmailSchema, handleLinkedinSendInmail } from "./tools/linkedin-send-inmail";
+import { linkedinEngageSchema, handleLinkedinEngage } from "./tools/linkedin-engage";
+import {
+  linkedinListPendingSchema,
+  handleLinkedinListPending,
+} from "./tools/linkedin-list-pending";
 
 const log = getLogger("CONNECTOR:unipile");
 
 /**
- * Phase 68 / Plan 06 — manifest with the 2 LinkedIn tools wired.
+ * Phase 68/69 — manifest with all 6 LinkedIn tools wired (UNI-07..10 closes
+ * the phase 69 surface; phase 68 Plan 06 originally shipped 2 tools).
  *
- * Replaces the Wave 0 stub (Plan 01) with the real surface:
+ * Phase 68 (locked, do not reorder):
  *  - `linkedin_send_connection` (destructive WRITE) — verify-after-write,
- *    D-13/D-14/D-15/D-20 envelope locked.
+ *    D-13/D-14/D-15/D-20 envelope locked. Phase 69 Plan 06 added a
+ *    per-account / per-tool rate-limit check (D-43 + D-49) between
+ *    account-resolve and provider-resolve — fully backwards compatible.
  *  - `linkedin_get_relationship_status` (read) — D-21 envelope
  *    {degree, connection_status}.
+ *
+ * Phase 69 (4 new tools — Wave 2/3 shipped in plans 03/04/05/06):
+ *  - `linkedin_send_message` (destructive WRITE) — 1st-degree DM with
+ *    attachments + verify-after-write polling (D-22/D-46/D-47).
+ *  - `linkedin_send_inmail` (destructive WRITE) — paid InMail with credit
+ *    bracketing + Premium gate + allow_inmail: literal(true) safety belt
+ *    (D-26/D-27/D-28/D-29/D-48/D-50).
+ *  - `linkedin_engage` (destructive WRITE — super-tool) — degree-routed
+ *    dispatcher with dry_run preview (D-30/D-31/D-32/D-33).
+ *  - `linkedin_list_pending` (read) — pending invitations cleanup helper
+ *    with age_days + has_note (D-34/D-35/D-36/D-37).
  *
  * Tools are exposed via a lazy `get tools()` getter (mirrors
  * apify/manifest.ts) so any future env-driven filtering (e.g. an
@@ -105,8 +129,9 @@ A [Unipile](https://www.unipile.com) account with at least one LinkedIn account 
 5. Paste both env vars in the /config Credentials tab and click Test. The probe calls Unipile and verifies that at least one LinkedIn account is wired — without that you get connected-but-useless ambiguity.
 
 ### Notes
-- This is the Phase 68 Wave-0 stub manifest: zero tools ship in this plan. The two real tools (\`linkedin_send_connection\`, \`linkedin_get_relationship_status\`) arrive in Plan 06.
-- Audit log entries (Plan 03) live 90 days in Upstash KV and store only a SHA-256 of \`{tool, profile_url, note}\` — never the note text itself.`,
+- Phase 69 complete: 6 tools available (2 from phase 68 + 4 from phase 69) — \`linkedin_send_connection\`, \`linkedin_get_relationship_status\`, \`linkedin_send_message\`, \`linkedin_send_inmail\`, \`linkedin_engage\`, \`linkedin_list_pending\`.
+- Audit log entries live 90 days in Upstash KV and store only a SHA-256 of \`{tool, profile_url, note}\` — never the note text itself.
+- Per-account daily/weekly caps enforced by the kebab-side rate-limiter (defaults: 25/day, 100/week for connects; 50/day for DMs; 15/day for InMail). Override via \`KEBAB_UNIPILE_LINKEDIN_*_CAP\` env vars.`,
   requiredEnvVars: ["UNIPILE_DSN", "UNIPILE_TOKEN"],
   testConnection: async (credentials) => {
     const dsn = credentials.UNIPILE_DSN;
@@ -136,7 +161,8 @@ function buildTools(): ToolDefinition[] {
       description:
         "Send a LinkedIn connection request via Unipile. Verified-after-write (3 polls @ 2s/5s/10s). " +
         "DEDUP: same (profile_url, note) combination is blocked for 90 days — change the note to retry. " +
-        "Returns {provider_ok, verified, crm_sync: 'pending', dedup_hit, audit_id, invitation_id?, error?}.",
+        "Per-account daily/weekly caps enforced (25/day, 100/week default). " +
+        "Returns {provider_ok, verified, crm_sync: 'pending', dedup_hit, audit_id, invitation_id?, error?, blocked_by_rate_limit?}.",
       schema: linkedinSendConnectionSchema,
       handler: async (args) =>
         handleLinkedinSendConnection(args as Parameters<typeof handleLinkedinSendConnection>[0]),
@@ -152,6 +178,50 @@ function buildTools(): ToolDefinition[] {
         handleLinkedinGetRelationshipStatus(
           args as Parameters<typeof handleLinkedinGetRelationshipStatus>[0]
         ),
+      destructive: false,
+    }),
+    defineTool({
+      name: "linkedin_send_message",
+      description:
+        "Send a LinkedIn DM to a 1st-degree connection. " +
+        "Attachments supported (PDF / PNG / JPEG / GIF, ≤15MB per file, ≤5 files). " +
+        "Verified-after-write (polls at 5s + 10s). Refuses if recipient is not 1st-degree.",
+      schema: linkedinSendMessageSchema,
+      handler: async (args) =>
+        handleLinkedinSendMessage(args as Parameters<typeof handleLinkedinSendMessage>[0]),
+      destructive: true,
+    }),
+    defineTool({
+      name: "linkedin_send_inmail",
+      description:
+        "Send a LinkedIn InMail (paid). REQUIRES allow_inmail: true to confirm credit usage. " +
+        "Tracks credits_used / credits_remaining via inmail_balance bracketing. " +
+        "Requires Premium / Sales Navigator / Recruiter subscription.",
+      schema: linkedinSendInmailSchema,
+      handler: async (args) =>
+        handleLinkedinSendInmail(args as Parameters<typeof handleLinkedinSendInmail>[0]),
+      destructive: true,
+    }),
+    defineTool({
+      name: "linkedin_engage",
+      description:
+        "Super-tool: routes to send_message (1st-degree), send_connection (2nd/3rd), " +
+        "send_inmail (out-of-network with allow_inmail: true + inmail_subject), or skip. " +
+        "Supports dry_run: true to preview the action without executing.",
+      schema: linkedinEngageSchema,
+      handler: async (args) =>
+        handleLinkedinEngage(args as Parameters<typeof handleLinkedinEngage>[0]),
+      destructive: true,
+    }),
+    defineTool({
+      name: "linkedin_list_pending",
+      description:
+        "List pending LinkedIn invitations sent from the account, with age_days. " +
+        "Optional older_than_days filter (client-side). " +
+        "Returns {count, items: [{invitation_id, recipient_profile_url, recipient_name, sent_at, age_days, has_note}]}.",
+      schema: linkedinListPendingSchema,
+      handler: async (args) =>
+        handleLinkedinListPending(args as Parameters<typeof handleLinkedinListPending>[0]),
       destructive: false,
     }),
   ];

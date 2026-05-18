@@ -61,10 +61,14 @@ Required: `UNIPILE_DSN` (e.g. `api41.unipile.com:17153`) and `UNIPILE_TOKEN`.
 
 Sign up at [unipile.com](https://www.unipile.com), grab DSN + API token from **Settings → API**, then connect a LinkedIn account via **Accounts → Add account** (Sales Navigator-tier recommended for higher daily quotas).
 
-Provides 2 tools:
+Provides 6 tools:
 
-- `linkedin_send_connection` — send a connection request and verify it actually went through (3-poll verify-after-write at 2s/5s/10s). Returns `verified: true|false` — never silent ambiguity. Same `(profile_url, note)` combination is deduped for 90 days; change the note to retry.
+- `linkedin_send_connection` — send a connection request and verify it actually went through (3-poll verify-after-write at 2s/5s/10s). Returns `verified: true|false` — never silent ambiguity. Same `(profile_url, note)` combination is deduped for 90 days; change the note to retry. Per-account daily/weekly caps enforced (25/day, 100/week by default).
 - `linkedin_get_relationship_status` — read the network distance (1/2/3/null) of a profile relative to your connected account.
+- `linkedin_send_message` — send a LinkedIn DM to a 1st-degree connection. Attachments supported (PDF / PNG / JPEG / GIF, ≤15MB per file, ≤5 files). Verified-after-write (polls at 5s + 10s).
+- `linkedin_send_inmail` — send a paid LinkedIn InMail. REQUIRES `allow_inmail: true` to confirm credit usage. Tracks `credits_used` / `credits_remaining` via inmail_balance bracketing. Requires Premium / Sales Navigator / Recruiter.
+- `linkedin_engage` — super-tool: routes to `send_message` (1st-degree), `send_connection` (2nd/3rd), `send_inmail` (out-of-network with `allow_inmail: true` + `inmail_subject`), or skip. Supports `dry_run: true` to preview the action without executing.
+- `linkedin_list_pending` — list pending LinkedIn invitations sent from the account, with `age_days` and `has_note`. Optional `older_than_days` filter for cleanup loops ("withdraw invitations sent >30 days ago without a note").
 
 ## Browser automation
 

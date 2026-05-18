@@ -162,10 +162,10 @@ export const ALL_CONNECTOR_LOADERS: ConnectorLoaderEntry[] = [
     description:
       "Send LinkedIn connection requests and read relationship status via Unipile's managed-browser API.",
     requiredEnvVars: ["UNIPILE_DSN", "UNIPILE_TOKEN"],
-    // Plan 06 (Wave 3): 2 tools wired — linkedin_send_connection (destructive)
-    // + linkedin_get_relationship_status (read). registry-metadata-consistency
+    // Phase 69 (UNI-07..10): 6 tools total — send_connection, get_relationship_status,
+    // send_message, send_inmail, engage, list_pending. registry-metadata-consistency
     // contract test asserts toolCount === manifest.tools.length.
-    toolCount: 2,
+    toolCount: 6,
     loader: () => import("@/connectors/unipile/manifest").then((m) => m.unipileConnector),
   },
   {

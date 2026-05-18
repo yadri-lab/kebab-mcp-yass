@@ -515,6 +515,23 @@
     "destructive": true
   },
   {
+    "name": "linkedin_engage",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "actor_user_id",
+      "allow_inmail",
+      "crm_log",
+      "dry_run",
+      "fallback_if_unreachable",
+      "inmail_subject",
+      "message",
+      "note",
+      "profile_url"
+    ],
+    "destructive": true
+  },
+  {
     "name": "linkedin_feed",
     "pack": "browser",
     "schemaKeys": [
@@ -532,6 +549,16 @@
     "destructive": false
   },
   {
+    "name": "linkedin_list_pending",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "limit",
+      "older_than_days"
+    ],
+    "destructive": false
+  },
+  {
     "name": "linkedin_send_connection",
     "pack": "unipile",
     "schemaKeys": [
@@ -540,6 +567,34 @@
       "crm_log",
       "note",
       "profile_url"
+    ],
+    "destructive": true
+  },
+  {
+    "name": "linkedin_send_inmail",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "actor_user_id",
+      "allow_inmail",
+      "crm_log",
+      "max_inmail_credits",
+      "profile_url",
+      "subject",
+      "text"
+    ],
+    "destructive": true
+  },
+  {
+    "name": "linkedin_send_message",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "actor_user_id",
+      "attachments",
+      "crm_log",
+      "profile_url",
+      "text"
     ],
     "destructive": true
   },
