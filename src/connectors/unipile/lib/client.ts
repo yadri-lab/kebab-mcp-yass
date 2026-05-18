@@ -30,7 +30,7 @@ let client: UnipileClient | null = null;
  * Returns a memoized UnipileClient instance for this warm lambda.
  *
  * Resolution order: cache → getConfig("UNIPILE_DSN") + getConfig("UNIPILE_TOKEN")
- * → `new UnipileClient(\`https://${dsn}\`, token)`.
+ * → `new UnipileClient(normalizedDsn, token)`.
  *
  * Throws if either env var is missing — the SDK constructor is never
  * invoked with empty strings (avoids constructing a doomed client).
@@ -38,7 +38,20 @@ let client: UnipileClient | null = null;
  * SDK constructor signature [VERIFIED: src/client.ts in unipile-node-sdk@1.9.3]:
  *   constructor(baseUrl: string, token: string, options?: ClientInstantiationOptions)
  * Base URL pattern: `https://${dsn}` — SDK appends `/api/v1` internally.
+ *
+ * **DSN format tolerance:** Unipile's dashboard ships the DSN with
+ * `https://` already included (e.g. `https://api41.unipile.com:17153`),
+ * but the Kebab convention in the test suite is to set
+ * `UNIPILE_DSN=api41.unipile.com:17153` (host:port only) and let the
+ * client prepend the protocol. We accept BOTH shapes — a DSN that
+ * already starts with `https://` or `http://` is passed through; a
+ * bare host:port gets `https://` prepended. This avoids surprising the
+ * operator who copy-pastes verbatim from the Unipile dashboard.
  */
+function normalizeDsn(dsn: string): string {
+  return /^https?:\/\//i.test(dsn) ? dsn : `https://${dsn}`;
+}
+
 export function getUnipileClient(): UnipileClient {
   if (client) return client;
   const dsn = getConfig("UNIPILE_DSN");
@@ -46,7 +59,7 @@ export function getUnipileClient(): UnipileClient {
   if (!dsn || !token) {
     throw new Error("UNIPILE_DSN and UNIPILE_TOKEN must be set");
   }
-  client = new UnipileClient(`https://${dsn}`, token);
+  client = new UnipileClient(normalizeDsn(dsn), token);
   log.info("UnipileClient initialized");
   return client;
 }

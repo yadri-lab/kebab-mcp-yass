@@ -65,6 +65,20 @@ describe("Phase 68 / Plan 02 — unipile/lib/client.ts singleton", () => {
     expect(hoist.ctorCalls).toEqual([["https://api.unipile.com", "fake-token"]]);
   });
 
+  it("passes through DSN already containing https:// (Unipile dashboard format)", async () => {
+    process.env.UNIPILE_DSN = "https://api41.unipile.com:17153";
+    const { getUnipileClient } = await loadClient();
+    getUnipileClient();
+    expect(hoist.ctorCalls).toEqual([["https://api41.unipile.com:17153", "fake-token"]]);
+  });
+
+  it("passes through DSN already containing http:// (no double-prefix)", async () => {
+    process.env.UNIPILE_DSN = "http://localhost:8080";
+    const { getUnipileClient } = await loadClient();
+    getUnipileClient();
+    expect(hoist.ctorCalls).toEqual([["http://localhost:8080", "fake-token"]]);
+  });
+
   it("throws when UNIPILE_DSN is missing AND does NOT invoke SDK constructor", async () => {
     delete process.env.UNIPILE_DSN;
     const { getUnipileClient } = await loadClient();
