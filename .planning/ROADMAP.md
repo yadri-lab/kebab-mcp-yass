@@ -27,7 +27,7 @@
 **Plans:** 6 plans
 
 Plans:
-- [ ] 68-01-PLAN.md — Wave 1: Install unipile-node-sdk@^1.9.3, scaffold stub manifest (0 tools) + manifest tests + lazy registry entry (toolCount: 0); unblocks parallel Wave 2 (UNI-01)
+- [x] 68-01-PLAN.md — Wave 1: Install unipile-node-sdk@^1.9.3, scaffold stub manifest (0 tools) + manifest tests + lazy registry entry (toolCount: 0); unblocks parallel Wave 2 (UNI-01) — completed 2026-05-18 (3 commits: f67bcf4, ab0e3e2, 99d8c39; SUMMARY: 68-01-SUMMARY.md)
 - [ ] 68-02-PLAN.md — Wave 2: client.ts lazy UnipileClient singleton + sanitize/reset helpers + lib/retry.ts (exp backoff on 429/5xx, max 3) + lib/errors.ts (4 typed classes + classifyUnipileError taxonomy) (UNI-02)
 - [ ] 68-03-PLAN.md — Wave 2: lib/identifiers.ts URL normalize (D-12 4 variants + locale prefixes) + resolveProviderId with 30-day KV cache (D-09/D-10) + admin DELETE /api/admin/unipile/cache/urn route (D-11) + kv-allowlist entry (D-18 escape hatch) (UNI-03)
 - [ ] 68-04-PLAN.md — Wave 2: lib/audit.ts generateAuditId/computeParamsHash (SHA-256 D-05) + writeAuditRow (dual KV write row + hash pointer, 90-day TTL D-08) + checkDedup (no bypass D-06, no note in KV D-07) (UNI-04)

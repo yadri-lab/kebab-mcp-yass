@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
-status: Phase 68 PLANNED ✓. 6 plans across 3 waves. Plan-checker PASSED. Ready to execute.
-stopped_at: Phase 68 planning complete — 6 PLAN.md + PATTERNS.md committed (cb983fa). Next step is /gsd-execute-phase 68.
-last_updated: "2026-05-18T14:10:49Z"
-last_activity: 2026-05-18
+milestone_name: — Unipile Connector
+status: executing
+stopped_at: Phase 68 Plan 01 complete (Wave 0 bootstrap)
+last_updated: "2026-05-18T15:11:39Z"
+last_activity: 2026-05-18 -- Phase 68 Plan 01 complete — SDK installed, stub manifest registered
 progress:
-  total_phases: 4
+  total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 17
 ---
 
 # Project State
@@ -20,17 +20,75 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-16)
 
-**Current focus:** **v0.17 milestone scoped 2026-05-18** — Unipile connector for LinkedIn write actions (connect, DM, InMail) and WhatsApp messaging. Replaces failed Browserbase-based LinkedIn write attempt. Per [ADR 0001](../docs/adr/0001-unipile-as-linkedin-whatsapp-write-provider.md).
-**Next:** Execute 4 phases (068 Foundation → 069 LinkedIn writes → 070 Webhooks + WhatsApp → 071 Hardening).
+**Current focus:** Phase 68 — Unipile Foundation
+**Next:** Execute Wave 2 plans (68-02 client+retry+errors, 68-03 identifiers+admin DELETE, 68-04 audit, 68-05 crm-bridge) — all unblocked by Plan 01.
 
 ## Current Position
 
-Phase: **v0.17 in progress** — ADR 0001 committed, ROADMAP shipped, 4 phase directories created (068-unipile-foundation, 069-linkedin-writes, 070-webhooks-whatsapp, 071-unipile-hardening). No plans authored yet.
+Phase: 68 — Unipile Foundation — EXECUTING
+Plan: 1 of 6 complete (Wave 0 bootstrap)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: v0.17 scoping complete 2026-05-18.
-Last activity: 2026-05-18
+Status: Executing Phase 68 — Plan 02 next (Wave 2)
+Last activity: 2026-05-18T15:11:39Z — Phase 68 Plan 01 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
 
 ## Session Continuity
+
+Phase 68 Plan 01 completed 2026-05-18 (39 min).
+
+  - 3 atomic commits on main (all green: 8 manifest tests + 4 registry-metadata-consistency
+    + 50 registry + full contract + doc-counts + lint + typecheck + size:check + build).
+    Task-level commit list:
+    · f67bcf4 chore(68-01): install unipile-node-sdk@^1.9.3
+    · ab0e3e2 feat(68-01): scaffold stub unipileConnector manifest (0 tools)
+    · 99d8c39 feat(68-01): register unipile in registry lazy loader (toolCount: 0)
+
+  - **What landed:**
+    · unipile-node-sdk@1.9.3 (ISC, 4.2 MB unpacked) + 3 transitive deps
+      (@sinclair/typebox, qrcode, @types/qrcode). No peer-conflict, no --legacy-peer-deps.
+    · src/connectors/unipile/manifest.ts — stub manifest exporting unipileConnector with
+      id "unipile", requiredEnvVars ["UNIPILE_DSN", "UNIPILE_TOKEN"], tools: [] (Plan 06
+      will populate). Shared probe() helper for testConnection + diagnose using
+      client.account.getAll() with ≥1-LinkedIn check per D-19. Logger tag CONNECTOR:unipile,
+      no process.env reads (getConfig() only).
+    · src/connectors/unipile/manifest.test.ts — 8 tests covering id/label/requiredEnvVars,
+      empty tools, missing-creds (both branches verify SDK NOT constructed), ≥1 LI account
+      success, 0 LI account failure, SDK throw classification, diagnose short-circuit.
+    · src/core/registry.ts +13 lines — ConnectorLoaderEntry for unipile after apify entry
+      (LinkedIn-adjacent). toolCount: 0 matches stub manifest tools.length: 0; Plan 06 will
+      atomically bump both to 2.
+    · README.md + content/docs/getting-started.md: "16 connectors" → "17 connectors"
+      (doc-counts gate satisfied; tool count unchanged at 91).
+
+  - **Bundle:** /config first-load JS 550.4 KB / 620 KB ceiling (88.8% headroom). PERF-01
+    lazy loader keeps SDK off the eager bundle — only deploys with UNIPILE_* env vars pay
+    the cost on the transport route trace.
+
+  - **Test count:** 994 baseline → +8 manifest tests = 1002+ (vitest run on the new file
+    only; full-suite recount deferred to Plan 06 wrap-up).
+
+  - **3 Rule 3 auto-fixes** (all folded into Task 2 commit ab0e3e2):
+    · vi.mock hoisting error → vi.hoisted() pattern for shared spies.
+    · vi.fn() wrapping a class isn't constructible in vitest 4.x → real class for the SDK
+      mock with manual ctorCalls array for invocation tracking.
+    · doc-counts gate would fire on next commit → bumped README + getting-started.md
+      from "16 connectors" → "17 connectors" in the same Task 2 commit (per plan's
+      success_criteria authorization).
+
+  - **No deviations from D-19, D-20, D-21 — manifest follows the locked decisions exactly.**
+
+  - **Decisions added to project context:**
+    · Connector probe() shared helper pattern — testConnection + diagnose delegate to a
+      single try/catch wrapper. Future connector authors should follow this; eliminates
+      duplicate error-stringification.
+    · Wave-0 stub manifest pattern — `tools: []` typed as ToolDefinition[] + toolCount: 0
+      in registry lets parallel Wave-N plans add NEW lib files without colliding on
+      manifest.ts edits. The atomic toolCount bump scheduled for the surface-completion
+      plan (Plan 06 here) has an inline registry.ts comment as forward documentation.
+    · vi.hoisted() is the canonical pattern for sharing spies between vi.mock factories
+      and test bodies in vitest 4.x. Documented in 68-01-SUMMARY.md.
+
+  - **No blockers. No follow-ups.** Plans 02/03/04/05 unblocked in parallel; Plan 06 must
+    run after Wave 2.
 
 Phase 53 completed 2026-04-23.
 
