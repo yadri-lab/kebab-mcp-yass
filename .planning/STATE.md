@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Completed 68-03-PLAN.md
-last_updated: "2026-05-18T15:46:24.929Z"
+stopped_at: Completed 68-04-PLAN.md
+last_updated: "2026-05-18T15:56:26.087Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -21,17 +21,69 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Current focus:** Phase 68 — Unipile Foundation
-**Next:** Execute remaining Wave 2 plans (68-04 audit, 68-05 crm-bridge) — both unblocked, can run in parallel. Plan 06 (Wave 3, linkedin tools) must wait for Wave 2 completion.
+**Next:** Execute remaining Wave 2 plan (68-05 crm-bridge) — unblocked. Plan 06 (Wave 3, linkedin tools) waits for Wave 2 completion (68-05 lands first).
 
 ## Current Position
 
 Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 3 of 6 complete (Wave 2 SDK primitives + URL→URN resolver + admin eviction shipped)
+Plan: 4 of 6 complete (Wave 2 SDK primitives + URL→URN resolver + admin eviction + audit log + dedup shipped)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: Executing Phase 68 — Plan 04 or 05 next (parallelizable)
-Last activity: 2026-05-18T15:44:50Z — Phase 68 Plan 03 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
+Status: Executing Phase 68 — Plan 05 next (CRM bridge skeleton), then Plan 06 (linkedin tools)
+Last activity: 2026-05-18T15:56Z — Phase 68 Plan 04 complete (1/1 task, 1 atomic commit 331d152, SUMMARY written, 19 audit tests green)
 
 ## Session Continuity
+
+Phase 68 Plan 04 completed 2026-05-18 (~5 min).
+
+  - 1 atomic commit on main (pre-commit hooks green: lint-staged + contract test + doc-counts + typecheck).
+    Task-level commit list:
+    · 331d152 feat(68-04): KV-backed audit log writer + dedup checker (D-05/D-07/D-08/D-18)
+
+  - **What landed:**
+    · src/connectors/unipile/lib/audit.ts — generateAuditId (UUIDv4),
+      computeParamsHash (D-05 strict SHA-256→16-hex over canonical-form
+      {tool, profile_url_normalized, note}; 1-char note change = new hash),
+      writeAuditRow (dual KV write — primary row at unipile:audit:<id> +
+      hash pointer at unipile:audit:hash:<params_hash>, BOTH with AUDIT_TTL_SECONDS
+      = 7,776,000s per D-08; pointer stores FULL row JSON so one KV read covers
+      dedup + prior-result display in one shot), checkDedup (shape-defensive —
+      null on miss/corrupt JSON/missing audit_id; fails OPEN). KV via
+      getContextKVStore() (D-18 auto tenant prefix). NO dedup_key / bypassDedup /
+      forceWrite symbols (D-06 — LLM cannot bypass dedup). NO note_text persisted
+      anywhere (D-07 GDPR — only the hash leaves the function).
+    · src/connectors/unipile/lib/__tests__/audit.test.ts — 19 specs covering:
+      UUIDv4 shape + distinctness, hash determinism + key-order independence +
+      content-sensitivity (note, tool, url, empty-vs-whitespace), TTL literal
+      value, dual KV write + JSON roundtrip + PII-exclusion, checkDedup hit/miss/
+      corrupt/shape, API-surface guard (D-06).
+
+  - **TDD-vs-husky tension** (folded into the single feat commit 331d152):
+    · Plan declared tdd="true". Husky pre-commit runs tsc --noEmit per staged
+      TS file via lint-staged, which (correctly) blocks a RED-only commit where
+      the test file imports a not-yet-existent module. Resolution: file-creation
+      order preserves TDD discipline — audit.test.ts authored FIRST, ran against
+      missing module to confirm RED (Cannot find module), THEN audit.ts authored,
+      both committed together. SUMMARY.md "TDD Gate Compliance" section flags this
+      explicitly for git-log readers. Possible future fix: loosen husky to run
+      tsc at project root rather than per-staged-file (v0.17/v0.18 follow-up,
+      out of scope here).
+
+  - **Decisions added to project context:**
+    · Audit log hash-pointer stores FULL row JSON (not just audit_id) — one KV
+      read covers dedup-check + prior-result display in one shot. 2x storage
+      trade negligible at Cadens scale (~800 KB ceiling over 90d window).
+    · checkDedup fails OPEN on shape mismatch — garbage state (manual KV edits,
+      partial writes interrupted by Vercel timeouts, schema drift in future plans)
+      cannot block legitimate calls forever; the next writeAuditRow overwrites
+      the bad pointer.
+    · No kv-allowlist entry needed — audit.ts uses only getContextKVStore(),
+      never root-scope getKVStore(). Contract test passes unchanged.
+
+  - **No blockers, no follow-ups.** Plan 05 (CRM bridge skeleton, Wave 2) is
+    unblocked; Plan 06 (linkedin_send_connection + linkedin_get_relationship_status,
+    Wave 3) needs Plan 05 to land first. Plan 06's canonical call sequence:
+    normalizeProfileUrl → computeParamsHash → checkDedup (early return on hit)
+    → resolveProviderId → unipile.users.invite → writeAuditRow.
 
 Phase 68 Plan 03 completed 2026-05-18 (~14 min).
 
@@ -878,6 +930,9 @@ Exit condition for operator attention:
 - [Phase 063-cron-update-check]: Plan 063-03 / CRON-03: Pure formatRelativeTime helper (src/core/relative-time.ts) — bucketed format ("just now" / "Nm ago" / "Nh ago" / "Nd ago" / "unknown") with future-tolerant clock-skew. OverviewTab UpdateStatus.ready widened with checkedAt; both setState sites (initial useEffect + new refreshUpdate handler) propagate field (W2). Two banners surface freshness: existing "updates available" gets inline "checked Xh ago" + Refresh button; new "Up to date with upstream — checked Xh ago" banner for status: identical. Refresh button calls /api/config/update?force=1, debounced 30s via Date.now() comparison (D-13). Inline SVG rotate icon (lucide-react NOT in deps; verified). 9 unit tests + 3 UI tests pass. UI test fixes: URL-routed fetch mock (sub-widgets call distinct endpoints) + RTL cleanup() in afterEach (singleFork pool keeps tree alive between tests).
 - URN cache key derivation centralized in urnCacheKey() — both writer (identifiers.ts resolveProviderId) and evictor (admin DELETE route) call the same helper. Single source of truth eliminates eviction drift.
 - Admin URN cache eviction uses root-scope getKVStore() (D-18 escape hatch) — wipes only un-prefixed key. Tenant-prefixed copies survive until natural 30d TTL. Per-tenant eviction is a future enhancement.
+- Audit log hash-pointer stores FULL row JSON (not just audit_id) — one KV read covers dedup-check + prior-result display in one shot. 2x storage trade negligible at Cadens scale (~800 KB ceiling over 90d).
+- TDD-vs-husky tension: RED+GREEN folded into single commit (331d152) because pre-commit typecheck blocks a test importing a not-yet-existent module. File-creation order preserves TDD intent; commit topology bends to the hook.
+- checkDedup fails OPEN (returns null) on corrupt JSON OR parseable-but-missing-audit_id rows. Garbage state cannot block legitimate calls forever — next write overwrites the bad pointer.
 
 ### Phase 38 (unchanged)
 
@@ -1110,5 +1165,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 68-03-PLAN.md
+Stopped at: Completed 68-04-PLAN.md
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
