@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Completed 68-04-PLAN.md
-last_updated: "2026-05-18T15:56:26.087Z"
+stopped_at: Completed 68-05-PLAN.md
+last_updated: "2026-05-18T16:04:36.008Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
-  percent: 67
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,17 +21,80 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Current focus:** Phase 68 — Unipile Foundation
-**Next:** Execute remaining Wave 2 plan (68-05 crm-bridge) — unblocked. Plan 06 (Wave 3, linkedin tools) waits for Wave 2 completion (68-05 lands first).
+**Next:** Plan 06 (Wave 3) — linkedin_send_connection (8-step handler + D-13 verify + D-14 envelope + D-20 account_id rules) + linkedin_get_relationship_status (D-21 {degree, connection_status}) + manifest wire (toolCount 0→2) + doc-counts. All Wave 2 dependencies (Plans 02/03/04/05) are now landed.
 
 ## Current Position
 
 Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 4 of 6 complete (Wave 2 SDK primitives + URL→URN resolver + admin eviction + audit log + dedup shipped)
+Plan: 5 of 6 complete (Wave 2 fully shipped — SDK primitives + URL→URN resolver + admin eviction + audit log + dedup + CRM bridge skeleton)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: Executing Phase 68 — Plan 05 next (CRM bridge skeleton), then Plan 06 (linkedin tools)
-Last activity: 2026-05-18T15:56Z — Phase 68 Plan 04 complete (1/1 task, 1 atomic commit 331d152, SUMMARY written, 19 audit tests green)
+Status: Executing Phase 68 — Plan 06 next (Wave 3, linkedin tools)
+Last activity: 2026-05-18T16:02Z — Phase 68 Plan 05 complete (1/1 task, 1 atomic commit 7eeac00, SUMMARY written, 10 crm-bridge tests green; full unipile suite 88/88)
 
 ## Session Continuity
+
+Phase 68 Plan 05 completed 2026-05-18 (~3.5 min).
+
+  - 1 atomic commit on main (pre-commit hooks green: lint-staged + contract test + doc-counts + typecheck).
+    Task-level commit list:
+    · 7eeac00 feat(68-05): CRM bridge skeleton — CrmAdapter interface + TwentyAdapterSkeleton outbox writer (D-01)
+
+  - **What landed:**
+    · src/connectors/unipile/lib/crm-bridge.ts — CrmAdapter interface (single
+      writeOutbox(auditId, {crm_log}): Promise<void> method, the public surface
+      tool handlers and phase 70 implement against), TwentyAdapterSkeleton class
+      (D-01 — writes unipile:outbox:<audit_id> with status='pending' and stops;
+      NO HTTP, NO HMAC, NO env-var reads), crmBridge singleton (default consumer
+      style for tool handlers), writeOutboxRow free-function (ergonomic
+      equivalent), CrmOutboxStatus type (extensible: pending/sent/failed/dead),
+      CrmOutboxRow type (locked — phase 70 will extend with attempt-tracking
+      fields). All KV via getContextKVStore() (D-18 tenant prefix). Phase 70
+      contracts for D-02/D-03/D-04 documented in JSDoc on the interface so phase
+      70 implements against a locked shape.
+    · src/connectors/unipile/lib/__tests__/crm-bridge.test.ts — 10 specs:
+      writes status='pending' to right key, NO TTL passed, null/object crm_log
+      JSON roundtrip, ISO-8601 queued_at, free-function/singleton equivalence,
+      CrmAdapter assignability (class + singleton), and a 3-spec static
+      source-code suite reading the .ts file from disk, comment-stripping, then
+      asserting NO runtime references to fetch(, createHmac, UNIPILE_CRM_*
+      env vars, timingSafeEqual, getConfig, or node:crypto import — the D-01
+      tripwire. Plus a kv-allowlist cleanliness check (no bare getKVStore call).
+
+  - **One Rule 3 auto-fix during execution** (folded into commit 7eeac00):
+    · Test file's JSDoc header originally contained `/** ... */` literally as
+      documentation text; the `*/` closed the surrounding JSDoc early and oxc
+      flagged a missing semicolon at 17:60. Fix: reworded the comment to use
+      prose ("JSDoc block-comment references") instead of a literal block.
+
+  - **TDD-vs-husky tension** (folded into the single feat commit 7eeac00, same
+    pattern as Plan 04):
+    · Plan declared tdd="true". Husky pre-commit runs tsc --noEmit per staged TS
+      file via lint-staged, which blocks a RED-only commit where the test
+      imports a not-yet-existent module. Resolution: crm-bridge.test.ts authored
+      FIRST, ran against the missing module to confirm RED (Cannot find module
+      ../crm-bridge), THEN crm-bridge.ts authored, both committed together.
+      SUMMARY.md "TDD Gate Compliance" section flags this for git-log readers.
+
+  - **Decisions added to project context:**
+    · CRM bridge ships as interface (CrmAdapter) + phase-68-only skeleton
+      (TwentyAdapterSkeleton). Phase 70 swaps implementation behind the
+      interface without touching tool handlers — locking the contract NOW
+      prevents redesign churn later.
+    · Outbox rows have NO TTL by design (D-01). Durability survives until
+      phase 70's retry cron transitions status to 'sent' or 'dead'. Phase 71
+      may add post-mortem TTL — out of scope for 68.
+    · Static source-code constraint test (D-01 tripwire) — vitest spec reads
+      crm-bridge.ts, strips JSDoc + line comments, then asserts NO runtime
+      references to fetch(, createHmac, UNIPILE_CRM_WEBHOOK_URL/SECRET,
+      timingSafeEqual, getConfig, or node:crypto import. Comment-stripping
+      lets the file DOCUMENT phase 70 contracts without tripping the guard.
+
+  - **No blockers, no follow-ups.** Wave 2 is COMPLETE (Plans 02/03/04/05 all
+    landed). Plan 06 (Wave 3, linkedin_send_connection +
+    linkedin_get_relationship_status) is fully unblocked. Plan 06's canonical
+    call sequence: normalizeProfileUrl → computeParamsHash → checkDedup
+    (early return on hit) → resolveProviderId → unipile.users.invite →
+    writeAuditRow → crmBridge.writeOutbox.
 
 Phase 68 Plan 04 completed 2026-05-18 (~5 min).
 
@@ -933,6 +996,9 @@ Exit condition for operator attention:
 - Audit log hash-pointer stores FULL row JSON (not just audit_id) — one KV read covers dedup-check + prior-result display in one shot. 2x storage trade negligible at Cadens scale (~800 KB ceiling over 90d).
 - TDD-vs-husky tension: RED+GREEN folded into single commit (331d152) because pre-commit typecheck blocks a test importing a not-yet-existent module. File-creation order preserves TDD intent; commit topology bends to the hook.
 - checkDedup fails OPEN (returns null) on corrupt JSON OR parseable-but-missing-audit_id rows. Garbage state cannot block legitimate calls forever — next write overwrites the bad pointer.
+- CRM bridge ships as interface (CrmAdapter) + phase-68-only skeleton (TwentyAdapterSkeleton). Phase 70 swaps implementation behind the interface without touching tool handlers — locking the contract NOW prevents redesign churn later.
+- Outbox rows have NO TTL by design (D-01). Durability survives until phase 70's retry cron transitions status to 'sent' or 'dead'. Phase 71 may add post-mortem TTL — out of scope for 68.
+- Static source-code constraint test (D-01 tripwire) — vitest spec reads crm-bridge.ts, strips JSDoc + line comments, then asserts NO runtime references to fetch(, createHmac, UNIPILE_CRM_WEBHOOK_URL/SECRET, timingSafeEqual, getConfig, or node:crypto import. Comment-stripping lets the file DOCUMENT phase 70 contracts without tripping the guard.
 
 ### Phase 38 (unchanged)
 
@@ -1165,5 +1231,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 68-04-PLAN.md
+Stopped at: Completed 68-05-PLAN.md
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
