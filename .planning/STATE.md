@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Phase 68 Plan 02 complete (Wave 2 SDK primitives — client + retry + errors)
-last_updated: "2026-05-18T17:23:18Z"
-last_activity: 2026-05-18 -- Phase 68 Plan 02 complete — lazy UnipileClient singleton + withRetry + error taxonomy
+stopped_at: Completed 68-03-PLAN.md
+last_updated: "2026-05-18T15:46:24.929Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
-  percent: 33
+  completed_plans: 3
+  percent: 50
 ---
 
 # Project State
@@ -21,17 +21,66 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Current focus:** Phase 68 — Unipile Foundation
-**Next:** Execute remaining Wave 2 plans (68-03 identifiers+admin DELETE, 68-04 audit, 68-05 crm-bridge) — all unblocked by Plan 02, can run in parallel. Plan 06 (Wave 3) must wait for Wave 2 completion.
+**Next:** Execute remaining Wave 2 plans (68-04 audit, 68-05 crm-bridge) — both unblocked, can run in parallel. Plan 06 (Wave 3, linkedin tools) must wait for Wave 2 completion.
 
 ## Current Position
 
 Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 2 of 6 complete (Wave 2 SDK primitives shipped)
+Plan: 3 of 6 complete (Wave 2 SDK primitives + URL→URN resolver + admin eviction shipped)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: Executing Phase 68 — Plan 03 next (or any of 03/04/05 in parallel)
-Last activity: 2026-05-18T17:23:18Z — Phase 68 Plan 02 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
+Status: Executing Phase 68 — Plan 04 or 05 next (parallelizable)
+Last activity: 2026-05-18T15:44:50Z — Phase 68 Plan 03 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
 
 ## Session Continuity
+
+Phase 68 Plan 03 completed 2026-05-18 (~14 min).
+
+  - 3 atomic commits on main (all green: 20 identifiers tests + 1 kv-allowlist contract + lint + typecheck + contract + doc-counts).
+    Task-level commit list:
+    · e13f5cc feat(68-03): URL→URN resolver with 30-day KV cache (D-09/D-10/D-12/D-18)
+    · 81fdb50 feat(68-03): admin DELETE for URN cache eviction (D-11/D-18 escape hatch)
+    · cabca8c test(68-03): allowlist admin URN cache route for getKVStore (D-18 escape hatch)
+
+  - **What landed:**
+    · src/connectors/unipile/lib/identifiers.ts — normalizeProfileUrl (D-12: 4 URL
+      variants + 13 locale prefixes + lowercase + trailing-slash strip), urnCacheKey
+      (sha256→16-hex, single source of truth for writer + evictor), resolveProviderId
+      read-through cache (KV HIT bypasses SDK; KV MISS calls users.getProfile via
+      withRetry, writes JSON {urn, resolved_at} with URN_TTL_SECONDS = 2,592,000s
+      per D-10). KV access via getContextKVStore() (D-18 auto tenant prefix).
+      Strict 429 propagation (no stale-while-revalidate per D-10).
+    · app/api/admin/unipile/cache/urn/route.ts — DELETE handler wrapped in
+      withAdminAuth HOC. KV-ALLOWLIST-EXEMPT: uses root-scope getKVStore() so a
+      single operator action can evict across tenants (mirrors rate-limits route
+      pattern). 400 on missing/invalid profile_url; 200 with {evicted, key,
+      normalized_url} on success. Computes the SAME key as the resolver via the
+      shared urnCacheKey() export.
+    · tests/contract/kv-allowlist.test.ts — single ALLOWLIST entry added for the
+      admin route + 7-line rationale comment + cross-link to 68-CONTEXT.md.
+    · 20 identifiers tests + 1 kv-allowlist contract = 21 new test assertions.
+
+  - **One Rule 3 auto-fix during execution** (folded into Task 1 commit e13f5cc):
+    · Import path mismatch — RESEARCH.md sketch used `from "../client"` assuming
+      Plan 02 would place client.ts at the top level; Plan 02 SUMMARY explicitly
+      overrode to keep apify convention (client.ts under lib/). Fixed to `./client`
+      with a 3-line clarifying comment in the test file (vitest mock-resolution
+      already worked from either path).
+
+  - **Decisions added to project context:**
+    · URN cache key derivation centralized via urnCacheKey() — writer and evictor
+      use the same helper. Single source of truth for the hash.
+    · Admin URN eviction uses root-scope getKVStore() (D-18 escape hatch) and
+      wipes only the un-prefixed key. Tenant-prefixed copies survive until natural
+      30-day TTL. Per-tenant eviction is a future enhancement (Phase 71 candidate).
+
+  - **Tenant-scope asymmetry documented in route JSDoc + SUMMARY.** Operators
+    should not expect the admin DELETE to wipe tenant:<id>:unipile:urn:<hash>
+    copies — only the unscoped key. Documented to surface design intent rather
+    than silently auto-prefixing.
+
+  - **No blockers. No follow-ups.** Plans 04 and 05 unblocked in parallel; Plan
+    06 must run after Wave 2 (consumes resolveProviderId as the first step of
+    linkedin_send_connection).
 
 Phase 68 Plan 02 completed 2026-05-18 (~10 min).
 
@@ -827,6 +876,8 @@ Exit condition for operator attention:
 - [Phase 063-cron-update-check]: Plan 063-01 / CRON-02: Cache-first GET /api/config/update reads global:update-check (48h TTL) before live GitHub Compare; ?force=1 bypasses; KV failures non-fatal. computeUpdateStatus + ghFetch + cache constants extracted to src/core/update-check.ts so Plan 02 cron route can share without route-to-route imports.
 - [Phase 063-cron-update-check]: Plan 063-02 / CRON-01: Daily cron /api/cron/update-check (canonical Phase-41 pipeline: rehydrateStep + authStep('cron') + rateLimitStep + hydrateCredentialsStep — no BOOTSTRAP_EXEMPT marker) writes global:update-check KV @ 48h TTL. Auth/fetch failures from computeUpdateStatus do NOT poison the cache. KV write awaited; failures surface as 502. vercel.json second crons[] entry @ 0 8 * * *. 4 unit tests via passthrough composeRequestPipeline mock. Plan-instructed 4-segment relative landing path corrected to 3 (filesystem reality).
 - [Phase 063-cron-update-check]: Plan 063-03 / CRON-03: Pure formatRelativeTime helper (src/core/relative-time.ts) — bucketed format ("just now" / "Nm ago" / "Nh ago" / "Nd ago" / "unknown") with future-tolerant clock-skew. OverviewTab UpdateStatus.ready widened with checkedAt; both setState sites (initial useEffect + new refreshUpdate handler) propagate field (W2). Two banners surface freshness: existing "updates available" gets inline "checked Xh ago" + Refresh button; new "Up to date with upstream — checked Xh ago" banner for status: identical. Refresh button calls /api/config/update?force=1, debounced 30s via Date.now() comparison (D-13). Inline SVG rotate icon (lucide-react NOT in deps; verified). 9 unit tests + 3 UI tests pass. UI test fixes: URL-routed fetch mock (sub-widgets call distinct endpoints) + RTL cleanup() in afterEach (singleFork pool keeps tree alive between tests).
+- URN cache key derivation centralized in urnCacheKey() — both writer (identifiers.ts resolveProviderId) and evictor (admin DELETE route) call the same helper. Single source of truth eliminates eviction drift.
+- Admin URN cache eviction uses root-scope getKVStore() (D-18 escape hatch) — wipes only un-prefixed key. Tenant-prefixed copies survive until natural 30d TTL. Per-tenant eviction is a future enhancement.
 
 ### Phase 38 (unchanged)
 
@@ -1059,5 +1110,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Phase 68 context gathered
+Stopped at: Completed 68-03-PLAN.md
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
