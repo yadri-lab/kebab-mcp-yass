@@ -4,7 +4,16 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.ts",
+      // Phase 70 Plan 01 UNI-12: webhook route tests live co-located under
+      // `app/api/unipile/webhook/__tests__/` (same convention as `src/`
+      // module-co-located tests). This glob picks up any future co-located
+      // route tests without further config churn.
+      "app/**/*.test.ts",
+      "tests/**/*.test.ts",
+      "tests/**/*.test.tsx",
+    ],
     // Integration tests run a real Next.js server (see
     // `vitest.integration.config.ts`) and must stay out of the unit run.
     // The Phase 42 tenant-isolation stitch test is an exception — it
