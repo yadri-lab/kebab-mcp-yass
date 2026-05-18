@@ -62,6 +62,7 @@ import { classifyUnipileError } from "../lib/errors";
 import { handleLinkedinSendMessage } from "./linkedin-send-message";
 import { handleLinkedinSendConnection } from "./linkedin-send-connection";
 import { handleLinkedinSendInmail } from "./linkedin-send-inmail";
+import { readHaltFlag } from "../webhook/halt-flag";
 import { getLogger } from "@/core/logging";
 
 const log = getLogger("CONNECTOR:unipile");
@@ -208,6 +209,10 @@ interface EngageEnvelope {
   error?: string;
   available_accounts?: string[];
   delegate_envelope?: Record<string, unknown>;
+  // === Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope field ===
+  // `reason` is already present (used by various skip paths); we additionally
+  // surface `halted_at` so the operator knows SINCE WHEN the account was halted.
+  halted_at?: string;
 }
 
 function envelope(e: EngageEnvelope): ToolResult {
@@ -265,6 +270,45 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
     return envelope(env);
   }
   const accountId = acct.accountId;
+
+  // === STEP 0b: HALT-CHECK (D-65/D-66 — NEW in Plan 70-03) ===
+  // Even though delegates (send_message/connection/inmail) have their own
+  // halt-check, engage must short-circuit FIRST to avoid the getDegreeOnly()
+  // getProfile call (a real Unipile API hit) AND to skip the dry-run audit row
+  // write. Halted accounts never even reach degree resolution.
+  const halt = await readHaltFlag(accountId);
+  if (halt) {
+    const paramsHash = computeParamsHash({
+      tool: "linkedin_engage",
+      profile_url_normalized: args.profile_url,
+      note: "halted",
+    });
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_engage",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: "error_account_halted",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] engage halted (account flag set)", {
+      account_id: accountId,
+      reason: halt.reason,
+      status: halt.status,
+      halted_at: halt.halted_at,
+    });
+    return envelope({
+      action: "skipped",
+      reason: "error_account_halted",
+      error: "error_account_halted",
+      degree: null,
+      audit_id: auditId,
+      halted_at: halt.halted_at,
+    });
+  }
 
   // === STEP 1: DRY-RUN early return (D-32/D-33 — BEFORE rate-limit, BEFORE any write) ===
   // D-32 GREP GUARD: `args.dry_run === true` is the operator-observable proof that

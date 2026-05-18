@@ -30,6 +30,7 @@ const {
   getProfileMock,
   getAllAccountsMock,
   kvMock,
+  haltFlagMock,
   FakeUnsuccessful,
 } = vi.hoisted(() => {
   const sendMessageMock = vi.fn();
@@ -43,6 +44,8 @@ const {
     delete: vi.fn(),
     incr: vi.fn(),
   };
+  // Phase 70 plan 70-03 retrofit (D-65/D-66) — readHaltFlag mock.
+  const haltFlagMock = vi.fn();
   class FakeUnsuccessful extends Error {
     body: { status?: number; type?: string };
     constructor(body: { status?: number; type?: string }) {
@@ -58,6 +61,7 @@ const {
     getProfileMock,
     getAllAccountsMock,
     kvMock,
+    haltFlagMock,
     FakeUnsuccessful,
   };
 });
@@ -99,6 +103,11 @@ vi.mock("@/core/request-context", () => ({
   getCurrentTenantId: () => "test-tenant",
 }));
 
+// Phase 70 plan 70-03 retrofit (D-65/D-66) — halt-flag mock wires readHaltFlag.
+vi.mock("../../webhook/halt-flag", () => ({
+  readHaltFlag: haltFlagMock,
+}));
+
 vi.mock("unipile-node-sdk", () => ({
   // Same identity trick as send-connection.test.ts — the retry helper does
   // `err instanceof UnsuccessfulRequestError`; the FakeUnsuccessful class
@@ -134,6 +143,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // INFO-8 guard: verify mock factory wired the spy correctly.
   expect(typeof sendMessageMock).toBe("function");
+  expect(typeof haltFlagMock).toBe("function");
   // Default: exactly one LinkedIn account available (D-20 single-account silent
   // resolution).
   getAllAccountsMock.mockResolvedValue({
@@ -141,6 +151,9 @@ beforeEach(() => {
   });
   kvMock.set.mockResolvedValue(undefined);
   kvMock.get.mockResolvedValue(null);
+  // Phase 70 retrofit default: account NOT halted (existing tests must continue
+  // to flow through to dry-run / degree-fetch / delegate-call unchanged).
+  haltFlagMock.mockResolvedValue(null);
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -423,5 +436,82 @@ describe("degree-resolution failure on REAL dispatch", () => {
     expect(sendMessageMock).not.toHaveBeenCalled();
     expect(sendConnectionMock).not.toHaveBeenCalled();
     expect(sendInmailMock).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 70 / Plan 70-03 retrofit — halt-check Step 0 (D-65 / D-66)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
+  it("refuses immediately when account is halted, NO getProfile / NO delegate calls; engage envelope action=skipped reason=error_account_halted degree=null; single audit row with result=error_account_halted", async () => {
+    haltFlagMock.mockResolvedValueOnce({
+      reason: "ERROR",
+      halted_at: "2026-05-18T13:00:00.000Z",
+      status: "ERROR",
+    });
+
+    const env = envOf(
+      await handleLinkedinEngage({
+        ...BASE,
+        message: "this should never be sent",
+        allow_inmail: true,
+        fallback_if_unreachable: "inmail",
+        inmail_subject: "subj",
+      })
+    );
+
+    expect(env.action).toBe("skipped");
+    expect(env.reason).toBe("error_account_halted");
+    expect(env.error).toBe("error_account_halted");
+    expect(env.degree).toBeNull();
+    expect(env.audit_id).toBeDefined();
+
+    // No getProfile call (degree resolution must NOT fire when halted — this is
+    // the explicit reason engage owns its own halt-check vs leaving it to the
+    // delegate: saves a real Unipile getProfile API hit).
+    expect(getProfileMock).not.toHaveBeenCalled();
+    // All 3 delegate handlers MUST NOT be called.
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendConnectionMock).not.toHaveBeenCalled();
+    expect(sendInmailMock).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row written, with result error_account_halted.
+    const auditSetCalls = kvMock.set.mock.calls.filter((call: unknown[]) => {
+      const k = call[0];
+      return typeof k === "string" && k.startsWith("unipile:audit:");
+    });
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map((call: unknown[]) => {
+          const v = call[1];
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_account_halted"]));
+  });
+
+  it("halt-check fires BEFORE dry-run gate — halted accounts skip dry-run audit and return halted envelope directly", async () => {
+    haltFlagMock.mockResolvedValueOnce({
+      reason: "DELETED",
+      halted_at: "2026-05-18T13:30:00.000Z",
+      status: "DELETED",
+    });
+
+    const env = envOf(await handleLinkedinEngage({ ...BASE, message: "hi", dry_run: true }));
+
+    // Should be the halted envelope, NOT the dry_run_proposed envelope.
+    expect(env.action).toBe("skipped");
+    expect(env.reason).toBe("error_account_halted");
+    expect(env.dry_run).toBeUndefined();
+    expect(env.proposed_action).toBeUndefined();
+    // getProfile MUST NOT be called even in dry-run when halted.
+    expect(getProfileMock).not.toHaveBeenCalled();
   });
 });

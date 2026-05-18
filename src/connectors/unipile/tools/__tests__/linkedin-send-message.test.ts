@@ -30,6 +30,7 @@ const {
   accountGetAllMock,
   kvMock,
   rateLimitMock,
+  haltFlagMock,
   FakeUnsuccessful,
 } = vi.hoisted(() => {
   const sendChatMock = vi.fn();
@@ -43,6 +44,8 @@ const {
     incr: vi.fn<(k: string, opts?: { ttlSeconds?: number }) => Promise<number>>(),
   };
   const rateLimitMock = vi.fn();
+  // Phase 70 plan 70-03 retrofit (D-65/D-66) — readHaltFlag mock.
+  const haltFlagMock = vi.fn();
 
   class FakeUnsuccessful extends Error {
     body: { status?: number; type?: string };
@@ -60,6 +63,7 @@ const {
     accountGetAllMock,
     kvMock,
     rateLimitMock,
+    haltFlagMock,
     FakeUnsuccessful,
   };
 });
@@ -92,6 +96,12 @@ vi.mock("../../lib/rate-limiter", () => ({
   checkUnipileRateLimit: rateLimitMock,
 }));
 
+// Phase 70 plan 70-03 retrofit (D-65/D-66) — halt-flag mock wires readHaltFlag
+// so tests can drive the halt short-circuit.
+vi.mock("../../webhook/halt-flag", () => ({
+  readHaltFlag: haltFlagMock,
+}));
+
 vi.mock("unipile-node-sdk", () => ({
   // The retry helper does `err instanceof UnsuccessfulRequestError`; our fake
   // class must be the SAME reference the helper sees — vi.mock hoists this
@@ -116,6 +126,9 @@ interface ParsedEnvelope {
   daily_limit?: number;
   retry_after?: string;
   available_accounts?: string[];
+  // Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope fields
+  reason?: string;
+  halted_at?: string;
 }
 
 function parseEnvelope(result: { content: Array<{ text: string }> }): ParsedEnvelope {
@@ -138,6 +151,8 @@ function resetMocks() {
   kvMock.delete.mockReset();
   kvMock.incr.mockReset();
   rateLimitMock.mockReset();
+  // Phase 70 plan 70-03 retrofit (D-65/D-66) — reset readHaltFlag spy.
+  haltFlagMock.mockReset();
 
   // Sane defaults — each test overrides as needed.
   kvMock.get.mockResolvedValue(null); // no dedup hit
@@ -149,6 +164,9 @@ function resetMocks() {
     network_distance: "FIRST_DEGREE",
   });
   rateLimitMock.mockResolvedValue({ blocked: false, daily_used: 1, daily_limit: 50 });
+  // Phase 70 retrofit default: account NOT halted (existing tests must
+  // continue to flow through to dedup / SDK calls unchanged).
+  haltFlagMock.mockResolvedValue(null);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -236,7 +254,10 @@ describe("dedup hit (D-49 — dedup FIRST, MUST NOT touch rate-limiter or SDK)",
     // WARNING-6 + D-49 runtime guards:
     expect(rateLimitMock).not.toHaveBeenCalled();
     expect(sendChatMock).not.toHaveBeenCalled();
-    expect(accountGetAllMock).not.toHaveBeenCalled();
+    // Phase 70 Plan 70-03 (D-66) reorder: accountGetAllMock IS now called
+    // (account-resolve moved BEFORE dedup so halt-check has an accountId).
+    // The meaningful "no Unipile call" guarantees become: no degree-fetch
+    // (getProfile), no SDK send (sendChat), no rate-limit (rateLimitMock).
     expect(getProfileMock).not.toHaveBeenCalled();
   });
 });
@@ -460,5 +481,68 @@ describe("account_id resolution (D-20)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 70 / Plan 70-03 retrofit — halt-check Step 0 (D-65 / D-66)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
+  beforeEach(resetMocks);
+
+  it("refuses immediately when account is halted, NO dedup / SDK / rate-limit / profile-fetch / chat-poll calls; single audit row with result=error_account_halted", async () => {
+    haltFlagMock.mockResolvedValueOnce({
+      reason: "restricted",
+      halted_at: "2026-05-18T11:00:00.000Z",
+      status: "restricted",
+    });
+    // Default accountGetAllMock returns one LinkedIn account ("acct_li_1") —
+    // halt-check runs IMMEDIATELY after account-resolve per the new D-66 ordering.
+
+    const env = parseEnvelope(
+      await handleLinkedinSendMessage({
+        profile_url: "https://linkedin.com/in/halted-msg-test",
+        text: "this should not be sent",
+        actor_user_id: "yass",
+      })
+    );
+
+    expect(env.error).toBe("error_account_halted");
+    expect(env.verified).toBe(false);
+    expect(env.provider_ok).toBe(false);
+    expect(env.dedup_hit).toBe(false);
+    expect(env.crm_sync).toBe("pending");
+    expect(env.reason).toBe("restricted");
+    expect(env.halted_at).toBe("2026-05-18T11:00:00.000Z");
+    expect(env.audit_id).toBeTruthy();
+
+    // Halt-check is the ONLY gate that fired — nothing downstream ran.
+    expect(sendChatMock).not.toHaveBeenCalled();
+    expect(getMessagesMock).not.toHaveBeenCalled();
+    // getProfile is the degree-check call — MUST NOT fire when halted.
+    expect(getProfileMock).not.toHaveBeenCalled();
+    expect(rateLimitMock).not.toHaveBeenCalled();
+    // Dedup uses kvMock.get — assert it was never asked. readHaltFlag is mocked
+    // so it does not touch kvMock either.
+    expect(kvMock.get).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row written, with result error_account_halted.
+    const auditSetCalls = kvMock.set.mock.calls.filter(
+      ([k]) => typeof k === "string" && k.startsWith("unipile:audit:")
+    );
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map(([, v]) => {
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_account_halted"]));
   });
 });

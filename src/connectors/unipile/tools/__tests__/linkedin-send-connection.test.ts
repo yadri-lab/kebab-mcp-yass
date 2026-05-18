@@ -31,6 +31,8 @@ const {
   FakeUnsuccessful,
   // === NEW phase-69 retrofit mock ===
   rateLimitMock,
+  // === NEW phase-70 plan 70-03 retrofit mock (halt-flag) ===
+  haltFlagMock,
 } = vi.hoisted(() => {
   const sendInvitationMock = vi.fn();
   const getProfileMock = vi.fn();
@@ -53,6 +55,8 @@ const {
 
   // NEW (phase 69 plan 06 retrofit) — checkUnipileRateLimit mock.
   const rateLimitMock = vi.fn();
+  // NEW (phase 70 plan 70-03 retrofit) — readHaltFlag mock.
+  const haltFlagMock = vi.fn();
 
   return {
     sendInvitationMock,
@@ -62,6 +66,7 @@ const {
     kvMock,
     FakeUnsuccessful,
     rateLimitMock,
+    haltFlagMock,
   };
 });
 
@@ -97,6 +102,12 @@ vi.mock("../../lib/rate-limiter", () => ({
   checkUnipileRateLimit: rateLimitMock,
 }));
 
+// NEW (phase 70 plan 70-03 retrofit): halt-flag mock — wires readHaltFlag
+// so tests can drive the halt short-circuit per D-65/D-66.
+vi.mock("../../webhook/halt-flag", () => ({
+  readHaltFlag: haltFlagMock,
+}));
+
 import { handleLinkedinSendConnection } from "../linkedin-send-connection";
 
 interface ParsedEnvelope {
@@ -115,6 +126,9 @@ interface ParsedEnvelope {
   weekly_used?: number;
   weekly_limit?: number;
   retry_after?: string;
+  // Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope fields
+  reason?: string;
+  halted_at?: string;
 }
 
 function parseEnvelope(result: { content: Array<{ text: string }> }): ParsedEnvelope {
@@ -131,13 +145,23 @@ function resetMocks() {
   kvMock.delete.mockReset();
   kvMock.get.mockResolvedValue(null);
   kvMock.set.mockResolvedValue(undefined);
-  // INFO-8 guard: confirm the mock factory wired correctly.
+  // Phase 70 Plan 70-03 (D-65/D-66): account-resolve now runs BEFORE dedup
+  // so every test path needs a default LinkedIn account or it would refuse
+  // with error_no_linkedin_account on the new account-first ordering.
+  // Tests that need explicit ≥2 or 0-account scenarios still override.
+  accountGetAllMock.mockResolvedValue({ items: [{ id: "acct_li_1", type: "LINKEDIN" }] });
+  // INFO-8 guard: confirm the mock factories wired correctly.
   expect(typeof rateLimitMock).toBe("function");
+  expect(typeof haltFlagMock).toBe("function");
   // Phase 69 retrofit default: rate-limit ALLOWS (existing phase-68 happy-path
   // tests continue to work — they were authored before rate-limit existed and
   // expect the flow to proceed all the way through to sendInvitation).
   rateLimitMock.mockReset();
   rateLimitMock.mockResolvedValue({ blocked: false, daily_used: 1, daily_limit: 25 });
+  // Phase 70 retrofit default: account NOT halted (existing tests must continue
+  // to flow through to dedup/SDK calls unchanged).
+  haltFlagMock.mockReset();
+  haltFlagMock.mockResolvedValue(null);
 }
 
 describe("linkedin_send_connection — happy path (Antoine Vercken re-validation)", () => {
@@ -238,7 +262,10 @@ describe("dedup (D-05 / D-06)", () => {
     expect(env.verified).toBe(false);
     expect(env.crm_sync).toBe("pending");
     expect(sendInvitationMock).not.toHaveBeenCalled();
-    expect(accountGetAllMock).not.toHaveBeenCalled();
+    // Phase 70 Plan 70-03 (D-66) reorder note: accountGetAllMock IS now called
+    // (account-resolve moved BEFORE dedup so halt-check has an accountId).
+    // The provider write API (sendInvitation) and the read-side profile fetch
+    // (getProfile) remain the meaningful "no Unipile call" guarantees.
     expect(getProfileMock).not.toHaveBeenCalled();
   });
 
@@ -541,5 +568,76 @@ describe("Phase 69 retrofit — rate-limit (D-43 + D-49)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 70 / Plan 70-03 retrofit — halt-check Step 0 (D-65 / D-66)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
+  beforeEach(() => {
+    resetMocks();
+    accountGetAllMock.mockResolvedValue({ items: [{ id: "acc_li_halt", type: "LINKEDIN" }] });
+  });
+
+  it("refuses immediately when account is halted, NO dedup / SDK / rate-limit calls; single audit row with result=error_account_halted", async () => {
+    haltFlagMock.mockResolvedValueOnce({
+      reason: "credentials_expired",
+      halted_at: "2026-05-18T10:00:00.000Z",
+      status: "credentials_expired",
+    });
+
+    const env = parseEnvelope(
+      await handleLinkedinSendConnection({
+        profile_url: "https://linkedin.com/in/halted-test",
+        actor_user_id: "yass",
+        note: "Hi",
+      })
+    );
+
+    expect(env.error).toBe("error_account_halted");
+    expect(env.verified).toBe(false);
+    expect(env.provider_ok).toBe(false);
+    expect(env.dedup_hit).toBe(false);
+    expect(env.crm_sync).toBe("pending");
+    expect(env.reason).toBe("credentials_expired");
+    expect(env.halted_at).toBe("2026-05-18T10:00:00.000Z");
+    expect(env.audit_id).toBeTruthy();
+
+    // Halt-check is the ONLY gate that fired — nothing downstream ran.
+    expect(sendInvitationMock).not.toHaveBeenCalled();
+    expect(getAllInvitationsSentMock).not.toHaveBeenCalled();
+    expect(getProfileMock).not.toHaveBeenCalled();
+    expect(rateLimitMock).not.toHaveBeenCalled();
+    // Dedup uses kvMock.get under the hood — assert it was never asked.
+    // (readHaltFlag is mocked, so it doesn't call kvMock.get either.)
+    expect(kvMock.get).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row was written, with result error_account_halted.
+    // writeAuditRow does 2 kv.set calls (row + hash pointer) per audit row,
+    // but the underlying audit row JSON is the same.
+    const auditSetCalls = kvMock.set.mock.calls.filter((call: unknown[]) => {
+      const k = call[0];
+      return typeof k === "string" && k.startsWith("unipile:audit:");
+    });
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map((call: unknown[]) => {
+          const v = call[1];
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_account_halted"]));
+    // Sanity: account_id captured in the row.
+    const firstCall = auditSetCalls[0] as unknown[];
+    const row = JSON.parse(firstCall[1] as string) as { account_id?: string };
+    expect(row.account_id).toBe("acc_li_halt");
   });
 });

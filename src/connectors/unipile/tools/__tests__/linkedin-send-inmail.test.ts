@@ -36,6 +36,7 @@ const {
   accountGetAllMock,
   kvMock,
   rateLimitMock,
+  haltFlagMock,
   FakeUnsuccessful,
 } = vi.hoisted(() => {
   const sendChatMock = vi.fn();
@@ -49,6 +50,8 @@ const {
     incr: vi.fn<(k: string, opts?: { ttlSeconds?: number }) => Promise<number>>(),
   };
   const rateLimitMock = vi.fn();
+  // Phase 70 plan 70-03 retrofit (D-65/D-66) — readHaltFlag mock.
+  const haltFlagMock = vi.fn();
 
   class FakeUnsuccessful extends Error {
     body: { status?: number; type?: string };
@@ -66,6 +69,7 @@ const {
     accountGetAllMock,
     kvMock,
     rateLimitMock,
+    haltFlagMock,
     FakeUnsuccessful,
   };
 });
@@ -98,6 +102,11 @@ vi.mock("../../lib/rate-limiter", () => ({
   checkUnipileRateLimit: rateLimitMock,
 }));
 
+// Phase 70 plan 70-03 retrofit (D-65/D-66) — halt-flag mock wires readHaltFlag.
+vi.mock("../../webhook/halt-flag", () => ({
+  readHaltFlag: haltFlagMock,
+}));
+
 vi.mock("unipile-node-sdk", () => ({
   // The retry helper does `err instanceof UnsuccessfulRequestError`; our fake
   // class must be the SAME reference the helper sees — vi.mock hoists this
@@ -123,6 +132,9 @@ interface ParsedEnvelope {
   daily_limit?: number;
   retry_after?: string;
   available_accounts?: string[];
+  // Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope fields
+  reason?: string;
+  halted_at?: string;
 }
 
 function parseEnvelope(result: { content: Array<{ text: string }> }): ParsedEnvelope {
@@ -147,6 +159,8 @@ function resetMocks() {
   kvMock.delete.mockReset();
   kvMock.incr.mockReset();
   rateLimitMock.mockReset();
+  // Phase 70 plan 70-03 retrofit (D-65/D-66) — reset readHaltFlag spy.
+  haltFlagMock.mockReset();
 
   // Sane defaults — each test overrides as needed.
   kvMock.get.mockResolvedValue(null); // no dedup hit; no URN cache hit
@@ -158,6 +172,8 @@ function resetMocks() {
     network_distance: "OUT_OF_NETWORK",
   });
   rateLimitMock.mockResolvedValue({ blocked: false, daily_used: 1, daily_limit: 15 });
+  // Phase 70 retrofit default: account NOT halted.
+  haltFlagMock.mockResolvedValue(null);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -413,11 +429,14 @@ describe("D-49 dedup hit (FIRST step — no balance fetch, no SDK send, no rate-
     expect(env.crm_sync).toBe("pending");
     expect(env.credits_used).toBeNull();
     expect(env.credits_remaining).toBeNull();
-    // WARNING-6 + D-49 runtime guards: dedup-first means none of these were touched.
+    // WARNING-6 + D-49 runtime guards: dedup means none of these were touched.
+    // Phase 70 Plan 70-03 (D-66) reorder note: accountGetAllMock IS now called
+    // (account-resolve moved BEFORE dedup so halt-check has an accountId).
+    // The meaningful "no provider cost" guarantees remain: NO balance-fetch
+    // (requestSendMock — the costly escape-hatch GET), NO SDK send, NO rate-limit.
     expect(requestSendMock).not.toHaveBeenCalled();
     expect(sendChatMock).not.toHaveBeenCalled();
     expect(rateLimitMock).not.toHaveBeenCalled();
-    expect(accountGetAllMock).not.toHaveBeenCalled();
   });
 });
 
@@ -512,5 +531,61 @@ describe("account_id resolution (D-20)", () => {
     expect(env.credits_remaining).toBeNull();
     expect(sendChatMock).not.toHaveBeenCalled();
     expect(requestSendMock).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 70 / Plan 70-03 retrofit — halt-check Step 0 (D-65 / D-66)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
+  beforeEach(resetMocks);
+
+  it("refuses immediately when account is halted, NO dedup / SDK / rate-limit / balance-fetch calls; credits_used=null + credits_remaining=null; single audit row with result=error_account_halted", async () => {
+    haltFlagMock.mockResolvedValueOnce({
+      reason: "credentials_expired",
+      halted_at: "2026-05-18T12:00:00.000Z",
+      status: "credentials_expired",
+    });
+
+    const env = parseEnvelope(await handleLinkedinSendInmail(BASE_ARGS));
+
+    expect(env.error).toBe("error_account_halted");
+    expect(env.verified).toBe(false);
+    expect(env.provider_ok).toBe(false);
+    expect(env.dedup_hit).toBe(false);
+    expect(env.crm_sync).toBe("pending");
+    expect(env.reason).toBe("credentials_expired");
+    expect(env.halted_at).toBe("2026-05-18T12:00:00.000Z");
+    // CRITICAL inmail envelope contract: credits MUST be null (we never fetched).
+    expect(env.credits_used).toBeNull();
+    expect(env.credits_remaining).toBeNull();
+    expect(env.audit_id).toBeTruthy();
+
+    // Halt-check is the ONLY gate that fired — nothing downstream ran.
+    expect(sendChatMock).not.toHaveBeenCalled();
+    // The escape-hatch balance fetch MUST NOT fire — this is the cost saver.
+    expect(requestSendMock).not.toHaveBeenCalled();
+    expect(rateLimitMock).not.toHaveBeenCalled();
+    // Dedup uses kvMock.get — assert it was never asked.
+    expect(kvMock.get).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row written, with result error_account_halted.
+    const auditSetCalls = kvMock.set.mock.calls.filter(
+      ([k]) => typeof k === "string" && k.startsWith("unipile:audit:")
+    );
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map(([, v]) => {
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_account_halted"]));
   });
 });

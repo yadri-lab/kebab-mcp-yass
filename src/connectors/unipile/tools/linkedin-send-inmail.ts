@@ -122,6 +122,7 @@ import { crmBridge } from "../lib/crm-bridge";
 import { classifyUnipileError } from "../lib/errors";
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
 import { resolveAccountId } from "../lib/account";
+import { readHaltFlag } from "../webhook/halt-flag";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
 
@@ -193,6 +194,10 @@ interface SendInmailEnvelope {
   daily_limit?: number;
   retry_after?: string;
   available_accounts?: string[]; // populated on error_account_id_required (D-20)
+  // === Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope fields ===
+  // Only populated when error === "error_account_halted".
+  reason?: string;
+  halted_at?: string;
 }
 
 function envelope(e: SendInmailEnvelope): ToolResult {
@@ -305,32 +310,13 @@ export async function handleLinkedinSendInmail(args: SendInmailArgs): Promise<To
     });
   }
 
-  // ═══════ Step 2: DEDUP (D-49 — first, so re-sends don't burn rate-limit OR balance reads) ═══════
-  const dup = await checkDedup(paramsHash);
-  if (dup) {
-    await writeAuditRow({
-      audit_id: auditId,
-      actor_user_id: args.actor_user_id,
-      tool: "linkedin_send_inmail",
-      account_id: dup.account_id,
-      params_hash: paramsHash,
-      result: dup.result,
-      verified: dup.verified,
-      dedup_hit: true,
-      timestamp: new Date().toISOString(),
-    });
-    return envelope({
-      provider_ok: false,
-      verified: dup.verified,
-      crm_sync: "pending",
-      dedup_hit: true,
-      audit_id: auditId,
-      credits_used: null,
-      credits_remaining: null,
-    });
-  }
-
-  // ═══════ Step 3: ACCOUNT-RESOLVE (D-20 — Wave 1 Plan 01 shared helper) ═══════
+  // ═══════ Step 2a: ACCOUNT-RESOLVE (D-20 — MOVED UP from Step 3 so halt-check has an accountId) ═══════
+  // Phase 70 Plan 70-03 (D-65/D-66): halt-check is the highest-priority gate,
+  // BEFORE dedup. Account-resolve must precede halt-check because the halt
+  // flag is keyed by account_id. allow_inmail-gate above did not need accountId
+  // (cheap arg check), so it stays first — refusing on allow_inmail saves even
+  // the account.getAll() call.
+  //
   // exactOptionalPropertyTypes: spread only when defined (not as {account_id: undefined}).
   const acct = await resolveAccountId(
     args.account_id !== undefined ? { account_id: args.account_id } : {}
@@ -362,6 +348,69 @@ export async function handleLinkedinSendInmail(args: SendInmailArgs): Promise<To
     return envelope(env);
   }
   const accountId = acct.accountId;
+
+  // ═══════ Step 2b: HALT-CHECK (D-65/D-66 — highest-priority gate, NEW in Plan 70-03) ═══════
+  // If the account_status webhook handler (Plan 70-02) set a halt flag, refuse
+  // immediately. NO dedup check, NO balance fetch, NO rate-limit, NO SDK call.
+  // Single minimal audit row. credits_used/credits_remaining are both null
+  // (we never fetched the balance).
+  const halt = await readHaltFlag(accountId);
+  if (halt) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_inmail",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: "error_account_halted",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] send_inmail halted (account flag set)", {
+      account_id: accountId,
+      reason: halt.reason,
+      status: halt.status,
+      halted_at: halt.halted_at,
+    });
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      credits_used: null,
+      credits_remaining: null,
+      error: "error_account_halted",
+      reason: halt.reason,
+      halted_at: halt.halted_at,
+    });
+  }
+
+  // ═══════ Step 3: DEDUP (D-49 — runs AFTER halt-check per D-66) ═══════
+  const dup = await checkDedup(paramsHash);
+  if (dup) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_inmail",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: dup.result,
+      verified: dup.verified,
+      dedup_hit: true,
+      timestamp: new Date().toISOString(),
+    });
+    return envelope({
+      provider_ok: false,
+      verified: dup.verified,
+      crm_sync: "pending",
+      dedup_hit: true,
+      audit_id: auditId,
+      credits_used: null,
+      credits_remaining: null,
+    });
+  }
 
   // ═══════ Step 4: BALANCE-BEFORE (D-48 escape hatch) ═══════
   // Classify errors per Wave 1 Plan 01 classifier — 403 inmail_requires_premium

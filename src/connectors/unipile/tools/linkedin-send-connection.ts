@@ -54,6 +54,7 @@ import {
 import { crmBridge } from "../lib/crm-bridge";
 import { classifyUnipileError } from "../lib/errors";
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
+import { readHaltFlag } from "../webhook/halt-flag";
 import { getLogger } from "@/core/logging";
 
 const log = getLogger("CONNECTOR:unipile");
@@ -116,6 +117,10 @@ interface SendEnvelope {
   weekly_used?: number;
   weekly_limit?: number;
   retry_after?: string;
+  // === Phase 70 / Plan 70-03 retrofit (D-65/D-66) — halt-flag envelope fields ===
+  // Only populated when error === "error_account_halted".
+  reason?: string;
+  halted_at?: string;
 }
 
 function envelope(e: SendEnvelope): ToolResult {
@@ -198,31 +203,12 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
     note: args.note ?? "",
   });
 
-  // 1. Dedup check (D-05 / D-06) — runs BEFORE any Unipile call so a repeat
-  //    request never touches the SDK / account resolution.
-  const dup = await checkDedup(paramsHash);
-  if (dup) {
-    await writeAuditRow({
-      audit_id: auditId,
-      actor_user_id: args.actor_user_id,
-      tool: "linkedin_send_connection",
-      account_id: args.account_id ?? dup.account_id,
-      params_hash: paramsHash,
-      result: dup.result, // mirror prior result for trace continuity (T-68-06-04)
-      verified: dup.verified,
-      dedup_hit: true,
-      timestamp: new Date().toISOString(),
-    });
-    return envelope({
-      provider_ok: false,
-      verified: false,
-      crm_sync: "pending",
-      dedup_hit: true,
-      audit_id: auditId,
-    });
-  }
-
-  // 2. Resolve account_id (D-20)
+  // ═══════ Step 0a: ACCOUNT-RESOLVE (D-20 — MOVED UP from Step 2 so halt-check has an accountId) ═══════
+  // Phase 70 Plan 70-03 (D-65/D-66): halt-check is the highest-priority gate,
+  // BEFORE dedup. Account-resolve must precede halt-check because the halt
+  // flag is keyed by account_id. account.getAll() is a cheap read enumeration
+  // with no provider write side-effects and no rate-limit cost, so this
+  // reorder is safe vs the original D-49 dedup-first ordering.
   const acct = await resolveAccountId(args);
   if ("error" in acct) {
     // D-20 errors classify as 'restricted' in the audit enum (the operator
@@ -251,6 +237,63 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
     return envelope(env);
   }
   const accountId = acct.accountId;
+
+  // ═══════ Step 0b: HALT-CHECK (D-65/D-66 — highest-priority gate, NEW in Plan 70-03) ═══════
+  // If the account_status webhook handler (Plan 70-02) set a halt flag, refuse
+  // immediately. NO dedup check, NO rate-limit, NO SDK call. Single minimal audit row.
+  const halt = await readHaltFlag(accountId);
+  if (halt) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_connection",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: "error_account_halted",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] send_connection halted (account flag set)", {
+      account_id: accountId,
+      reason: halt.reason,
+      status: halt.status,
+      halted_at: halt.halted_at,
+    });
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      error: "error_account_halted",
+      reason: halt.reason,
+      halted_at: halt.halted_at,
+    });
+  }
+
+  // ═══════ Step 1: DEDUP (D-05 / D-06 — runs AFTER halt-check per D-66) ═══════
+  const dup = await checkDedup(paramsHash);
+  if (dup) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_connection",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: dup.result, // mirror prior result for trace continuity (T-68-06-04)
+      verified: dup.verified,
+      dedup_hit: true,
+      timestamp: new Date().toISOString(),
+    });
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: true,
+      audit_id: auditId,
+    });
+  }
 
   // 2b. Phase 69 retrofit (D-43 + D-49) — per-account / per-tool rate-limit.
   //
