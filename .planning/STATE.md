@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.9
-milestone_name: — Infrastructure & performance
-status: Phase 53 closed 2026-04-23.
-stopped_at: Completed 063-03-PLAN.md (CRON-03 banner freshness indicator + Refresh button) — Phase 063 complete
-last_updated: "2026-04-26T23:38:07.148Z"
-last_activity: 2026-04-23
+milestone: v0.17
+milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
+status: Milestone scoped 2026-05-18. ADR 0001 committed. 4 phases (068-071) directories created. Ready to plan + execute.
+stopped_at: Milestone v0.17 scoping just completed — ADR 0001 + ROADMAP shipped. Next step is /gsd-plan-phase on 068.
+last_updated: "2026-05-18T00:00:00.000Z"
+last_activity: 2026-05-18
 progress:
-  total_phases: 36
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 26
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,15 +20,15 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-16)
 
-**Current focus:** **v0.13 milestone in progress** — Phases 51 (Langsmith CVE default-on) + 52 (Devices tab) + **53 (Observability UI expansion)** shipped. Remaining v0.13: 54+ (prompts, alerting) per ROADMAP.
-**Next:** v0.13 planning continues OR v0.12 tag (after v0.10.0 GHSA advisory lands).
+**Current focus:** **v0.17 milestone scoped 2026-05-18** — Unipile connector for LinkedIn write actions (connect, DM, InMail) and WhatsApp messaging. Replaces failed Browserbase-based LinkedIn write attempt. Per [ADR 0001](../docs/adr/0001-unipile-as-linkedin-whatsapp-write-provider.md).
+**Next:** Execute 4 phases (068 Foundation → 069 LinkedIn writes → 070 Webhooks + WhatsApp → 071 Hardening).
 
 ## Current Position
 
-Phase: **53 complete** — all 6 requirements (OBS-06..11) closed. /config → Health tab now hosts 5 live chart panels (Requests, Latency p95, Error heatmap, Rate-limit, KV quota) plus root-only tenant selector and 60s configurable auto-refresh.
-v0.10 + v0.11 + v0.12 milestones complete; **v0.13 in progress** (51, 52, 53 shipped).
-Status: Phase 53 closed 2026-04-23.
-Last activity: 2026-04-23
+Phase: **v0.17 in progress** — ADR 0001 committed, ROADMAP shipped, 4 phase directories created (068-unipile-foundation, 069-linkedin-writes, 070-webhooks-whatsapp, 071-unipile-hardening). No plans authored yet.
+Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
+Status: v0.17 scoping complete 2026-05-18.
+Last activity: 2026-05-18
 
 ## Session Continuity
 

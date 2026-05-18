@@ -1,21 +1,34 @@
 # Roadmap: MyMCP
 
-## Current Milestone: v0.9 — Infrastructure & performance
+## Current Milestone: v0.17 — Unipile Connector (LinkedIn + WhatsApp write)
 
-**Started:** 2026-04-16
-**Goal:** Replace O(N) KV operations with cursor-based SCAN, add request-level MGET batching, streaming tool responses, structured error types, RSC dashboard migration, dead code CI, coverage reporting, rate limit UI.
+**Started:** 2026-05-18
+**Goal:** Ship a dedicated `src/connectors/unipile/` connector exposing 9 high-level write tools for LinkedIn (5) and WhatsApp (4). Replaces failed Browserbase-based LinkedIn write attempt per [ADR 0001](../docs/adr/0001-unipile-as-linkedin-whatsapp-write-provider.md). See [v0.17 ROADMAP](milestones/v0.17-unipile-connector-ROADMAP.md) for full detail.
 
-### Phase Overview (v0.9)
+### Phase Overview (v0.17)
 
-| # | Phase | Goal | Requirements | SC |
-|---|-------|------|--------------|-----|
-| 29 | Quick tech wins | Connection pooling verify, dead code CI, test coverage, rate limit UI | POOL, DEAD, COV, RLUI | 4 |
-| 30 | KV & performance | SCAN cursor, MGET batching, LogStore SCAN | SCAN, BATCH | 3 |
-| 31 | Architecture | Streaming responses, structured errors, RSC migration | STREAM, ERR, RSC | 4 |
-
-## Next Milestone: v0.14 — TBD (not yet scoped). Phase 54 (MCP prompts) + Phase 55 (/config RSC migration) deferred to v0.14 backlog; re-prioritize when operator surfaces a concrete user need.
+| # | Phase | Goal | Requirements | Effort |
+|---|-------|------|--------------|--------|
+| 68 | Unipile foundation | Client + manifest + first write E2E (send_connection + get_relationship_status) + CRM outbox + audit log | UNI-01..06 | 2.5d |
+| 69 | LinkedIn writes | send_message (1st-degree), send_inmail (explicit), engage (super-tool + dry_run), list_pending, rate-limiter | UNI-07..11 | 2d |
+| 70 | Webhooks + WhatsApp V1 | Dedicated `/api/unipile/webhook` + 3 event handlers + 4 WhatsApp tools | UNI-12..19 | 3d |
+| 71 | Hardening | Kill switches, metrics, audit query API, docs, multi-tenant verification | UNI-20..24 | 1.5d |
 
 ## Active Phase
+
+### Phase 68: Unipile Foundation
+
+**Goal:** Wire Unipile SDK into Kebab as a new connector. Ship the first write tool (`linkedin_send_connection`) end-to-end with verify-after-write, dedup, audit log, and Twenty CRM outbox. Re-validate the Antoine Vercken connect flow that failed 2026-05-18 with Browserbase.
+
+**Requirements:** UNI-01, UNI-02, UNI-03, UNI-04, UNI-05, UNI-06
+
+**Depends on:** ADR 0001 (decided 2026-05-18)
+
+**Plans:** TBD — to be authored via `/gsd-plan-phase`
+
+---
+
+## Previous Milestone Active Phases (v0.13, retained for context)
 
 ### Phase 62: Stabilize Phase 61
 
