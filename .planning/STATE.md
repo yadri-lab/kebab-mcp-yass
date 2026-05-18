@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
-status: Milestone scoped 2026-05-18. ADR 0001 committed. 4 phases (068-071) directories created. Ready to plan + execute.
-stopped_at: Milestone v0.17 scoping just completed — ADR 0001 + ROADMAP shipped. Next step is /gsd-plan-phase on 068.
-last_updated: "2026-05-18T00:00:00.000Z"
+status: Phase 68 CONTEXT captured. Ready to plan (research → planner → checker chain).
+stopped_at: Phase 68 context gathered — CONTEXT.md + DISCUSSION-LOG.md committed. Next step is /gsd-plan-phase 68.
+last_updated: "2026-05-18T13:02:38.115Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 4
@@ -943,5 +943,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 063-03-PLAN.md (CRON-03 banner freshness indicator + Refresh button) — Phase 063 complete
+Stopped at: Phase 68 context gathered
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
