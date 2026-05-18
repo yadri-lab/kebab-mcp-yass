@@ -16,6 +16,30 @@
 
 ## Active Phase
 
+### Phase 70: Webhooks Ingress + WhatsApp V1
+
+**Goal:** Build the inbound webhook ingress + WhatsApp tool suite. Ship `/api/unipile/webhook` (dedicated route, dual-mode HMAC + static verifier, 24h idempotency, fire-and-forget dispatch) + 3 INGRESS event handlers that mutate INTERNAL connector state ONLY (`account_status` sets/clears halt flag in KV; `new_relation` enriches audit row with `accepted_at`; `new_message` enriches audit row with `last_replied_at` while SKIPPING `is_sender:true` echoes and persisting ONLY SHA-256 content_hash). Ship 4 WhatsApp tools (`whatsapp_send_message`, `whatsapp_list_chats`, `whatsapp_get_conversation`, `whatsapp_list_contacts`). Retrofit 4 LinkedIn write tools with a NEW Step 0 halt-flag pre-flight gate (D-65/D-66 — BEFORE D-49 dedup-first). Extract `lib/halt.ts` shared helper. Bump manifest toolCount 6 → 10; bump docs 97 → 101 tools.
+
+**SCOPE NOTE:** The connector is a STATELESS MCP TRANSPORT. It does NOT push events to external systems. NO `TwentyAdapter`, NO `UNIPILE_CRM_WEBHOOK_URL` outbound POST, NO `unipile-crm-retry` cron. The future audit query tool (UNI-22, phase 71) is how callers pull state mutations out — caller polls audit, decides what to call next on Twenty/HubSpot/etc.
+
+**Requirements:** UNI-12, UNI-13, UNI-14, UNI-15, UNI-16, UNI-17, UNI-18, UNI-19
+
+**Depends on:** Phase 69 (LinkedIn writes — retrofit targets) + Phase 68 (audit/dedup/CRM-bridge-skeleton/identifiers)
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 70-01-PLAN.md — Wave 1: Webhook foundation — `app/api/unipile/webhook/route.ts` (dual-mode HMAC + static verifier per D-52, 24h KV idempotency per D-54, fire-and-forget dispatch per D-55, 503 on missing secret) + `src/connectors/unipile/webhook/{verifier,dispatcher,halt-flag,account-tenant-index}.ts` + `scripts/setup-unipile-webhooks.ts` (idempotent bootstrap; uses SDK escape hatch for `users` source per D-68) + 2 NEW kv-allowlist entries (webhook route + account-tenant reverse index) (UNI-12)
+- [ ] 70-02-PLAN.md — Wave 2: 3 INGRESS handlers (depends on 70-01) — `webhook/handlers/{account-status,new-relation,new-message}.ts` (write halt flag on credentials_expired/restricted/disconnected per D-57, CLEAR on OK/RECONNECTED per D-58; enrich audit row with accepted_at per D-61 with inbound_accept_unknown_origin fallback; enrich audit row with last_replied_at per D-63 + SHA-256 hash-only persistence per D-64) + `lib/audit.ts` (+3 AuditResult members per D-78) + `handlers/index.ts` side-effect barrel (UNI-13, UNI-14, UNI-15)
+- [ ] 70-03-PLAN.md — Wave 2: 4 WhatsApp tools (depends on 70-01) — `tools/whatsapp-{send-message,list-chats,get-conversation,list-contacts}.ts` (8-step handler for send including Step 0 halt-check per D-65; E.164 → `<phone>@s.whatsapp.net` server-side concat per D-71; per-account daily cap 200 default per D-70) + `lib/rate-limiter.ts` (extend UnipileRateLimitedTool union with `whatsapp_send`) + `lib/account.ts` (extend resolveAccountId with optional type filter LINKEDIN | WHATSAPP, backwards-compat default) (UNI-16, UNI-17, UNI-18, UNI-19)
+- [ ] 70-04-PLAN.md — Wave 3: Halt-check retrofit + manifest wiring (depends on 70-01, 70-02, 70-03) — Extract `lib/halt.ts` shared helper (haltCheck → writes 1 audit row + returns envelope_fields on halt) + Retrofit 4 LinkedIn write tools (send_connection, send_message, send_inmail, engage) with Step 0 BEFORE D-49 dedup-first per D-66 + Switch WhatsApp send to lib/halt.ts (single source of truth) + Wire 4 WhatsApp tools into `manifest.ts` (toolCount 6 → 10) + Bump `registry.ts` toolCount + Update `content/docs/connectors.md` + `README.md` (97 → 101 tools at 4 sites) + Regenerate `scripts/contract-snapshot.json` (UNI-13 retrofit)
+
+**Wave structure:** Wave 1 single (01 unblocks Wave 2). Wave 2 parallel (02 + 03 — both depend only on 01; 02 = handlers, 03 = WhatsApp tools, no overlap in files_modified). Wave 3 single (04 — depends on 01 + 02 + 03; retrofits LinkedIn + wires WhatsApp into manifest).
+
+---
+
+## Completed Phases (current milestone)
+
 ### Phase 69: LinkedIn Writes
 
 **Goal:** Complete the LinkedIn write tool suite started in phase 68. Ship 4 new tools (`linkedin_send_message` 1st-degree DM with attachments + verify-after-write, `linkedin_send_inmail` explicit paid with credits bracketing + premium gate, `linkedin_engage` super-tool with degree-based routing + dry_run, `linkedin_list_pending` cleanup helper) + 1 KV-backed per-account rate-limiter (fail-closed by default, daily/weekly windows, env-overridable caps). Retrofit `linkedin_send_connection` (phase 68) with the rate-limiter. Close 2 phase-68 backlog items (UNI-25 URL query string + UNI-26 4xx mis-classification). Bump manifest toolCount 2 → 6.
@@ -30,15 +54,14 @@ Plans:
 - [x] 69-01-PLAN.md — Wave 1: Foundation extensions — lib/errors.ts (+5 classes UnipileInmail* + UnipileRecipientUnreachable + UnipileInvalidRequest + UnipileAttachmentTooLarge, +3 enum members, +4 classifyUnipileError branches) + lib/audit.ts (+9 AuditResult members incl. dry_run + error_rate_limit_kebab) + lib/identifiers.ts (SLUG_RE +query/+fragment per D-44) + NEW lib/account.ts (extracted resolveAccountId — anti-drift across 4 tools) (UNI-25, UNI-26) — completed 2026-05-18 (3 commits: f4069ac, e66fdb8, f0d46cf; SUMMARY: 69-01-SUMMARY.md). 146/146 unipile tests green. UNI-25 + UNI-26 backlog closed.
 - [x] 69-02-PLAN.md — Wave 1: lib/rate-limiter.ts — per-account/per-tool day+week KV counters, fail-closed default (D-40), env-overridable caps (D-39: 25/100/50/15 defaults), retry_after as ISO timestamps + 12+ tests covering all 4 D-40 paths (UNI-11) — completed 2026-05-18 (3 commits: 656f564, e021f8b, 430525a; SUMMARY: 69-02-SUMMARY.md). 14 tests added (160 → 174 wait 160/160 unipile).
 - [x] 69-03-PLAN.md — Wave 2: tools/linkedin-send-message.ts — 9-step handler (dedup→account→attachment-decode→degree-check→rate-limit→CRM→startNewChat→verify→audit per D-49 + WARNING-6 retrofit), 1st-degree gate (D-22), attachments {filename,mimetype,base64}→[filename,Buffer] tuples (D-46), verify-after-write via getAllMessagesFromChat polling (D-47) + 13 tests covering all decision branches + runtime guards for pre-flight refusal paths (UNI-07) — completed 2026-05-18 (2 commits: 0531e35, f8019bd; SUMMARY: 69-03-SUMMARY.md). 173/173 unipile tests green. Manifest wiring deferred to Wave 3 Plan 06.
-- [ ] 69-04-PLAN.md — Wave 2: tools/linkedin-send-inmail.ts — 13-step handler with balance bracketing (D-48 escape hatch via client.request.send), allow_inmail literal(true) gate (D-26), max_inmail_credits cap (D-27), premium gate via inmail_balance all-null check (D-29), startNewChat with options.linkedin.inmail=true (D-50), credits_used/credits_remaining derived from balance-before vs balance-after (D-28 fallback to null on post-send fetch failure) + 10+ tests (UNI-08)
-- [ ] 69-05-PLAN.md — Wave 2: tools/linkedin-list-pending.ts — read-only paginated cursor loop over getAllInvitationsSent, age_days computed client-side from parsed_datetime, older_than_days client-side filter (D-35, SDK has NO since param), default limit 100 max 500 (D-36), destructive: false (D-37) + 7+ tests (UNI-10)
-- [ ] 69-06-PLAN.md — Wave 3: tools/linkedin-engage.ts super-tool — degree-routed dispatcher (D-31), dry_run early-return BEFORE provider calls (D-32) writes audit row with result: 'dry_run' (D-33), delegates to send_message/send_connection/send_inmail handlers + RETROFIT send_connection.ts (dedup-FIRST per D-49 rate-limit insert) + manifest wiring (4 new defineTool entries, toolCount 2→6) + registry.ts toolCount bump + content/docs/connectors.md + README.md tool count updates (UNI-09 + UNI-07/08/10/11 wiring)
+- [x] 69-04-PLAN.md — Wave 2: tools/linkedin-send-inmail.ts — 13-step handler with balance bracketing (D-48 escape hatch via client.request.send), allow_inmail literal(true) gate (D-26), max_inmail_credits cap (D-27), premium gate via inmail_balance all-null check (D-29), startNewChat with options.linkedin.inmail=true (D-50), credits_used/credits_remaining derived from balance-before vs balance-after (D-28 fallback to null on post-send fetch failure) + 10+ tests (UNI-08) — completed 2026-05-18 (SUMMARY: 69-04-SUMMARY.md).
+- [x] 69-05-PLAN.md — Wave 2: tools/linkedin-list-pending.ts — read-only paginated cursor loop over getAllInvitationsSent, age_days computed client-side from parsed_datetime, older_than_days client-side filter (D-35, SDK has NO since param), default limit 100 max 500 (D-36), destructive: false (D-37) + 7+ tests (UNI-10) — completed 2026-05-18 (SUMMARY: 69-05-SUMMARY.md).
+- [x] 69-06-PLAN.md — Wave 3: tools/linkedin-engage.ts super-tool — degree-routed dispatcher (D-31), dry_run early-return BEFORE provider calls (D-32) writes audit row with result: 'dry_run' (D-33), delegates to send_message/send_connection/send_inmail handlers + BLOCKER-1 inmail_subject param + skipped_no_inmail_subject branch + RETROFIT send_connection.ts (D-49 dedup-FIRST rate-limit insert) + manifest wiring (4 new defineTool entries, toolCount 2→6) + registry.ts toolCount bump + content/docs/connectors.md + README.md tool count updates 93→97 (UNI-09 + UNI-07/08/10/11 wiring) — completed 2026-05-18 (3 commits: 2371ad8, ffb99b1, d87d19d; SUMMARY: 69-06-SUMMARY.md). 228/228 unipile tests + 1510-test full suite green. Phase 69 COMPLETE.
 
 **Wave structure:** Wave 1 parallel (01, 02 — no inter-dep). Wave 2 parallel (03, 04, 05 — all depend on Wave 1 outputs). Wave 3 single (06 — depends on Waves 1+2; super-tool delegates to all 3 Wave-2 handlers).
 
----
 
-## Completed Phases (current milestone)
+---
 
 ### Phase 68: Unipile Foundation
 
