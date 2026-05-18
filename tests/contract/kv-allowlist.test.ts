@@ -71,6 +71,13 @@ const ALLOWLIST = new Set<string>([
   // root-operator cross-tenant view via raw getKVStore(). See Phase 42
   // INVENTORY.md §3.
   "app/api/admin/rate-limits/route.ts",
+  // Phase 68 UNI-03 / D-18: admin DELETE for URN cache uses root-scope
+  // getKVStore() so a single operator action can evict across tenants
+  // (e.g. when a LinkedIn slug changes or a URN goes bad). All connector
+  // lib code (identifiers.ts and the upcoming audit.ts / crm-bridge.ts)
+  // uses getContextKVStore() and does NOT need an allowlist entry. See
+  // .planning/phases/68-unipile-foundation/68-CONTEXT.md D-11 + D-18.
+  "app/api/admin/unipile/cache/urn/route.ts",
   // Phase 53 / OBS-10: /api/admin/metrics/ratelimit is the root-scoped
   // cross-tenant live-bucket view for the dashboard. Intentionally
   // scans raw KV (no tenant wrapper) so root operators see every
