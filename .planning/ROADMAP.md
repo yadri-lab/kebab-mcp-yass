@@ -16,6 +16,29 @@
 
 ## Active Phase
 
+### Phase 71: Hardening (FINAL phase of v0.17 milestone)
+
+**Goal:** Polish + hardening of the Unipile connector. Ship 5 deliverables: (1) UNI-20 global kill switch (`KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED` + legacy `LINKEDIN_TOOLS_DISABLED`) refusing all 4 LinkedIn write tools at Step -1 (BEFORE Step 0a account-resolve), with `error_writes_disabled` audit result + `writes_disabled` surfaced in `testConnection()`. (2) UNI-21 admin quota metrics — 2 new REST routes (`GET /api/admin/metrics/unipile-quotas` + `.../summary`) reading the existing phase-69 rate-limiter KV counters. (3) UNI-22 audit query API — `GET /api/admin/audit/unipile` with base64-cursor pagination + 4 optional filters. (4) UNI-23 docs — first-ever `docs/connectors/unipile.md` (60s Quick Start + setup + 6-tool catalog + rate limits + kill switches + halt flag + troubleshooting). (5) UNI-24 multi-tenant smoke test procedure — documented as Appendix in the new doc (operator-executed, not automated per D-102).
+
+**SCOPE NOTE (carry-forward):** Manifest stays at 6 tools (NO new MCP tools). NO new WhatsApp work. NO TwentyAdapter outbound HTTP. NO cron entries. All 3 new admin routes are tenant-scoped via `getContextKVStore()` (D-96 — no `?scope=all` escape hatch) → NO kv-allowlist entries (PATTERNS misalignment #1 explicitly honored — CONTEXT line 128 was wrong). `docs/CONNECTORS.md` is a conventions reference (no connector-index table to update — PATTERNS misalignment #2); a "Reference: per-connector docs" section is appended instead.
+
+**Requirements:** UNI-20, UNI-21, UNI-22, UNI-23, UNI-24
+
+**Depends on:** Phase 70 (halt-flag for the Step -1 ordering precedent) + Phase 69 (rate-limiter KV counters that the metrics routes read) + Phase 68 (audit row layout that the audit-query route scans)
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 71-01-PLAN.md — Wave 1: Kill switch foundation — NEW `src/connectors/unipile/lib/kill-switch.ts` exporting `isWritesDisabled()` (reads `KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED` + legacy `LINKEDIN_TOOLS_DISABLED` via `getConfig()` per D-89) + AuditResult union extension (`+ "error_writes_disabled"` appended at end per phase-70 D-78 precedent) + `TestConnectionResult.writes_disabled?: boolean` field on `src/core/types.ts` + Step -1 retrofit on all 4 LinkedIn write tools (send_connection, send_message, send_inmail, engage) inserted BEFORE Step 0a account-resolve + `manifest.ts::probe()` extended to surface `writes_disabled` in testConnection envelope + ~8 new tests across kill-switch + audit + 4 tool files + manifest (UNI-20)
+- [ ] 71-02-PLAN.md — Wave 2: Admin REST routes (depends on 01 for AuditResult extension type) — Promote rate-limiter's `getCaps` + 4 bucket helpers (`dailyBucket`/`isoWeekBucket`/`nextUtcMidnight`/`nextMondayUtc`) to public exports (zero behavior change) + NEW `app/api/admin/metrics/unipile-quotas/route.ts` (per-account/per-tool quota read with daily+weekly+reset_at+percent_used) + NEW `app/api/admin/metrics/unipile-quotas/summary/route.ts` (current-day matrix across all accounts × tools, tenant-scoped) + NEW `app/api/admin/audit/unipile/route.ts` (cursor-paginated audit query with account_id/since/tool/result filters, base64-encoded audit_id cursor per D-95, default limit 50 max 200, skips `:hash:` dedup pointers, defensive invalid-cursor fallback to page 1) — ALL 3 routes tenant-scoped via `getContextKVStore()` + admin-auth via `withAdminAuth` + 30s (metrics) / 10s (audit) Cache-Control + ZERO kv-allowlist changes (PATTERNS #1) + ~15 new tests across 3 routes (UNI-21 + UNI-22)
+- [ ] 71-03-PLAN.md — Wave 2: Documentation (depends on 01 for kill-switch env var name + AuditResult member; parallel with 02 — disjoint files) — NEW `docs/connectors/unipile.md` (~200-250 lines): Overview + ADR-0001 link + 60s Quick Start + Setup (env vars + dashboard + webhooks) + Tools catalog (6 tools, descriptions copied VERBATIM from manifest.ts `defineTool` blocks) + Rate limits table + Kill switches section + Halt flag section + Audit query section + Troubleshooting table (≥6 error codes) + Appendix: Multi-tenant smoke test procedure (D-101 6 steps verbatim per D-102 — operator-executed) + MOD `.env.example` (extend Unipile block with kill switch + legacy alias + webhook secret + 5 rate-limit cap overrides + fail-mode escape hatch + naming-asymmetry comment per PATTERNS #4, all commented-out) + MOD `docs/CONNECTORS.md` (append "Reference: per-connector docs" section linking to new doc per PATTERNS #2 — NO connector-index table to update) — NO tests, NO source code, NO tool count change (UNI-23 + UNI-24)
+
+**Wave structure:** Wave 1 single (01 — kill-switch foundation + 4-tool Step -1 retrofit + manifest probe extension; produces `error_writes_disabled` AuditResult + `isWritesDisabled` helper consumed by Wave 2). Wave 2 parallel (02 + 03 — disjoint files: 02 touches admin routes + rate-limiter exports; 03 touches docs + .env.example. Both depend on 01 for the type/enum extensions surfaced in their content but neither modifies the same files as the other).
+
+---
+
+## Completed Phases (current milestone)
+
 ### Phase 70: Webhooks Ingress (SCOPE CORRECTED 2026-05-18 — WhatsApp DROPPED)
 
 **Goal:** Build the inbound webhook ingress + halt-flag retrofit. Ship `/api/unipile/webhook` (dedicated route, dual-mode HMAC + static verifier, 24h idempotency, fire-and-forget dispatch) + 3 INGRESS event handlers that mutate INTERNAL connector state ONLY (`account_status` sets/clears halt flag in KV; `new_relation` enriches audit row with `accepted_at`; `new_message` enriches audit row with `last_replied_at` while SKIPPING `is_sender:true` echoes and persisting ONLY SHA-256 content_hash). Retrofit the 4 already-shipped LinkedIn write tools with a NEW Step 0 halt-flag pre-flight gate (D-65/D-66 — BEFORE D-49 dedup-first).
@@ -38,8 +61,6 @@ Plans:
 **Wave structure:** Wave 1 single (01 unblocks Wave 2 — SHIPPED). Wave 2 single (02 — handlers consume halt-flag write side). Wave 3 single (03 — retrofits 4 LinkedIn write tools to consume halt-flag read side; depends on 01 for the helper + 02 for the AuditResult enum member).
 
 ---
-
-## Completed Phases (current milestone)
 
 ### Phase 69: LinkedIn Writes
 
