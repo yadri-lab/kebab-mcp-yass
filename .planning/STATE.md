@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Phase 68 Plan 01 complete (Wave 0 bootstrap)
-last_updated: "2026-05-18T15:11:39Z"
-last_activity: 2026-05-18 -- Phase 68 Plan 01 complete — SDK installed, stub manifest registered
+stopped_at: Phase 68 Plan 02 complete (Wave 2 SDK primitives — client + retry + errors)
+last_updated: "2026-05-18T17:23:18Z"
+last_activity: 2026-05-18 -- Phase 68 Plan 02 complete — lazy UnipileClient singleton + withRetry + error taxonomy
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
-  percent: 17
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -21,17 +21,75 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Current focus:** Phase 68 — Unipile Foundation
-**Next:** Execute Wave 2 plans (68-02 client+retry+errors, 68-03 identifiers+admin DELETE, 68-04 audit, 68-05 crm-bridge) — all unblocked by Plan 01.
+**Next:** Execute remaining Wave 2 plans (68-03 identifiers+admin DELETE, 68-04 audit, 68-05 crm-bridge) — all unblocked by Plan 02, can run in parallel. Plan 06 (Wave 3) must wait for Wave 2 completion.
 
 ## Current Position
 
 Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 1 of 6 complete (Wave 0 bootstrap)
+Plan: 2 of 6 complete (Wave 2 SDK primitives shipped)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: Executing Phase 68 — Plan 02 next (Wave 2)
-Last activity: 2026-05-18T15:11:39Z — Phase 68 Plan 01 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
+Status: Executing Phase 68 — Plan 03 next (or any of 03/04/05 in parallel)
+Last activity: 2026-05-18T17:23:18Z — Phase 68 Plan 02 complete (3/3 tasks, 3 atomic commits, SUMMARY written)
 
 ## Session Continuity
+
+Phase 68 Plan 02 completed 2026-05-18 (~10 min).
+
+  - 3 atomic commits on main (all green: 31 lib tests + lint + typecheck + contract + doc-counts).
+    Task-level commit list:
+    · ce030ad feat(68-02): lazy UnipileClient singleton + sanitize + reset (Task 1)
+    · 3c9cab6 feat(68-02): withRetry exponential-backoff helper (Task 2)
+    · ebcf2f9 feat(68-02): typed Unipile errors + classifyUnipileError (Task 3)
+
+  - **What landed:**
+    · src/connectors/unipile/lib/client.ts — getUnipileClient() lazy singleton
+      (memoized per warm lambda, ctor called once), __resetUnipileClientForTests()
+      test seam, sanitizeUnipileText() token-redaction (T-68-02-01 mitigation).
+      All env reads via getConfig(); no process.env.
+    · src/connectors/unipile/lib/retry.ts — withRetry<T>(fn, opts?) hand-rolled
+      ~30 lines per RESEARCH §Pattern 2 verbatim. Retries on 429/502/503/504
+      up to 3 attempts, exponential backoff with ±20% jitter (~200/400/800ms).
+      Non-retryable statuses and non-SDK errors throw on attempt 1.
+    · src/connectors/unipile/lib/errors.ts — 4 typed McpToolError subclasses
+      (UnipileRateLimitError retryable, UnipileAccountRestrictedError terminal,
+      UnipileNotConnectedError terminal, Unipile5xxError retryable) +
+      classifyUnipileError() pure mapper covering 9 status/type combinations +
+      fail-safe default. UnipileErrorResult type union exported for Plan 04.
+    · src/connectors/unipile/lib/__tests__/{client,retry,errors}.test.ts —
+      31 tests total (7 + 6 + 18), all use vi.hoisted() for shared mock state
+      per Plan 01's canonical pattern.
+
+  - **Test count delta:** Plan 01 baseline +31 new lib tests = +31. Combined
+    new tests for the connector now 8 manifest + 31 lib = 39 tests.
+
+  - **3 Rule 3/1 auto-fixes** (all folded into Task 2 commit 3c9cab6):
+    · vi.mock hoisting trap → vi.hoisted() for FakeUnsuccessful class.
+    · Stray unhandled-rejection in max-attempts test → detach assertion before
+      vi.runAllTimersAsync().
+    · exactOptionalPropertyTypes incompatibility in FakeUnsuccessful body
+      construction → conditional `{}` vs `{ status }`.
+
+  - **ErrorCode adaptation (key decision).** Plan sketch referenced
+    ErrorCode.AUTH / ErrorCode.UPSTREAM; src/core/errors.ts exposes
+    AUTH_FAILED / EXTERNAL_API_ERROR. Used actual enum members per plan's
+    explicit authorization ("do NOT invent new enum members").
+
+  - **No deviations from D-19, D-20, D-21.** Plan 02 doesn't touch any of those
+    user-locked decisions — they belong to Plan 06 (account_id rules, envelope
+    fields, etc.).
+
+  - **Decisions added to project context:**
+    · Connector-scoped error classes live colocated under
+      src/connectors/{name}/lib/errors.ts rather than extending
+      src/core/connector-errors.ts. Keeps core untouched + future connectors
+      follow same layout without core churn.
+    · Detached rejection assertion before vi.runAllTimersAsync() is the
+      canonical pattern for testing helpers that await inside setTimeout.
+    · exactOptionalPropertyTypes-safe mock body construction (conditional
+      property spreading) for FakeUnsuccessful-style test mocks.
+
+  - **No blockers. No follow-ups.** Plans 03/04/05 unblocked in parallel; Plan
+    06 must run after Wave 2.
 
 Phase 68 Plan 01 completed 2026-05-18 (39 min).
 
