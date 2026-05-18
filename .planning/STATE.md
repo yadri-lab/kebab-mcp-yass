@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector
-status: executing
-stopped_at: Completed 68-06-PLAN.md (phase 68 code-complete — awaiting live Antoine Vercken re-validation)
-last_updated: "2026-05-18T16:27:58.693Z"
+milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
+status: Phase 68 COMPLETE ✓ — code shipped + live-validated against real Unipile tenant. 2 imperfections logged as UNI-25/UNI-26 backlog. Phases 69-71 PENDING.
+stopped_at: Phase 68 live-validation successful 2026-05-18 — GRS returns degree:1 for real 1st-degree contact, send envelope strict-boolean, dedup works, DSN double-prefix bug fixed (115ddd3). Next phase 69 (LinkedIn writes completion) when ready.
+last_updated: "2026-05-18T16:50:00Z"
 last_activity: 2026-05-18
 progress:
-  total_phases: 1
+  total_phases: 4
   completed_phases: 1
   total_plans: 6
   completed_plans: 6
-  percent: 100
+  percent: 25
 ---
 
 # Project State

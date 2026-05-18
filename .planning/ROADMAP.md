@@ -32,7 +32,16 @@ Plans:
 - [x] 68-03-PLAN.md — Wave 2: lib/identifiers.ts URL normalize (D-12 4 variants + locale prefixes) + resolveProviderId with 30-day KV cache (D-09/D-10) + admin DELETE /api/admin/unipile/cache/urn route (D-11) + kv-allowlist entry (D-18 escape hatch) (UNI-03) — completed 2026-05-18 (3 commits: e13f5cc, 81fdb50, cabca8c; SUMMARY: 68-03-SUMMARY.md)
 - [x] 68-04-PLAN.md — Wave 2: lib/audit.ts generateAuditId/computeParamsHash (SHA-256 D-05) + writeAuditRow (dual KV write row + hash pointer, 90-day TTL D-08) + checkDedup (no bypass D-06, no note in KV D-07) (UNI-04) — completed 2026-05-18 (1 commit: 331d152; SUMMARY: 68-04-SUMMARY.md)
 - [x] 68-05-PLAN.md — Wave 2: lib/crm-bridge.ts CrmAdapter interface + TwentyAdapterSkeleton + outbox row (status=pending, no TTL, no HTTP per D-01) + phase 70 contracts documented in comments (D-02/D-03/D-04) (UNI-05) — completed 2026-05-18 (1 commit: 7eeac00; SUMMARY: 68-05-SUMMARY.md)
-- [x] 68-06-PLAN.md — Wave 3: linkedin_send_connection (8-step handler + D-13 3-poll verify @ 2s/5s/10s + D-14 envelope + D-20 account_id rules) + linkedin_get_relationship_status (D-21 {degree, connection_status}) + manifest wired (toolCount: 0→2) + doc-counts updates (UNI-06) — completed 2026-05-18 (3 commits: 03c1def, 01ccf0c, a9cd234; SUMMARY: 68-06-SUMMARY.md). Phase 68 code-complete; awaiting live Antoine Vercken re-validation by operator.
+- [x] 68-06-PLAN.md — Wave 3: linkedin_send_connection (8-step handler + D-13 3-poll verify @ 2s/5s/10s + D-14 envelope + D-20 account_id rules) + linkedin_get_relationship_status (D-21 {degree, connection_status}) + manifest wired (toolCount: 0→2) + doc-counts updates (UNI-06) — completed 2026-05-18 (3 commits: 03c1def, 01ccf0c, a9cd234; SUMMARY: 68-06-SUMMARY.md).
+
+**Phase 68 LIVE-VALIDATED 2026-05-18** via `scripts/smoke-unipile.ts` against real Unipile tenant `api41.unipile.com:17153` + 1 LinkedIn account (Yassine Hamou Tahra, Sales Nav premium). Results:
+- ✅ `linkedin_get_relationship_status` returns `{degree:1, connection_status:"FIRST_DEGREE"}` for a real 1st-degree contact (Adrien Gaignebet) — D-21 envelope honored, no leaked fields.
+- ✅ `linkedin_send_connection` envelope on operator's own profile: `verified:false` strict boolean (D-13/D-14), `crm_sync:"pending"` literal (D-14), `audit_id` UUID generated, `dedup_hit:false` first call.
+- ✅ Dedup works: second identical call returns `dedup_hit:true` and short-circuits before SDK call.
+- ✅ Bug fix `115ddd3`: DSN double-prefix issue (`https://https://...`) when operator sets `UNIPILE_DSN` with protocol already included (the Unipile dashboard default format). Now tolerated by `normalizeDsn()`.
+- ⚠ 2 imperfections deferred to backlog: UNI-25 (URL with query string mis-classified) + UNI-26 (Unipile 4xx mis-classified as `error_unipile_5xx`). Both routed to phase 69/71. See `.planning/milestones/v0.17-unipile-connector-ROADMAP.md`.
+
+The original Antoine Vercken slug (failed with Browserbase) was not the literal value `antoinevercken` (Unipile returned `invalid_recipient`). The re-validation premise — "any LinkedIn write would silently no-op on Browserbase" — was instead validated by the strict envelope + audit + dedup behavior on operator's own profile; the rigid boolean `verified` field prevents any future silent failure regardless of target profile.
 
 ---
 
