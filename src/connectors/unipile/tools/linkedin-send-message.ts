@@ -88,6 +88,7 @@ import { classifyUnipileError, UnipileAttachmentTooLargeError } from "../lib/err
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
 import { resolveAccountId } from "../lib/account";
 import { readHaltFlag } from "../webhook/halt-flag";
+import { isWritesDisabled } from "../lib/kill-switch";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
 
@@ -258,6 +259,34 @@ export async function handleLinkedinSendMessage(args: SendMessageArgs): Promise<
     profile_url_normalized: profileUrlNormalized,
     note: args.text,
   });
+
+  // ═══════ Step -1: KILL-SWITCH (D-86/D-88/D-89 — highest-priority gate, NEW in Plan 71-01) ═══════
+  // Global kill switch — operator's emergency brake. Reads BEFORE account-resolve
+  // so we don't burn a Unipile API call enumerating accounts when writes are
+  // globally disabled. NO accountId is known yet — the audit row's account_id
+  // field stays "" (D-20 account-resolve error path precedent).
+  if (isWritesDisabled()) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_message",
+      account_id: args.account_id ?? "",
+      params_hash: paramsHash,
+      result: "error_writes_disabled",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] send_message refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      error: "error_writes_disabled",
+    });
+  }
 
   // ═══════ Step 0a: ACCOUNT-RESOLVE (D-20 — MOVED UP from Step 2 so halt-check has an accountId) ═══════
   // Phase 70 Plan 70-03 (D-65/D-66): halt-check is the highest-priority gate,

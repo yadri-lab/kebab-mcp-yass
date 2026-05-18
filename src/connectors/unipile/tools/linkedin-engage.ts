@@ -63,6 +63,7 @@ import { handleLinkedinSendMessage } from "./linkedin-send-message";
 import { handleLinkedinSendConnection } from "./linkedin-send-connection";
 import { handleLinkedinSendInmail } from "./linkedin-send-inmail";
 import { readHaltFlag } from "../webhook/halt-flag";
+import { isWritesDisabled } from "../lib/kill-switch";
 import { getLogger } from "@/core/logging";
 
 const log = getLogger("CONNECTOR:unipile");
@@ -253,6 +254,40 @@ async function getDegreeOnly(
 
 export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult> {
   const auditId = generateAuditId();
+
+  // === STEP -1: KILL-SWITCH (D-86/D-88/D-89 — highest-priority gate, NEW in Plan 71-01) ===
+  // Global kill switch — even dry_run is blocked. We don't burn the
+  // account.getAll() resolution OR the getProfile() degree-fetch when writes
+  // are globally disabled. NO accountId known yet — audit row's account_id
+  // field stays "" (D-20 precedent). Engage uses its own action: "skipped"
+  // envelope shape (not the send-* envelope) — match the pattern used by
+  // the halt-check refusal a few lines below.
+  if (isWritesDisabled()) {
+    const paramsHash = computeParamsHash({
+      tool: "linkedin_engage",
+      profile_url_normalized: args.profile_url,
+      note: "writes_disabled",
+    });
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_engage",
+      account_id: args.account_id ?? "",
+      params_hash: paramsHash,
+      result: "error_writes_disabled",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] engage refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
+    return envelope({
+      action: "skipped",
+      reason: "error_writes_disabled",
+      error: "error_writes_disabled",
+      degree: null,
+      audit_id: auditId,
+    });
+  }
 
   // === STEP 0: Resolve account (needed for BOTH dry_run degree fetch AND real dispatch) ===
   // exactOptionalPropertyTypes: only pass `account_id` when defined (carry from

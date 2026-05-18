@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // vi.mock is hoisted above any top-level `const` declarations, so the
 // factory cannot close over locally-declared spies — use vi.hoisted() to
 // move the spies into the same hoist tier as the mock factory.
-const { getAllMock, UnipileClientMock, ctorCalls } = vi.hoisted(() => {
+const { getAllMock, UnipileClientMock, ctorCalls, killSwitchMock } = vi.hoisted(() => {
   const getAllMock = vi.fn();
   const ctorCalls: Array<[string, string]> = [];
+  // Phase 71 plan 71-01 retrofit (D-86/D-88/D-89) — isWritesDisabled kill-switch mock.
+  const killSwitchMock = vi.fn();
   // Real class so `new UnipileClient(...)` constructs. Construction-call
   // tracking lives in `ctorCalls` (vi.fn cannot wrap a class while keeping
   // it constructible in vitest 4.x).
@@ -15,7 +17,7 @@ const { getAllMock, UnipileClientMock, ctorCalls } = vi.hoisted(() => {
       ctorCalls.push([dsn, token]);
     }
   }
-  return { getAllMock, UnipileClientMock, ctorCalls };
+  return { getAllMock, UnipileClientMock, ctorCalls, killSwitchMock };
 });
 
 vi.mock("unipile-node-sdk", () => ({
@@ -27,11 +29,23 @@ vi.mock("unipile-node-sdk", () => ({
   },
 }));
 
+// Phase 71 plan 71-01 retrofit (D-86/D-88/D-89) — kill-switch mock wires
+// isWritesDisabled so tests can drive probe()'s `writes_disabled` surface.
+vi.mock("./lib/kill-switch", () => ({
+  isWritesDisabled: killSwitchMock,
+}));
+
 import { unipileConnector } from "./manifest";
 
 beforeEach(() => {
   getAllMock.mockReset();
   ctorCalls.length = 0;
+  // Phase 71 retrofit default: writes NOT disabled (kill switch unset). Only
+  // the explicit kill-switch tests override the mock to true. Existing tests
+  // pre-71 don't check writes_disabled at all — leaving the default false
+  // keeps them green.
+  killSwitchMock.mockReset();
+  killSwitchMock.mockReturnValue(false);
 });
 
 describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
@@ -126,5 +140,62 @@ describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
     expect(r.ok).toBe(false);
     expect(r.message).toMatch(/UNIPILE_DSN or UNIPILE_TOKEN not set/);
     expect(ctorCalls).toHaveLength(0);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Phase 71 / Plan 71-01 retrofit — kill-switch surfacing in probe() (D-88)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe("Phase 71 Plan 71-01 — probe() surfaces writes_disabled (D-88)", () => {
+    it("kill switch unset → probe returns writes_disabled: false and no ⚠ in message", async () => {
+      killSwitchMock.mockReturnValue(false);
+      getAllMock.mockResolvedValueOnce({
+        items: [{ type: "LINKEDIN" }],
+      });
+      const r = (await unipileConnector.testConnection!({
+        UNIPILE_DSN: "api.unipile.com",
+        UNIPILE_TOKEN: "tok",
+      })) as { ok: boolean; message: string; writes_disabled?: boolean };
+      expect(r.ok).toBe(true);
+      expect(r.writes_disabled).toBe(false);
+      expect(r.message).not.toMatch(/writes disabled/);
+    });
+
+    it("kill switch set → probe returns writes_disabled: true and ⚠ message suffix", async () => {
+      killSwitchMock.mockReturnValue(true);
+      getAllMock.mockResolvedValueOnce({
+        items: [{ type: "LINKEDIN" }],
+      });
+      const r = (await unipileConnector.testConnection!({
+        UNIPILE_DSN: "api.unipile.com",
+        UNIPILE_TOKEN: "tok",
+      })) as { ok: boolean; message: string; writes_disabled?: boolean };
+      expect(r.ok).toBe(true);
+      expect(r.writes_disabled).toBe(true);
+      expect(r.message).toMatch(/⚠ writes disabled/);
+    });
+
+    it("kill switch set + 0 LinkedIn accounts → still surfaces writes_disabled: true on the ok:false branch", async () => {
+      killSwitchMock.mockReturnValue(true);
+      getAllMock.mockResolvedValueOnce({
+        items: [{ type: "WHATSAPP" }],
+      });
+      const r = (await unipileConnector.testConnection!({
+        UNIPILE_DSN: "api.unipile.com",
+        UNIPILE_TOKEN: "tok",
+      })) as { ok: boolean; writes_disabled?: boolean };
+      expect(r.ok).toBe(false);
+      expect(r.writes_disabled).toBe(true);
+    });
+
+    it("kill switch set + SDK throws → still surfaces writes_disabled: true on the catch-block branch", async () => {
+      killSwitchMock.mockReturnValue(true);
+      getAllMock.mockRejectedValueOnce(new Error("ECONNRESET"));
+      const r = (await unipileConnector.testConnection!({
+        UNIPILE_DSN: "api.unipile.com",
+        UNIPILE_TOKEN: "tok",
+      })) as { ok: boolean; writes_disabled?: boolean };
+      expect(r.ok).toBe(false);
+      expect(r.writes_disabled).toBe(true);
+    });
   });
 });

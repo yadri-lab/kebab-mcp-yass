@@ -31,6 +31,7 @@ const {
   getAllAccountsMock,
   kvMock,
   haltFlagMock,
+  killSwitchMock,
   FakeUnsuccessful,
 } = vi.hoisted(() => {
   const sendMessageMock = vi.fn();
@@ -46,6 +47,8 @@ const {
   };
   // Phase 70 plan 70-03 retrofit (D-65/D-66) — readHaltFlag mock.
   const haltFlagMock = vi.fn();
+  // Phase 71 plan 71-01 retrofit (D-86/D-88/D-89) — isWritesDisabled kill-switch mock.
+  const killSwitchMock = vi.fn();
   class FakeUnsuccessful extends Error {
     body: { status?: number; type?: string };
     constructor(body: { status?: number; type?: string }) {
@@ -62,6 +65,7 @@ const {
     getAllAccountsMock,
     kvMock,
     haltFlagMock,
+    killSwitchMock,
     FakeUnsuccessful,
   };
 });
@@ -108,6 +112,12 @@ vi.mock("../../webhook/halt-flag", () => ({
   readHaltFlag: haltFlagMock,
 }));
 
+// Phase 71 plan 71-01 retrofit (D-86/D-88/D-89) — kill-switch mock wires
+// isWritesDisabled so tests can drive the Step -1 global refusal.
+vi.mock("../../lib/kill-switch", () => ({
+  isWritesDisabled: killSwitchMock,
+}));
+
 vi.mock("unipile-node-sdk", () => ({
   // Same identity trick as send-connection.test.ts — the retry helper does
   // `err instanceof UnsuccessfulRequestError`; the FakeUnsuccessful class
@@ -144,6 +154,7 @@ beforeEach(() => {
   // INFO-8 guard: verify mock factory wired the spy correctly.
   expect(typeof sendMessageMock).toBe("function");
   expect(typeof haltFlagMock).toBe("function");
+  expect(typeof killSwitchMock).toBe("function");
   // Default: exactly one LinkedIn account available (D-20 single-account silent
   // resolution).
   getAllAccountsMock.mockResolvedValue({
@@ -154,6 +165,8 @@ beforeEach(() => {
   // Phase 70 retrofit default: account NOT halted (existing tests must continue
   // to flow through to dry-run / degree-fetch / delegate-call unchanged).
   haltFlagMock.mockResolvedValue(null);
+  // Phase 71 retrofit default: writes NOT disabled (kill switch unset).
+  killSwitchMock.mockReturnValue(false);
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -513,5 +526,64 @@ describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
     expect(env.proposed_action).toBeUndefined();
     // getProfile MUST NOT be called even in dry-run when halted.
     expect(getProfileMock).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 71 / Plan 71-01 retrofit — kill-switch Step -1 (D-86 / D-88 / D-89)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 71 Plan 71-01 — kill-switch Step -1 (D-86 / D-88 / D-89)", () => {
+  it("Step -1: refuses with error_writes_disabled when kill switch is set, NO account-resolve / halt / degree / delegates; single audit row", async () => {
+    killSwitchMock.mockReturnValue(true);
+
+    const env = envOf(
+      await handleLinkedinEngage({
+        ...BASE,
+        message: "hi",
+        dry_run: true, // even dry-run is blocked — Step -1 is the absolute first gate
+      })
+    );
+
+    // engage uses action: "skipped" envelope shape for refusals — match it.
+    expect(env.action).toBe("skipped");
+    expect(env.reason).toBe("error_writes_disabled");
+    expect(env.error).toBe("error_writes_disabled");
+    expect(env.audit_id).toBeTruthy();
+
+    // Step -1 is the FIRST gate — nothing downstream runs.
+    expect(getAllAccountsMock).not.toHaveBeenCalled();
+    expect(haltFlagMock).not.toHaveBeenCalled();
+    expect(getProfileMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendConnectionMock).not.toHaveBeenCalled();
+    expect(sendInmailMock).not.toHaveBeenCalled();
+    expect(kvMock.get).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row (writeAuditRow does 2 kv.set calls: row + hash pointer).
+    const auditSetCalls = kvMock.set.mock.calls.filter((call: unknown[]) => {
+      const k = call[0];
+      return typeof k === "string" && k.startsWith("unipile:audit:");
+    });
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map((call: unknown[]) => {
+          const v = call[1];
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_writes_disabled"]));
+
+    // Step -1 fires BEFORE account-resolve — account_id field on the audit
+    // row is the empty string per D-20 precedent.
+    const firstCall = auditSetCalls[0] as unknown[];
+    const row = JSON.parse(firstCall[1] as string) as { account_id?: string };
+    expect(row.account_id).toBe("");
   });
 });

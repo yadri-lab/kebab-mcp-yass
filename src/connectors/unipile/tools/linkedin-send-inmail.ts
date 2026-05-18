@@ -123,6 +123,7 @@ import { classifyUnipileError } from "../lib/errors";
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
 import { resolveAccountId } from "../lib/account";
 import { readHaltFlag } from "../webhook/halt-flag";
+import { isWritesDisabled } from "../lib/kill-switch";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
 
@@ -282,6 +283,36 @@ export async function handleLinkedinSendInmail(args: SendInmailArgs): Promise<To
     profile_url_normalized: profileUrlNormalized,
     note: `${args.subject}\n${args.text}`,
   });
+
+  // ═══════ Step -1: KILL-SWITCH (D-86/D-88/D-89 — highest-priority gate, NEW in Plan 71-01) ═══════
+  // Global kill switch — operator's emergency brake. Reads BEFORE allow_inmail
+  // and account-resolve so a halted operator burns nothing (no balance fetch,
+  // no SDK call, no audit-only side effects beyond the single refusal row).
+  // credits_used/credits_remaining are both null (we never fetched the balance).
+  if (isWritesDisabled()) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_inmail",
+      account_id: args.account_id ?? "",
+      params_hash: paramsHash,
+      result: "error_writes_disabled",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn("[CONNECTOR:unipile] send_inmail refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      credits_used: null,
+      credits_remaining: null,
+      error: "error_writes_disabled",
+    });
+  }
 
   // ═══════ Step 1: ALLOW_INMAIL GATE (D-26 — defense-in-depth) ═══════
   // Zod literal(true) already enforces this at the schema layer, but a raw

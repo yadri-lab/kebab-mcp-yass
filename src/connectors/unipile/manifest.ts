@@ -3,6 +3,7 @@ import { defineTool, type ConnectorManifest, type ToolDefinition } from "@/core/
 import { getConfig } from "@/core/config-facade";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
+import { isWritesDisabled } from "./lib/kill-switch";
 import {
   linkedinSendConnectionSchema,
   handleLinkedinSendConnection,
@@ -82,7 +83,12 @@ async function probe(
   ok: boolean;
   message: string;
   detail?: string;
+  // Phase 71 / Plan 71-01 (D-88) — global kill-switch surface for the
+  // /config → Connectors tile. Always populated (true | false) so the
+  // dashboard can render the warning state without optional-handling.
+  writes_disabled?: boolean;
 }> {
+  const writes_disabled = isWritesDisabled();
   try {
     const client = new UnipileClient(`https://${dsn}`, token);
     const resp = (await client.account.getAll()) as UnipileAccountListResponse;
@@ -92,7 +98,10 @@ async function probe(
       log.info(`Unipile probe ok: ${linkedinCount} LinkedIn account(s) of ${total} total`);
       return {
         ok: true,
-        message: `Connected — ${linkedinCount} LinkedIn account(s)`,
+        message: writes_disabled
+          ? `Connected — ${linkedinCount} LinkedIn account(s) — ⚠ writes disabled`
+          : `Connected — ${linkedinCount} LinkedIn account(s)`,
+        writes_disabled,
       };
     }
     log.info(`Unipile probe: no LinkedIn account connected (${total} total accounts)`);
@@ -100,6 +109,7 @@ async function probe(
       ok: false,
       message: "No LinkedIn account connected to Unipile token",
       detail: `Total accounts on token: ${total}`,
+      writes_disabled,
     };
   } catch (err) {
     const msg = toMsg(err);
@@ -107,6 +117,7 @@ async function probe(
     return {
       ok: false,
       message: `Unipile: ${msg}`,
+      writes_disabled,
     };
   }
 }

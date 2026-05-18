@@ -55,6 +55,7 @@ import { crmBridge } from "../lib/crm-bridge";
 import { classifyUnipileError } from "../lib/errors";
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
 import { readHaltFlag } from "../webhook/halt-flag";
+import { isWritesDisabled } from "../lib/kill-switch";
 import { getLogger } from "@/core/logging";
 
 const log = getLogger("CONNECTOR:unipile");
@@ -202,6 +203,38 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
     profile_url_normalized: profileUrlNormalized,
     note: args.note ?? "",
   });
+
+  // ═══════ Step -1: KILL-SWITCH (D-86/D-88/D-89 — highest-priority gate, NEW in Plan 71-01) ═══════
+  // Global kill switch — set by operator (KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED=true
+  // or legacy alias LINKEDIN_TOOLS_DISABLED=true) to halt ALL LinkedIn writes at
+  // once. Reads BEFORE account-resolve so we don't burn a Unipile API call
+  // enumerating accounts when writes are globally disabled. NO accountId is
+  // known yet — the audit row's account_id field stays "" (matches the D-20
+  // account-resolve error path's existing pattern at line 221).
+  if (isWritesDisabled()) {
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_connection",
+      account_id: args.account_id ?? "",
+      params_hash: paramsHash,
+      result: "error_writes_disabled",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    log.warn(
+      "[CONNECTOR:unipile] send_connection refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED"
+    );
+    return envelope({
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      error: "error_writes_disabled",
+    });
+  }
 
   // ═══════ Step 0a: ACCOUNT-RESOLVE (D-20 — MOVED UP from Step 2 so halt-check has an accountId) ═══════
   // Phase 70 Plan 70-03 (D-65/D-66): halt-check is the highest-priority gate,

@@ -33,6 +33,8 @@ const {
   rateLimitMock,
   // === NEW phase-70 plan 70-03 retrofit mock (halt-flag) ===
   haltFlagMock,
+  // === NEW phase-71 plan 71-01 retrofit mock (kill switch) ===
+  killSwitchMock,
 } = vi.hoisted(() => {
   const sendInvitationMock = vi.fn();
   const getProfileMock = vi.fn();
@@ -57,6 +59,8 @@ const {
   const rateLimitMock = vi.fn();
   // NEW (phase 70 plan 70-03 retrofit) — readHaltFlag mock.
   const haltFlagMock = vi.fn();
+  // NEW (phase 71 plan 71-01 retrofit) — isWritesDisabled kill-switch mock.
+  const killSwitchMock = vi.fn();
 
   return {
     sendInvitationMock,
@@ -67,6 +71,7 @@ const {
     FakeUnsuccessful,
     rateLimitMock,
     haltFlagMock,
+    killSwitchMock,
   };
 });
 
@@ -106,6 +111,12 @@ vi.mock("../../lib/rate-limiter", () => ({
 // so tests can drive the halt short-circuit per D-65/D-66.
 vi.mock("../../webhook/halt-flag", () => ({
   readHaltFlag: haltFlagMock,
+}));
+
+// NEW (phase 71 plan 71-01 retrofit): kill-switch mock — wires isWritesDisabled
+// so tests can drive the Step -1 global kill switch refusal per D-86/D-88/D-89.
+vi.mock("../../lib/kill-switch", () => ({
+  isWritesDisabled: killSwitchMock,
 }));
 
 import { handleLinkedinSendConnection } from "../linkedin-send-connection";
@@ -153,6 +164,7 @@ function resetMocks() {
   // INFO-8 guard: confirm the mock factories wired correctly.
   expect(typeof rateLimitMock).toBe("function");
   expect(typeof haltFlagMock).toBe("function");
+  expect(typeof killSwitchMock).toBe("function");
   // Phase 69 retrofit default: rate-limit ALLOWS (existing phase-68 happy-path
   // tests continue to work — they were authored before rate-limit existed and
   // expect the flow to proceed all the way through to sendInvitation).
@@ -162,6 +174,11 @@ function resetMocks() {
   // to flow through to dedup/SDK calls unchanged).
   haltFlagMock.mockReset();
   haltFlagMock.mockResolvedValue(null);
+  // Phase 71 retrofit default: writes NOT disabled (kill switch unset). Existing
+  // tests must continue to flow through normally; only the explicit kill-switch
+  // test overrides the mock to true.
+  killSwitchMock.mockReset();
+  killSwitchMock.mockReturnValue(false);
 }
 
 describe("linkedin_send_connection — happy path (Antoine Vercken re-validation)", () => {
@@ -639,5 +656,68 @@ describe("Phase 70 Plan 70-03 — halt-check Step 0 (D-65 / D-66)", () => {
     const firstCall = auditSetCalls[0] as unknown[];
     const row = JSON.parse(firstCall[1] as string) as { account_id?: string };
     expect(row.account_id).toBe("acc_li_halt");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 71 / Plan 71-01 retrofit — kill-switch Step -1 (D-86 / D-88 / D-89)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 71 Plan 71-01 — kill-switch Step -1 (D-86 / D-88 / D-89)", () => {
+  beforeEach(resetMocks);
+
+  it("Step -1: refuses with error_writes_disabled when kill switch is set, NO account-resolve / halt / dedup / rate-limit / SDK calls; single audit row", async () => {
+    killSwitchMock.mockReturnValue(true);
+
+    const env = parseEnvelope(
+      await handleLinkedinSendConnection({
+        profile_url: "https://linkedin.com/in/kill-switch-test",
+        actor_user_id: "yass",
+        note: "Hi",
+      })
+    );
+
+    expect(env.error).toBe("error_writes_disabled");
+    expect(env.provider_ok).toBe(false);
+    expect(env.verified).toBe(false);
+    expect(env.dedup_hit).toBe(false);
+    expect(env.crm_sync).toBe("pending");
+    expect(env.audit_id).toBeTruthy();
+
+    // Step -1 is the FIRST gate — nothing downstream runs.
+    expect(accountGetAllMock).not.toHaveBeenCalled();
+    expect(haltFlagMock).not.toHaveBeenCalled();
+    expect(rateLimitMock).not.toHaveBeenCalled();
+    expect(sendInvitationMock).not.toHaveBeenCalled();
+    expect(getAllInvitationsSentMock).not.toHaveBeenCalled();
+    expect(getProfileMock).not.toHaveBeenCalled();
+    // Dedup uses kvMock.get; assert it was never asked.
+    expect(kvMock.get).not.toHaveBeenCalled();
+
+    // Exactly ONE audit row (writeAuditRow does 2 kv.set calls: row + hash pointer).
+    const auditSetCalls = kvMock.set.mock.calls.filter((call: unknown[]) => {
+      const k = call[0];
+      return typeof k === "string" && k.startsWith("unipile:audit:");
+    });
+    expect(auditSetCalls.length).toBeGreaterThan(0);
+    const distinctResults = new Set(
+      auditSetCalls
+        .map((call: unknown[]) => {
+          const v = call[1];
+          if (typeof v !== "string") return undefined;
+          try {
+            return (JSON.parse(v) as { result?: string }).result;
+          } catch {
+            return undefined;
+          }
+        })
+        .filter(Boolean)
+    );
+    expect(distinctResults).toEqual(new Set(["error_writes_disabled"]));
+
+    // Step -1 fires BEFORE account-resolve — account_id field on the audit
+    // row is the empty string per D-20 precedent (no accountId known yet).
+    const firstCall = auditSetCalls[0] as unknown[];
+    const row = JSON.parse(firstCall[1] as string) as { account_id?: string };
+    expect(row.account_id).toBe("");
   });
 });
