@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector
-status: executing
-stopped_at: Completed 69-05-PLAN.md (linkedin_list_pending) — UNI-10 closed
-last_updated: "2026-05-18T18:35:06.325Z"
+milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
+status: Phase 70 mid-execution — Plan 70-01 SHIPPED (3 commits), scope corrected post user feedback (WhatsApp DROPPED, Twenty CRM never built). Plans 70-02 + 70-03 ready to execute. Waiting for user GO.
+stopped_at: Phase 70 paused for scope cleanup after user identified scope creep (TwentyAdapter/cron) in initial draft. Cleanup committed; ready to resume Plan 70-02 when user approves.
+last_updated: "2026-05-18T22:50:00Z"
 last_activity: 2026-05-18
 progress:
-  total_phases: 2
-  completed_phases: 1
-  total_plans: 12
-  completed_plans: 11
-  percent: 92
+  total_phases: 4
+  completed_phases: 2
+  total_plans: 15
+  completed_plans: 13
+  percent: 50
 ---
 
 # Project State

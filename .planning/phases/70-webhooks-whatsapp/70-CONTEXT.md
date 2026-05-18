@@ -9,13 +9,16 @@
 
 Build the inbound webhook ingress + WhatsApp tool suite. The connector receives events from Unipile and updates its OWN internal state (audit log, halt flag). The connector does NOT propagate events to any external system (CRM, Slack, etc.) — that is the caller's responsibility.
 
-**6 deliverables:**
-- `/api/unipile/webhook` route (dedicated, dual-mode auth, idempotent)
-- 3 INGRESS handlers updating connector state ONLY:
+**2 deliverables (REDUCED 2026-05-18 from 6 — WhatsApp tools dropped):**
+- `/api/unipile/webhook` route (dedicated, dual-mode auth, idempotent) — **Plan 70-01 SHIPPED**
+- 3 INGRESS handlers updating connector state ONLY — **Plan 70-02 TODO**:
   - `account.status` → set halt flag in KV (write tools check pre-flight)
   - `new_relation` → enrich audit log row with `accepted_at`
   - `new_message` → enrich audit log with `last_replied_at` (or insert standalone inbound entry)
-- 4 WhatsApp tools: `whatsapp_send_message`, `whatsapp_list_chats`, `whatsapp_get_conversation`, `whatsapp_list_contacts`
+- Halt-check Step 0 retrofit on 4 LinkedIn write tools — **Plan 70-03 TODO**
+
+**Out of phase 70 (deferred):**
+- ~~4 WhatsApp tools~~ → backlog post-milestone
 
 **In scope:**
 - New route handler at `app/api/unipile/webhook/route.ts` (NOT under generic webhook receiver)
@@ -78,15 +81,11 @@ Build the inbound webhook ingress + WhatsApp tool suite. The connector receives 
 - **D-67:** `scripts/setup-unipile-webhooks.ts` — creates the 3 webhook subscriptions in Unipile (messaging, account_status, users) via API. Idempotent: lists existing webhooks, skips already-configured ones. Uses SDK escape hatch for `users` source (D-68 below).
 - **D-68:** `new_relation` subscription uses SDK escape hatch — `client.request.send({path: ['webhooks'], method: 'POST', body: {source: 'users', request_url, ...}})`. The typed `client.webhook.create()` doesn't accept source `"users"`.
 
-### WhatsApp Tools (UNI-16..19)
-- **D-69:** All 4 WhatsApp tools share the LinkedIn handler skeleton: halt-check (D-65) → dedup → account → rate-limit → SDK call → audit. Read tools (list_chats, get_conversation, list_contacts) NOT rate-limited.
-- **D-70:** Rate-limit `whatsapp_send`: `KEBAB_UNIPILE_WHATSAPP_DAILY_SEND_CAP=200` default. Extend `UnipileRateLimitedTool` union.
-- **D-71:** `whatsapp_send_message` recipient resolution: accepts `to` as (a) E.164 phone (e.g. `+33660036335`) → resolve to attendee_id by appending `@s.whatsapp.net` per research finding #5 (no SDK round-trip), (b) existing `chat_id` (skip resolution). Contact name resolution deferred to phase 71.
-- **D-72:** Attachments: same `{filename, mimetype, base64}` shape as LinkedIn (D-46 from phase 69), max 15MB.
-- **D-73:** `whatsapp_list_chats` default limit 20, max 100. Sort by `last_message_at DESC`.
-- **D-74:** `whatsapp_get_conversation` default limit 50, max 200. Pagination via Unipile cursor.
-- **D-75:** `whatsapp_list_contacts` returns `{contact_id, name, phone_e164, has_chat}`. `query?` substring filter client-side.
-- **D-76:** WhatsApp tool result envelope mirrors LinkedIn: `{provider_ok, verified, dedup_hit, audit_id, message_id?, error?}`. For reads: data array + cursor.
+### WhatsApp Tools (UNI-16..19) — DROPPED 2026-05-18
+- All 4 WhatsApp tools (UNI-16, UNI-17, UNI-18, UNI-19) are **deferred to post-milestone backlog**. Reason: core need is LinkedIn connect + DM (covered by phase 68/69). WhatsApp not demanded immediately. Phase 70 scope reduces to webhook ingress + halt-flag retrofit only.
+- D-69 through D-76 (previously defining WhatsApp tools) are RESCINDED.
+- Manifest tool count stays at 6 (no toolCount bump in phase 70).
+- The WhatsApp account already connected to Unipile (`2qQuXs25TsimaAE62T2xSw`) remains visible via `linkedin_engage`/audit but no MCP tools target it.
 
 ### Body parsing quirk
 - **D-77:** Webhook body MAY arrive with `Content-Type: application/x-www-form-urlencoded` despite JSON content (Unipile axios bug, research finding #7). Body parser MUST attempt JSON parse regardless of content-type header.

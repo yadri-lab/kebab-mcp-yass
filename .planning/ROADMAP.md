@@ -11,30 +11,31 @@
 |---|-------|------|--------------|--------|
 | 68 | Unipile foundation | Client + manifest + first write E2E (send_connection + get_relationship_status) + CRM outbox + audit log | UNI-01..06 | 2.5d |
 | 69 | LinkedIn writes | send_message (1st-degree), send_inmail (explicit), engage (super-tool + dry_run), list_pending, rate-limiter | UNI-07..11 | 2d |
-| 70 | Webhooks + WhatsApp V1 | Dedicated `/api/unipile/webhook` + 3 event handlers + 4 WhatsApp tools | UNI-12..19 | 3d |
+| 70 | Webhooks ingress (scope corrected 2026-05-18 — WhatsApp DROPPED to backlog) | Dedicated `/api/unipile/webhook` + 3 event handlers + halt-flag retrofit on 4 LinkedIn write tools | UNI-12..15 | 1.5d |
 | 71 | Hardening | Kill switches, metrics, audit query API, docs, multi-tenant verification | UNI-20..24 | 1.5d |
 
 ## Active Phase
 
-### Phase 70: Webhooks Ingress + WhatsApp V1
+### Phase 70: Webhooks Ingress (SCOPE CORRECTED 2026-05-18 — WhatsApp DROPPED)
 
-**Goal:** Build the inbound webhook ingress + WhatsApp tool suite. Ship `/api/unipile/webhook` (dedicated route, dual-mode HMAC + static verifier, 24h idempotency, fire-and-forget dispatch) + 3 INGRESS event handlers that mutate INTERNAL connector state ONLY (`account_status` sets/clears halt flag in KV; `new_relation` enriches audit row with `accepted_at`; `new_message` enriches audit row with `last_replied_at` while SKIPPING `is_sender:true` echoes and persisting ONLY SHA-256 content_hash). Ship 4 WhatsApp tools (`whatsapp_send_message`, `whatsapp_list_chats`, `whatsapp_get_conversation`, `whatsapp_list_contacts`). Retrofit 4 LinkedIn write tools with a NEW Step 0 halt-flag pre-flight gate (D-65/D-66 — BEFORE D-49 dedup-first). Extract `lib/halt.ts` shared helper. Bump manifest toolCount 6 → 10; bump docs 97 → 101 tools.
+**Goal:** Build the inbound webhook ingress + halt-flag retrofit. Ship `/api/unipile/webhook` (dedicated route, dual-mode HMAC + static verifier, 24h idempotency, fire-and-forget dispatch) + 3 INGRESS event handlers that mutate INTERNAL connector state ONLY (`account_status` sets/clears halt flag in KV; `new_relation` enriches audit row with `accepted_at`; `new_message` enriches audit row with `last_replied_at` while SKIPPING `is_sender:true` echoes and persisting ONLY SHA-256 content_hash). Retrofit the 4 already-shipped LinkedIn write tools with a NEW Step 0 halt-flag pre-flight gate (D-65/D-66 — BEFORE D-49 dedup-first).
+
+**SCOPE CORRECTION 2026-05-18:** WhatsApp tool suite (UNI-16..19) dropped from phase 70. Reason: core need is LinkedIn connect + DM (covered by phase 68/69). WhatsApp not immediately demanded — deferred to post-milestone backlog. Manifest stays at 6 tools (no toolCount bump). No new WhatsApp source files. Docs/README unchanged (still 97 tools). No `lib/halt.ts` wrapper — the already-shipped `src/connectors/unipile/webhook/halt-flag.ts` is the single source of truth used directly by the retrofit.
 
 **SCOPE NOTE:** The connector is a STATELESS MCP TRANSPORT. It does NOT push events to external systems. NO `TwentyAdapter`, NO `UNIPILE_CRM_WEBHOOK_URL` outbound POST, NO `unipile-crm-retry` cron. The future audit query tool (UNI-22, phase 71) is how callers pull state mutations out — caller polls audit, decides what to call next on Twenty/HubSpot/etc.
 
-**Requirements:** UNI-12, UNI-13, UNI-14, UNI-15, UNI-16, UNI-17, UNI-18, UNI-19
+**Requirements:** UNI-12, UNI-13, UNI-14, UNI-15
 
 **Depends on:** Phase 69 (LinkedIn writes — retrofit targets) + Phase 68 (audit/dedup/CRM-bridge-skeleton/identifiers)
 
-**Plans:** 4 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] 70-01-PLAN.md — Wave 1: Webhook foundation — `app/api/unipile/webhook/route.ts` (dual-mode HMAC + static verifier per D-52, 24h KV idempotency per D-54, fire-and-forget dispatch per D-55, 503 on missing secret) + `src/connectors/unipile/webhook/{verifier,dispatcher,halt-flag,account-tenant-index}.ts` + `scripts/setup-unipile-webhooks.ts` (idempotent bootstrap; uses SDK escape hatch for `users` source per D-68) + 2 NEW kv-allowlist entries (webhook route + account-tenant reverse index) (UNI-12)
+- [x] 70-01-PLAN.md — Wave 1: Webhook foundation — `app/api/unipile/webhook/route.ts` (dual-mode HMAC + static verifier per D-52, 24h KV idempotency per D-54, fire-and-forget dispatch per D-55, 503 on missing secret) + `src/connectors/unipile/webhook/{verifier,dispatcher,halt-flag,account-tenant-index}.ts` + `scripts/setup-unipile-webhooks.ts` (idempotent bootstrap; uses SDK escape hatch for `users` source per D-68) + 2 NEW kv-allowlist entries (webhook route + account-tenant reverse index) (UNI-12)
 - [ ] 70-02-PLAN.md — Wave 2: 3 INGRESS handlers (depends on 70-01) — `webhook/handlers/{account-status,new-relation,new-message}.ts` (write halt flag on credentials_expired/restricted/disconnected per D-57, CLEAR on OK/RECONNECTED per D-58; enrich audit row with accepted_at per D-61 with inbound_accept_unknown_origin fallback; enrich audit row with last_replied_at per D-63 + SHA-256 hash-only persistence per D-64) + `lib/audit.ts` (+3 AuditResult members per D-78) + `handlers/index.ts` side-effect barrel (UNI-13, UNI-14, UNI-15)
-- [ ] 70-03-PLAN.md — Wave 2: 4 WhatsApp tools (depends on 70-01) — `tools/whatsapp-{send-message,list-chats,get-conversation,list-contacts}.ts` (8-step handler for send including Step 0 halt-check per D-65; E.164 → `<phone>@s.whatsapp.net` server-side concat per D-71; per-account daily cap 200 default per D-70) + `lib/rate-limiter.ts` (extend UnipileRateLimitedTool union with `whatsapp_send`) + `lib/account.ts` (extend resolveAccountId with optional type filter LINKEDIN | WHATSAPP, backwards-compat default) (UNI-16, UNI-17, UNI-18, UNI-19)
-- [ ] 70-04-PLAN.md — Wave 3: Halt-check retrofit + manifest wiring (depends on 70-01, 70-02, 70-03) — Extract `lib/halt.ts` shared helper (haltCheck → writes 1 audit row + returns envelope_fields on halt) + Retrofit 4 LinkedIn write tools (send_connection, send_message, send_inmail, engage) with Step 0 BEFORE D-49 dedup-first per D-66 + Switch WhatsApp send to lib/halt.ts (single source of truth) + Wire 4 WhatsApp tools into `manifest.ts` (toolCount 6 → 10) + Bump `registry.ts` toolCount + Update `content/docs/connectors.md` + `README.md` (97 → 101 tools at 4 sites) + Regenerate `scripts/contract-snapshot.json` (UNI-13 retrofit)
+- [ ] 70-03-PLAN.md — Wave 3: Halt-check retrofit on 4 LinkedIn write tools (depends on 70-01, 70-02) — Insert Step 0 `await readHaltFlag(accountId)` at the TOP of `linkedin-send-connection.ts`, `linkedin-send-message.ts`, `linkedin-send-inmail.ts`, `linkedin-engage.ts` (BEFORE existing dedup / SDK / rate-limit / balance per D-65/D-66). Halted accounts return `error_account_halted` envelope + single audit row, NO further calls. +1 test per tool (4 new tests total) asserting halt short-circuit. NO manifest/registry/docs change. NO new `lib/halt.ts` — uses the already-shipped `webhook/halt-flag.ts` directly. NO WhatsApp anywhere. (UNI-13 closure)
 
-**Wave structure:** Wave 1 single (01 unblocks Wave 2). Wave 2 parallel (02 + 03 — both depend only on 01; 02 = handlers, 03 = WhatsApp tools, no overlap in files_modified). Wave 3 single (04 — depends on 01 + 02 + 03; retrofits LinkedIn + wires WhatsApp into manifest).
+**Wave structure:** Wave 1 single (01 unblocks Wave 2 — SHIPPED). Wave 2 single (02 — handlers consume halt-flag write side). Wave 3 single (03 — retrofits 4 LinkedIn write tools to consume halt-flag read side; depends on 01 for the helper + 02 for the AuditResult enum member).
 
 ---
 
