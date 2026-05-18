@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector (LinkedIn + WhatsApp write)
-status: Phase 70 mid-execution — Plan 70-01 SHIPPED (3 commits), scope corrected post user feedback (WhatsApp DROPPED, Twenty CRM never built). Plans 70-02 + 70-03 ready to execute. Waiting for user GO.
-stopped_at: Phase 70 paused for scope cleanup after user identified scope creep (TwentyAdapter/cron) in initial draft. Cleanup committed; ready to resume Plan 70-02 when user approves.
-last_updated: "2026-05-18T22:50:00Z"
-last_activity: 2026-05-18
+milestone_name: — Unipile Connector
+status: verifying
+stopped_at: Completed 70-02-PLAN.md
+last_updated: "2026-05-18T22:29:46.457Z"
+last_activity: 2026-05-19
 progress:
-  total_phases: 4
+  total_phases: 3
   completed_phases: 2
   total_plans: 15
-  completed_plans: 13
-  percent: 50
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State
@@ -20,18 +20,63 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-16)
 
-**Current focus:** Phase 69 — LinkedIn Writes Completion
-**Next:** Plan 04 (Wave 2) — `tools/linkedin-send-inmail.ts` — 13-step handler with balance bracketing (D-48 escape hatch via client.request.send), allow_inmail literal(true) gate (D-26), max_inmail_credits cap (D-27), premium gate via inmail_balance all-null check (D-29), startNewChat with options.linkedin.inmail=true (D-50), credits_used/credits_remaining derived from balance-before vs balance-after (D-28 fallback to null on post-send fetch failure) + 10+ tests (UNI-08). Wave 2 was planned for parallel execution; sequential mode executed 03 first.
+**Current focus:** Phase 70 — Webhooks Ingress + Halt-Flag Retrofit (CODE-COMPLETE — 3/3 plans shipped; awaiting phase-verifier pass)
+**Next:** Phase 71 — Hardening (kill switches, metrics, audit query API/tool UNI-22, multi-tenant verification, docs). 1 phase remaining in v0.17 milestone.
 
 ## Current Position
 
-Phase: 69 — LinkedIn Writes Completion — EXECUTING
-Plan: 5 of 6 complete (Wave 2 plan 03 shipped — linkedin_send_message tool + 13 tests; UNI-07 closed)
-Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 shipped + live-validated 2026-05-18.
-Status: Ready to execute
-Last activity: 2026-05-18
+Phase: 70 — Webhooks Ingress — CODE-COMPLETE (3/3 plans shipped; UNI-12 + UNI-13 + UNI-14 + UNI-15 all closed)
+Plan: 3 of 3 complete (Wave 3 plan 70-03 shipped — halt-check Step 0 retrofit on all 4 LinkedIn write tools; UNI-13 closed end-to-end)
+Previous milestones: v0.10 → v0.16 all complete. v0.17 phase 68 + 69 shipped; phase 70 code-complete 2026-05-19.
+Status: Phase complete — ready for verification
+Last activity: 2026-05-19
 
 ## Session Continuity
+
+Phase 70 Plan 70-03 completed 2026-05-19 (~20 min) — final plan of phase 70 shipped; all 4 LinkedIn write tools now honor the halt flag (UNI-13 closed end-to-end).
+
+  - 1 atomic commit on main (single TDD task — source + tests bundled per plan structure; pre-commit hooks green: lint-staged + prettier + eslint + contract-test + doc-counts + typecheck).
+    Task-level commit list:
+    · 377da01 feat(70-03): retrofit Step 0 halt-check on 4 LinkedIn write tools (UNI-13 closure)
+
+  - **What landed (Phase 70 Plan 70-03):**
+    · MODIFIED src/connectors/unipile/tools/linkedin-send-connection.ts (399 → 441 LOC) — reordered to Step 0a account-resolve → Step 0b halt-check (NEW) → Step 1 dedup. +`readHaltFlag` import, +`reason`/`halted_at` optional fields on `SendEnvelope`.
+    · MODIFIED src/connectors/unipile/tools/linkedin-send-message.ts (551 → 595 LOC) — same reorder pattern. Halt envelope omits `recipient_degree`.
+    · MODIFIED src/connectors/unipile/tools/linkedin-send-inmail.ts (669 → 718 LOC) — `allow_inmail`-gate stays first, then account-resolve → halt-check → dedup. Halt envelope sets `credits_used: null, credits_remaining: null` (costly escape-hatch GET skipped).
+    · MODIFIED src/connectors/unipile/tools/linkedin-engage.ts (420 → 464 LOC) — halt-check inserted between Step 0 account-resolve and dry-run gate. Engage owns its own halt-check to save the getProfile() degree-resolution API hit before delegation.
+    · MODIFIED 4 corresponding test files — +haltFlagMock plumbing, +5 new test cases total (4 halt-check tests + 1 extra engage halt-check-before-dryrun).
+
+  - **3 Rule 1 auto-fixes during execution:**
+    · Updated 2 existing dedup tests (send-message, send-inmail) — old `accountGetAllMock.not.toHaveBeenCalled()` assertion contradicted the new D-66 ordering (account-resolve runs BEFORE dedup so halt-check has an accountId). Kept the meaningful "no provider cost" guarantees.
+    · Updated send-connection dedup test — same root cause + added default `accountGetAllMock.mockResolvedValue` in resetMocks so existing tests don't refuse with error_no_linkedin_account before reaching dedup.
+    · Loosened destructured-parameter types in halt-check audit-row inspection helpers (`(call: unknown[]) => call[0]/call[1]`) — needed because kvMock uses untyped `vi.fn()` in send-connection/engage tests vs typed mocks in send-message/inmail tests.
+
+  - **Phase 70 backlog cleared:**
+    · UNI-12 (webhook route + dispatcher + halt-flag KV helpers) — CLOSED in Plan 70-01.
+    · UNI-13 (account_status halt write + 4-tool halt read retrofit) — CLOSED end-to-end across Plans 70-02 + 70-03.
+    · UNI-14 (new_relation accepted_at enrichment + inbound_accept_unknown_origin fallback) — CLOSED in Plan 70-02.
+    · UNI-15 (message_received last_replied_at enrichment + D-63 echo skip + D-64 hash-only persistence) — CLOSED in Plan 70-02.
+
+  - **Verification:**
+    · 23 unipile test files, **328 tests passing** (was 323; +5 new in this plan).
+    · Static grep positive guards: `readHaltFlag(` = 4 (one per tool), `error_account_halted` = 12 in source + 18 in tests.
+    · Static grep negative guards: NO new whatsapp_* / TwentyAdapter / notifyEvent / lib/halt.ts / toolCount: 10 / 97→101 doc-count change.
+    · Manifest stays at 6 tools, registry stays at 6, docs stay at 97. No new files created.
+
+---
+
+## Previous Session: Phase 70 Plan 70-02
+
+Phase 70 Plan 70-02 completed 2026-05-19 (~21 min) — 3 INGRESS webhook handlers + barrel registration + AuditResult enum extension (D-78); foundation for the halt-check retrofit that landed in this plan.
+
+  - 2 atomic commits: 2ee4723 (audit.ts + account_status handler), e9df4f7 (new_relation + message_received + barrel).
+  - 37 new tests across 4 test files (8 account-status + 6 new-relation + 10 new-message + 1 barrel + 12 audit).
+  - 3 Rule 1/3 auto-fixes (runWithTenant helper added, exactOptionalPropertyTypes fix, partial-mock pattern for @/core/request-context).
+  - UNI-13/14/15 all CLOSED at the ingress layer.
+
+---
+
+## Previous Session: Phase 69 Plan 03
 
 Phase 69 Plan 03 completed 2026-05-18 (~7.5 min) — Wave 2 first tool shipped; `linkedin_send_message` ready to wire (manifest in Wave 3 Plan 06).
 
@@ -1222,6 +1267,8 @@ Exit condition for operator attention:
 - D-38..D-41 implementation — checkUnipileRateLimit, fail-CLOSED default, env-overridable caps, ISO weekly bucket helper. Module standalone; Wave 2/3 will integrate.
 - Plan 04 (UNI-08): linkedin_send_inmail shipped with D-48 balance bracketing via client.request.send escape hatch + D-29 all-null premium gate + D-26 z.literal(true) allow_inmail safety belt + D-50 startNewChat options.linkedin.inmail=true; verified=providerOk (no 10s message-poll for InMail, planner-discretion per PATTERNS L415, revisit phase 71 if silent-failure operator reports surface)
 - Phase 69 Plan 05 (UNI-10): linkedin_list_pending shipped — read-only cursor-paginated invitations list with client-side age_days computation + older_than_days filter (D-35), MAX_PAGES=10 safety cap (D-36), D-37 read-only invariant negative-tested
+- Plan 70-02: AuditResult enum extended by EXACTLY 3 members (D-78) — error_account_halted, inbound_accept_unknown_origin, inbound_message_unknown_origin — pinned by static grep guard
+- Plan 70-02: runWithTenant added to src/core/request-context.ts (Rule 3 — plan referenced it but only requestContext.run existed) — canonical tenant-scope entry point for webhook handlers that lack ambient tenant context
 
 ### Phase 38 (unchanged)
 
@@ -1454,5 +1501,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 69-05-PLAN.md (linkedin_list_pending) — UNI-10 closed
+Stopped at: Completed 70-02-PLAN.md
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
