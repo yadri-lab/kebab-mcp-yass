@@ -14,13 +14,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // ----- mock setup (must be hoisted; closes over vi.hoisted spies) -----
+// BLOCKER-2 (phase 69 plan 06): the complete merged vi.hoisted block is
+// shown here — vi.mock hoisting order is load-bearing, so the
+// rate-limiter mock MUST be declared in the same hoist tier as all
+// existing phase-68 mocks AND appear BEFORE the import of
+// `handleLinkedinSendConnection` below. Reordering this risks wiring the
+// real rate-limiter into a test run, which would silently break the
+// dedup-first ordering assertion in the D-49 test.
 const {
+  // === EXISTING phase-68 mocks (preserve verbatim) ===
   sendInvitationMock,
   getProfileMock,
   getAllInvitationsSentMock,
   accountGetAllMock,
   kvMock,
   FakeUnsuccessful,
+  // === NEW phase-69 retrofit mock ===
+  rateLimitMock,
 } = vi.hoisted(() => {
   const sendInvitationMock = vi.fn();
   const getProfileMock = vi.fn();
@@ -41,6 +51,9 @@ const {
     }
   }
 
+  // NEW (phase 69 plan 06 retrofit) — checkUnipileRateLimit mock.
+  const rateLimitMock = vi.fn();
+
   return {
     sendInvitationMock,
     getProfileMock,
@@ -48,6 +61,7 @@ const {
     accountGetAllMock,
     kvMock,
     FakeUnsuccessful,
+    rateLimitMock,
   };
 });
 
@@ -76,6 +90,13 @@ vi.mock("unipile-node-sdk", () => ({
   UnsuccessfulRequestError: FakeUnsuccessful,
 }));
 
+// NEW (BLOCKER-2 phase 69 plan 06): rate-limiter mock — MUST appear BEFORE
+// the `import { handleLinkedinSendConnection }` below so the import wires
+// the mock instead of the real rate-limiter.
+vi.mock("../../lib/rate-limiter", () => ({
+  checkUnipileRateLimit: rateLimitMock,
+}));
+
 import { handleLinkedinSendConnection } from "../linkedin-send-connection";
 
 interface ParsedEnvelope {
@@ -87,6 +108,13 @@ interface ParsedEnvelope {
   invitation_id?: string;
   error?: string;
   available_accounts?: string[];
+  // Phase 69 / Plan 06 retrofit (D-43) — rate-limit envelope fields
+  blocked_by_rate_limit?: boolean;
+  daily_used?: number;
+  daily_limit?: number;
+  weekly_used?: number;
+  weekly_limit?: number;
+  retry_after?: string;
 }
 
 function parseEnvelope(result: { content: Array<{ text: string }> }): ParsedEnvelope {
@@ -103,6 +131,13 @@ function resetMocks() {
   kvMock.delete.mockReset();
   kvMock.get.mockResolvedValue(null);
   kvMock.set.mockResolvedValue(undefined);
+  // INFO-8 guard: confirm the mock factory wired correctly.
+  expect(typeof rateLimitMock).toBe("function");
+  // Phase 69 retrofit default: rate-limit ALLOWS (existing phase-68 happy-path
+  // tests continue to work — they were authored before rate-limit existed and
+  // expect the flow to proceed all the way through to sendInvitation).
+  rateLimitMock.mockReset();
+  rateLimitMock.mockResolvedValue({ blocked: false, daily_used: 1, daily_limit: 25 });
 }
 
 describe("linkedin_send_connection — happy path (Antoine Vercken re-validation)", () => {
@@ -380,6 +415,129 @@ describe("envelope contract (D-14)", () => {
       await vi.advanceTimersByTimeAsync(15_000);
       const env = parseEnvelope(await p);
       expect(typeof env.verified).toBe("boolean");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 69 / Plan 06 retrofit — per-account / per-tool rate-limit (D-43 + D-49)
+// ──────────────────────────────────────────────────────────────────────────
+describe("Phase 69 retrofit — rate-limit (D-43 + D-49)", () => {
+  beforeEach(() => {
+    resetMocks();
+    accountGetAllMock.mockResolvedValue({ items: [{ id: "acct1", type: "LINKEDIN" }] });
+    getProfileMock.mockResolvedValue({ provider_id: "urn:x" });
+  });
+
+  it("D-43: rate-limit block returns error_rate_limit_kebab envelope + writes audit row + does NOT call sendInvitation", async () => {
+    rateLimitMock.mockResolvedValueOnce({
+      blocked: true,
+      daily_used: 25,
+      daily_limit: 25,
+      weekly_used: 50,
+      weekly_limit: 100,
+      reason: "daily_cap",
+      retry_after: "2026-05-19T00:00:00.000Z",
+    });
+
+    const env = parseEnvelope(
+      await handleLinkedinSendConnection({
+        profile_url: "https://linkedin.com/in/x",
+        actor_user_id: "yass",
+        note: "Hi",
+      })
+    );
+
+    expect(env.error).toBe("error_rate_limit_kebab");
+    expect(env.blocked_by_rate_limit).toBe(true);
+    expect(env.daily_used).toBe(25);
+    expect(env.daily_limit).toBe(25);
+    expect(env.weekly_used).toBe(50);
+    expect(env.weekly_limit).toBe(100);
+    expect(env.retry_after).toBe("2026-05-19T00:00:00.000Z");
+    expect(env.verified).toBe(false);
+    expect(env.provider_ok).toBe(false);
+    expect(env.crm_sync).toBe("pending");
+    expect(env.dedup_hit).toBe(false);
+    // SDK never called — rate-limit fired BEFORE the send.
+    expect(sendInvitationMock).not.toHaveBeenCalled();
+
+    // Audit row written with result: error_rate_limit_kebab
+    const sets = kvMock.set.mock.calls;
+    const auditRow = sets.find(([, value]) => {
+      if (typeof value !== "string") return false;
+      try {
+        const row = JSON.parse(value) as { result?: string };
+        return row.result === "error_rate_limit_kebab";
+      } catch {
+        return false;
+      }
+    });
+    expect(auditRow).toBeDefined();
+  });
+
+  it("D-49: dedup hit short-circuits BEFORE the rate-limiter is touched (dedup-first ordering)", async () => {
+    // Stage a dedup hit on the hash pointer key.
+    kvMock.get.mockImplementation((key: string) => {
+      if (key.startsWith("unipile:audit:hash:")) {
+        return Promise.resolve(
+          JSON.stringify({
+            audit_id: "prior-uuid",
+            actor_user_id: "yass",
+            tool: "linkedin_send_connection",
+            account_id: "acct1",
+            params_hash: "hashval",
+            result: "success",
+            verified: true,
+            dedup_hit: false,
+            timestamp: "2026-05-01T00:00:00Z",
+          })
+        );
+      }
+      return Promise.resolve(null);
+    });
+
+    const env = parseEnvelope(
+      await handleLinkedinSendConnection({
+        profile_url: "https://linkedin.com/in/x",
+        actor_user_id: "yass",
+        note: "Hi",
+      })
+    );
+
+    expect(env.dedup_hit).toBe(true);
+    // KEY ASSERTION — D-49 dedup-FIRST: rate-limiter is never called when
+    // dedup short-circuits the handler. This protects retried operator clicks
+    // from burning quota.
+    expect(rateLimitMock).not.toHaveBeenCalled();
+    // SDK also untouched.
+    expect(sendInvitationMock).not.toHaveBeenCalled();
+  });
+
+  it("rate-limit happy path (blocked: false) does NOT add rate-limit envelope fields", async () => {
+    // Default rateLimitMock from beforeEach is { blocked: false }, so the happy
+    // path should send through cleanly.
+    sendInvitationMock.mockResolvedValue({ invitation_id: "inv-1" });
+    getAllInvitationsSentMock.mockResolvedValue({ items: [{ invited_user_id: "urn:x" }] });
+    vi.useFakeTimers();
+    try {
+      const p = handleLinkedinSendConnection({
+        profile_url: "https://linkedin.com/in/x",
+        actor_user_id: "yass",
+      });
+      await vi.advanceTimersByTimeAsync(15_000);
+      const env = parseEnvelope(await p);
+      expect(env.provider_ok).toBe(true);
+      expect(env.blocked_by_rate_limit).toBeUndefined();
+      expect(env.daily_used).toBeUndefined();
+      expect(env.error).toBeUndefined();
+      // Rate-limiter WAS called (happy path).
+      expect(rateLimitMock).toHaveBeenCalledWith({
+        account_id: "acct1",
+        tool: "send_connection",
+      });
     } finally {
       vi.useRealTimers();
     }

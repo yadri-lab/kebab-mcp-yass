@@ -53,6 +53,10 @@ import {
 } from "../lib/audit";
 import { crmBridge } from "../lib/crm-bridge";
 import { classifyUnipileError } from "../lib/errors";
+import { checkUnipileRateLimit } from "../lib/rate-limiter";
+import { getLogger } from "@/core/logging";
+
+const log = getLogger("CONNECTOR:unipile");
 
 export const linkedinSendConnectionSchema = {
   profile_url: z
@@ -102,6 +106,16 @@ interface SendEnvelope {
   invitation_id?: string;
   error?: string;
   available_accounts?: string[]; // populated on error_account_id_required (D-20)
+  // === Phase 69 / Plan 06 retrofit (D-43) — rate-limit envelope fields ===
+  // Only populated when the kebab-side per-account rate-limiter blocks (distinct
+  // from Unipile-side 429 which still routes to error_rate_limit). See D-49 for
+  // handler ordering (dedup FIRST, rate-limit AFTER account-resolve).
+  blocked_by_rate_limit?: boolean;
+  daily_used?: number;
+  daily_limit?: number;
+  weekly_used?: number;
+  weekly_limit?: number;
+  retry_after?: string;
 }
 
 function envelope(e: SendEnvelope): ToolResult {
@@ -237,6 +251,56 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
     return envelope(env);
   }
   const accountId = acct.accountId;
+
+  // 2b. Phase 69 retrofit (D-43 + D-49) — per-account / per-tool rate-limit.
+  //
+  // Ordering: dedup FIRST (already ran above at step 1), account-resolve SECOND,
+  // rate-limit HERE (step 2b). RESEARCH §4.6 + WARNING-6: send_connection has
+  // NO attachment pre-flight and NO degree gate, so rate-limit fires immediately
+  // after account-resolve — there is no pre-flight refusal that needs to come
+  // first.
+  const rl = await checkUnipileRateLimit({ account_id: accountId, tool: "send_connection" });
+  if (rl.blocked) {
+    // WARNING-5: capture cap-context in observability (audit schema has no
+    // metadata column — log.warn is the only surface that carries weekly
+    // counters + retry_after for operator dashboards).
+    log.warn("[CONNECTOR:unipile] Rate-limit blocked send_connection", {
+      account_id: accountId,
+      tool: "send_connection",
+      daily_used: rl.daily_used,
+      daily_limit: rl.daily_limit,
+      weekly_used: rl.weekly_used,
+      weekly_limit: rl.weekly_limit,
+      retry_after: rl.retry_after,
+      reason: rl.reason,
+    });
+    await writeAuditRow({
+      audit_id: auditId,
+      actor_user_id: args.actor_user_id,
+      tool: "linkedin_send_connection",
+      account_id: accountId,
+      params_hash: paramsHash,
+      result: "error_rate_limit_kebab",
+      verified: false,
+      dedup_hit: false,
+      timestamp: new Date().toISOString(),
+    });
+    const env: SendEnvelope = {
+      provider_ok: false,
+      verified: false,
+      crm_sync: "pending",
+      dedup_hit: false,
+      audit_id: auditId,
+      error: "error_rate_limit_kebab",
+      blocked_by_rate_limit: true,
+      daily_used: rl.daily_used,
+      daily_limit: rl.daily_limit,
+    };
+    if (rl.weekly_used !== undefined) env.weekly_used = rl.weekly_used;
+    if (rl.weekly_limit !== undefined) env.weekly_limit = rl.weekly_limit;
+    if (rl.retry_after) env.retry_after = rl.retry_after;
+    return envelope(env);
+  }
 
   // 3. Resolve provider_id (KV cache + SDK fallback). On 429 / error: surface.
   let providerId: string;
