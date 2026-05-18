@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.17
 milestone_name: — Unipile Connector
 status: executing
-stopped_at: Completed 68-05-PLAN.md
-last_updated: "2026-05-18T16:04:36.008Z"
+stopped_at: Completed 68-06-PLAN.md (phase 68 code-complete — awaiting live Antoine Vercken re-validation)
+last_updated: "2026-05-18T16:27:58.693Z"
 last_activity: 2026-05-18
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -26,12 +26,104 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 ## Current Position
 
 Phase: 68 — Unipile Foundation — EXECUTING
-Plan: 5 of 6 complete (Wave 2 fully shipped — SDK primitives + URL→URN resolver + admin eviction + audit log + dedup + CRM bridge skeleton)
+Plan: 6 of 6 complete (Wave 2 fully shipped — SDK primitives + URL→URN resolver + admin eviction + audit log + dedup + CRM bridge skeleton)
 Previous milestones: v0.10 → v0.16 all complete. v0.16 phases 64-66 shipped 2026-04-28; phase 67 (ARCH-A refactor large files) deferred to v0.18.
-Status: Executing Phase 68 — Plan 06 next (Wave 3, linkedin tools)
-Last activity: 2026-05-18T16:02Z — Phase 68 Plan 05 complete (1/1 task, 1 atomic commit 7eeac00, SUMMARY written, 10 crm-bridge tests green; full unipile suite 88/88)
+Status: Ready to execute
+Last activity: 2026-05-18
 
 ## Session Continuity
+
+Phase 68 Plan 06 completed 2026-05-18 (~11 min) — phase 68 code-complete; awaiting live Antoine Vercken re-validation by operator.
+
+  - 3 atomic commits on main (pre-commit hooks green: lint-staged + contract test + doc-counts + typecheck each time).
+    Task-level commit list:
+    · 03c1def feat(68-06): linkedin_send_connection — verify-after-write + D-14 envelope (Antoine Vercken re-validation)
+    · 01ccf0c feat(68-06): linkedin_get_relationship_status — D-21 envelope {degree, connection_status}
+    · a9cd234 feat(68-06): wire 2 unipile tools into manifest + bump registry toolCount + doc-counts
+
+  - **What landed:**
+    · src/connectors/unipile/tools/linkedin-send-connection.ts — 8-step
+      handler implementing the locked D-13/D-14/D-15/D-20 contract.
+      Dedup → resolve account_id (D-20: 0/1/many rules) → resolveProviderId
+      (Plan 03 cache) → crmBridge.writeOutbox (Plan 05 skeleton) →
+      withRetry(sendInvitation) → pollForRelation([2000, 5000, 10000])
+      → writeAuditRow → envelope. crm_sync always 'pending' literal;
+      verified strictly boolean; timeout returns error: unverified_timeout.
+    · src/connectors/unipile/tools/linkedin-get-relationship-status.ts —
+      read-only D-21 envelope {degree, connection_status}. Maps
+      FIRST/SECOND/THIRD_DEGREE → 1/2/3; OUT_OF_NETWORK + missing → null
+      (Pitfall 3: NEVER 3 for missing). NO last_message_at, NO has_replied
+      (deferred to phase 69). resolveProviderId called for cache warming.
+    · src/connectors/unipile/tools/__tests__/* — 20 tests total (11 send +
+      9 get) including the canonical Antoine Vercken happy path
+      (~17s verify with mocked SDK + fake timers) AND the timeout path
+      (verified: false + error: unverified_timeout). 429/403/dedup/0-1-many
+      account scenarios all covered.
+    · src/connectors/unipile/manifest.ts — replaced stub `tools: []` with
+      lazy `get tools()` returning defineTool-wrapped 2-tool surface
+      (send=destructive, get=read).
+    · src/connectors/unipile/manifest.test.ts — replaced "zero tools" spec
+      with 3 new ones (2-tool surface + destructive flags).
+    · src/core/registry.ts — unipile toolCount 0 → 2; comment updated to
+      reflect Wave 3 wiring.
+    · content/docs/connectors.md — new Unipile section between Apify and
+      Browser, mentioning both tool names + verify-after-write semantics +
+      90-day dedup window.
+    · README.md — bumped 86+ → 93+ (hero, diagram, feature bullet, What it
+      is); 13 → 14 integrations; 86 → 93 production-ready tools; +Unipile
+      mention in prose list.
+    · scripts/contract-snapshot.json — regenerated (deleted + re-baseline,
+      the script's documented intentional-add workflow).
+
+  - **One Rule 1 auto-fix during execution** (folded into commit 01ccf0c):
+    · Initial draft of linkedin-get-relationship-status.ts had a JSDoc
+      bullet listing the excluded fields literally as "* - last_message_at"
+      and "* - has_replied". Plan acceptance criterion grep -iE
+      "(last_message_at|has_replied)" required ZERO matches. Reworded the
+      JSDoc to prose ("messaging-derived signals (when last contacted,
+      whether the contact replied) are intentionally excluded"). Same
+      operator intent, gate-passing form.
+
+  - **TDD-vs-husky tension** (continues from Plans 04/05):
+    · Plans 1+2 declared tdd="true". Husky pre-commit blocks RED-only
+      commits (imports a not-yet-existent module). Resolution: test files
+      authored after implementations in the same edit batch; RED confirmed
+      by review; both committed together as a feat commit. SUMMARY.md
+      flags this for git-log readers.
+
+  - **Decisions added to project context:**
+    · 2 tools wired into manifest in SAME commit that bumps registry
+      toolCount 0→2 — registry-metadata-consistency contract forbids the
+      partial state.
+    · D-20 account_id resolver kept as LOCAL helper inside each tool, NOT
+      extracted to shared lib. Send writes audit row on failure; read
+      returns degraded envelope — extracting would parameterize error path
+      and leak complexity.
+    · Dedup-hit path STILL writes fresh audit row (with dedup_hit:true and
+      new audit_id, mirroring prior result/verified) — T-68-06-04
+      mitigation. Operator must see EACH repeat attempt.
+    · README counts updated to actual reality (93 tools, 14 user-facing
+      integrations) rather than keeping soft `86+` claim. The +
+      forward-compat was passing the gate but understating reality by 7.
+
+  - **Phase 68 verification status:**
+    · ALL CODE GATES GREEN: typecheck (0 errors), lint (0 errors, 3
+      pre-existing warnings unrelated), test:contract (PASS w/ +2 tool
+      baseline), test:doc-counts (93/17), build (succeeded), full unipile
+      suite (110/110). docs/CONNECTORS.md untouched per PATTERNS.md.
+    · MANUAL LIVE VALIDATION PENDING: operator must run the Antoine Vercken
+      re-test with real UNIPILE_DSN + UNIPILE_TOKEN to confirm:
+      1. verified: true achievable within 17s budget against production
+         Unipile (Assumption A3 reality check).
+      2. Dedup blocks the second identical call.
+      3. 1-char note change bypasses dedup as designed.
+    · Phase 68 status: code-complete, awaiting live signal.
+
+  - **No blockers.** Follow-ups for phase 69 (messaging tools — restore
+    last_message_at + has_replied on the read envelope; per-account daily
+    rate limiter UNI-11), phase 70 (real TwentyAdapter — HTTP + HMAC +
+    retry cron per D-02/D-03/D-04), phase 71 (multi-tenant Unipile token
+    scoping if needed per T-68-06-06).
 
 Phase 68 Plan 05 completed 2026-05-18 (~3.5 min).
 
@@ -999,6 +1091,9 @@ Exit condition for operator attention:
 - CRM bridge ships as interface (CrmAdapter) + phase-68-only skeleton (TwentyAdapterSkeleton). Phase 70 swaps implementation behind the interface without touching tool handlers — locking the contract NOW prevents redesign churn later.
 - Outbox rows have NO TTL by design (D-01). Durability survives until phase 70's retry cron transitions status to 'sent' or 'dead'. Phase 71 may add post-mortem TTL — out of scope for 68.
 - Static source-code constraint test (D-01 tripwire) — vitest spec reads crm-bridge.ts, strips JSDoc + line comments, then asserts NO runtime references to fetch(, createHmac, UNIPILE_CRM_WEBHOOK_URL/SECRET, timingSafeEqual, getConfig, or node:crypto import. Comment-stripping lets the file DOCUMENT phase 70 contracts without tripping the guard.
+- Plan 06 ships 2 tools wired in same commit as toolCount 0→2 — registry-metadata-consistency contract forbids partial state
+- D-20 account_id resolver kept as local helper per tool (write writes audit row on failure; read returns degraded envelope) — extracting would leak error-path complexity into shared lib
+- Dedup-hit path STILL writes a fresh audit row (T-68-06-04 mitigation) — operator must see EACH repeat attempt, not just the original
 
 ### Phase 38 (unchanged)
 
@@ -1231,5 +1326,5 @@ tag can ship. This is a Phase 37b carry-over, not a Phase 40 blocker.
 
 ## Last session
 
-Stopped at: Completed 68-05-PLAN.md
+Stopped at: Completed 68-06-PLAN.md (phase 68 code-complete — awaiting live Antoine Vercken re-validation)
 Ready for: next phase (Phase 064+ candidates from CONTEXT deferred list: welcome flow "Configure updates" step, "Use existing GITHUB_TOKEN" UX in welcome). Pre-existing follow-ups unchanged: multi-host HOST-05, audit-gate.mjs lint, welcome-durability TS2540, useMintToken TS2488 (still pre-existing in tests/ui/useMintToken.test.tsx:28; logged in 063 deferred-items.md), T-LITFB audit.
