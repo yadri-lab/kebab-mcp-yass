@@ -84,7 +84,7 @@ export interface RateLimitDecision {
 // are picked up at call time. Module-level reads would be a stale-cache
 // hazard the operator-debugging story is allergic to (Plan 01 lesson).
 
-function getCaps(tool: UnipileRateLimitedTool): { daily: number; weekly: number | null } {
+export function getCaps(tool: UnipileRateLimitedTool): { daily: number; weekly: number | null } {
   switch (tool) {
     case "send_connection":
       return {
@@ -107,7 +107,7 @@ function getCaps(tool: UnipileRateLimitedTool): { daily: number; weekly: number 
 // ── Bucket helpers (UTC, no library deps) ──────────────────────────────
 
 /** YYYY-MM-DD in UTC. */
-function dailyBucket(d: Date = new Date()): string {
+export function dailyBucket(d: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
@@ -118,7 +118,7 @@ function dailyBucket(d: Date = new Date()): string {
  * (so a Jan 1 that falls on Friday is week 53 of the previous year).
  * Matches `date-fns/getISOWeek` / Postgres `date_trunc('week', ...)`.
  */
-function isoWeekBucket(d: Date = new Date()): string {
+export function isoWeekBucket(d: Date = new Date()): string {
   const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = target.getUTCDay() || 7; // Sun = 7
   target.setUTCDate(target.getUTCDate() + 4 - dayNum); // back to Thursday of week
@@ -128,13 +128,13 @@ function isoWeekBucket(d: Date = new Date()): string {
 }
 
 /** ISO-8601 timestamp of the next UTC midnight (00:00 UTC of tomorrow). */
-function nextUtcMidnight(): string {
+export function nextUtcMidnight(): string {
   const d = new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
 }
 
 /** ISO-8601 timestamp of the next Monday 00:00 UTC (start of next ISO week). */
-function nextMondayUtc(): string {
+export function nextMondayUtc(): string {
   const d = new Date();
   const day = d.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
   const daysUntilMonday = day === 0 ? 1 : 8 - day;
