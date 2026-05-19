@@ -431,10 +431,20 @@ export async function handleLinkedinSendMessage(args: SendMessageArgs): Promise<
 
   // ═══════ Step 4: DEGREE-CHECK (D-22 — pre-flight, BEFORE rate-limit per WARNING-6) ═══════
   let providerId: string;
-  // `degree` is assigned exactly once on the success path (line 374) before any read,
-  // so it has no initializer — definite-assignment is satisfied by the try/catch
-  // returning early on any failure.
-  let degree: 1 | 2 | 3 | null;
+  // M-05: initialize to null. The try/catch below returns early on failure so
+  // the success path is correct today, but a future refactor that moves rate-limit
+  // (or any other gate) above the degree-fetch would read an uninitialized
+  // binding. Belt-and-braces — TS allows this idiom AND we get a safe default
+  // (the downstream D-22 check treats null the same as a sub-1st-degree value:
+  // refuses to send, which is the correct fail-safe).
+  //
+  // ESLint complains \`no-useless-assignment\` because the initializer is
+  // overwritten on the only currently-reachable success path before being
+  // read. That is precisely the point — the initializer protects against
+  // FUTURE reachable read paths that don't exist today. Disable the rule
+  // here only.
+  // eslint-disable-next-line no-useless-assignment
+  let degree: 1 | 2 | 3 | null = null;
   try {
     const resolved = await resolveProviderId(args.profile_url, accountId);
     providerId = resolved.provider_id;
