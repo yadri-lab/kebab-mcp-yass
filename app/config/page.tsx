@@ -2,7 +2,7 @@ import { AppShell } from "../sidebar";
 import { getInstanceConfigAsync } from "@/core/config";
 import { resolveRegistryAsync } from "@/core/registry";
 import { getRecentLogs } from "@/core/logging";
-import { isFirstRunMode, rehydrateBootstrapAsync } from "@/core/first-run";
+import { isFirstRunMode, rehydrateBootstrapAsync, getBootstrapAuthToken } from "@/core/first-run";
 import { loadDocs } from "@/core/docs";
 import { getDisabledTools } from "@/core/tool-toggles";
 import { ConfigTabs } from "./tabs";
@@ -116,7 +116,13 @@ export default async function ConfigPage({
   // Token presence is exposed (so the Reveal button knows what to show)
   // but the value itself is fetched on click via /api/config/auth-token,
   // never serialized into the page payload.
-  const hasAuthToken = !!(getConfig("MCP_AUTH_TOKEN") || "").split(",")[0]?.trim();
+  // Mirror /api/config/auth-token's resolution order: env/KV-credential
+  // MCP_AUTH_TOKEN first, then the welcome-minted bootstrap token. Without
+  // the bootstrap fallback, zero-config (welcome-flow) instances rendered an
+  // empty MCP-install panel even though the endpoint accepts the bootstrap
+  // token. rehydrateBootstrapAsync() above has already populated the cache.
+  const hasAuthToken =
+    !!(getConfig("MCP_AUTH_TOKEN") || "").split(",")[0]?.trim() || !!getBootstrapAuthToken();
   const version = packageJson.version;
   const commitSha = getConfig("VERCEL_GIT_COMMIT_SHA")?.slice(0, 8) || undefined;
 

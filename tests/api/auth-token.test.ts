@@ -13,6 +13,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { GET } from "../../app/api/config/auth-token/route";
 import { makeRequest, makeCrossOriginRequest, readJson } from "../../src/core/test-utils";
+import {
+  bootstrapToken,
+  getBootstrapAuthToken,
+  __resetFirstRunForTests,
+} from "../../src/core/first-run";
 
 describe("GET /api/config/auth-token", () => {
   const originalMcp = process.env.MCP_AUTH_TOKEN;
@@ -21,6 +26,11 @@ describe("GET /api/config/auth-token", () => {
   beforeEach(() => {
     delete process.env.MCP_AUTH_TOKEN;
     delete process.env.ADMIN_AUTH_TOKEN;
+    // Reset bootstrap state so the bootstrap-fallback path (added when the
+    // panel started revealing welcome-minted tokens) starts from a known
+    // empty cache — otherwise cross-test bootstrap state could leak into
+    // the "no token configured" assertions.
+    __resetFirstRunForTests();
   });
 
   afterEach(() => {
@@ -28,6 +38,7 @@ describe("GET /api/config/auth-token", () => {
     else process.env.MCP_AUTH_TOKEN = originalMcp;
     if (originalAdmin === undefined) delete process.env.ADMIN_AUTH_TOKEN;
     else process.env.ADMIN_AUTH_TOKEN = originalAdmin;
+    __resetFirstRunForTests();
   });
 
   it("returns 401 when no token is configured and caller is not loopback", async () => {
@@ -95,6 +106,23 @@ describe("GET /api/config/auth-token", () => {
     });
     const res = await GET(req);
     expect(res.status).toBe(401);
+  });
+
+  it("falls back to the bootstrap token when MCP_AUTH_TOKEN is unset", async () => {
+    // Zero-config welcome-flow instance: no MCP_AUTH_TOKEN env, token lives
+    // only in the bootstrap cache (KV `mymcp:firstrun:bootstrap`). The panel
+    // must still be able to reveal it. Admin auth here succeeds because
+    // checkAdminAuth also falls back to the bootstrap token.
+    const { token } = bootstrapToken("claim-reveal-test");
+    expect(getBootstrapAuthToken()).toBe(token);
+    const req = makeRequest("GET", "/api/config/auth-token", {
+      headers: { authorization: `Bearer ${token}`, host: "mymcp.local" },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await readJson<{ ok: boolean; token: string }>(res);
+    expect(data.ok).toBe(true);
+    expect(data.token).toBe(token);
   });
 
   it("GET requests don't need to pass the CSRF check (safe method)", async () => {
