@@ -549,12 +549,34 @@
     "destructive": false
   },
   {
+    "name": "linkedin_list_inbox",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "limit",
+      "since_days",
+      "unread_only"
+    ],
+    "destructive": false
+  },
+  {
     "name": "linkedin_list_pending",
     "pack": "unipile",
     "schemaKeys": [
       "account_id",
       "limit",
       "older_than_days"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "linkedin_read_messages",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "chat_id",
+      "limit",
+      "profile_url"
     ],
     "destructive": false
   },

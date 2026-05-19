@@ -48,14 +48,14 @@ beforeEach(() => {
   killSwitchMock.mockReturnValue(false);
 });
 
-describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
+describe("unipileConnector manifest (Phase 68/69 + inbox reads — 8 tools wired)", () => {
   it("exposes id 'unipile' and exact requiredEnvVars per D-19", () => {
     expect(unipileConnector.id).toBe("unipile");
     expect(unipileConnector.label).toBe("Unipile (LinkedIn writes)");
     expect(unipileConnector.requiredEnvVars).toEqual(["UNIPILE_DSN", "UNIPILE_TOKEN"]);
   });
 
-  it("exposes exactly 6 tools (Phase 69 complete — 2 from phase 68 + 4 from phase 69)", () => {
+  it("exposes exactly 8 tools (6 write/read + 2 inbox readers)", () => {
     const names = unipileConnector.tools.map((t) => t.name);
     expect(names).toEqual([
       "linkedin_send_connection",
@@ -64,6 +64,8 @@ describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
       "linkedin_send_inmail",
       "linkedin_engage",
       "linkedin_list_pending",
+      "linkedin_list_inbox",
+      "linkedin_read_messages",
     ]);
   });
 
@@ -74,6 +76,8 @@ describe("unipileConnector manifest (Phase 68/69 — 6 tools wired)", () => {
     ["linkedin_send_inmail", true],
     ["linkedin_engage", true],
     ["linkedin_list_pending", false],
+    ["linkedin_list_inbox", false],
+    ["linkedin_read_messages", false],
   ])("%s destructive flag = %s", (name, destructive) => {
     const t = unipileConnector.tools.find((tool) => tool.name === name);
     expect(t).toBeDefined();

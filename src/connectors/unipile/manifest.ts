@@ -26,6 +26,11 @@ import {
   linkedinListPendingSchema,
   handleLinkedinListPending,
 } from "./tools/linkedin-list-pending";
+import { linkedinListInboxSchema, handleLinkedinListInbox } from "./tools/linkedin-list-inbox";
+import {
+  linkedinReadMessagesSchema,
+  handleLinkedinReadMessages,
+} from "./tools/linkedin-read-messages";
 
 const log = getLogger("CONNECTOR:unipile");
 
@@ -237,6 +242,30 @@ function buildTools(): ToolDefinition[] {
       schema: linkedinListPendingSchema,
       handler: async (args) =>
         handleLinkedinListPending(args as Parameters<typeof handleLinkedinListPending>[0]),
+      destructive: false,
+    }),
+    defineTool({
+      name: "linkedin_list_inbox",
+      description:
+        "List LinkedIn conversations (inbox) from the connected account. " +
+        "Filters: unread_only, since_days. For 'what came in recently / what's unread'. " +
+        "Returns {count, items: [{chat_id, attendee_provider_id, attendee_name, unread, unread_count, last_message_at, folder}]}. " +
+        "Read-only — no audit, no rate-limit. Use linkedin_read_messages to read a thread.",
+      schema: linkedinListInboxSchema,
+      handler: async (args) =>
+        handleLinkedinListInbox(args as Parameters<typeof handleLinkedinListInbox>[0]),
+      destructive: false,
+    }),
+    defineTool({
+      name: "linkedin_read_messages",
+      description:
+        "Read the message history of ONE LinkedIn conversation, by chat_id (from linkedin_list_inbox) " +
+        "OR profile_url. Returns inbound + outbound messages sorted oldest-first. " +
+        "Returns {chat_id, count, items: [{message_id, direction: 'in'|'out', sender_id, text, sent_at, has_attachments}]}. " +
+        "Read-only — no audit, no rate-limit. Raw message text IS returned (reading your own inbox is the purpose).",
+      schema: linkedinReadMessagesSchema,
+      handler: async (args) =>
+        handleLinkedinReadMessages(args as Parameters<typeof handleLinkedinReadMessages>[0]),
       destructive: false,
     }),
   ];

@@ -266,8 +266,9 @@ export const PACKS: ConnectorDef[] = [
   {
     id: "unipile",
     name: "Unipile (LinkedIn writes)",
-    description: "Send LinkedIn connection requests + DMs via Unipile's managed-browser API",
-    toolCount: 6,
+    description:
+      "Send LinkedIn connection requests + DMs + read inbox via Unipile's managed-browser API",
+    toolCount: 8,
     icon: "U",
     setupGuide: [
       "Sign in at dashboard.unipile.com",
