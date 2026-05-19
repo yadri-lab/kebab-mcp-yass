@@ -4,6 +4,10 @@ import { getConfig } from "@/core/config-facade";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
 import { isWritesDisabled } from "./lib/kill-switch";
+
+function normalizeDsnForProbe(dsn: string): string {
+  return /^https?:\/\//i.test(dsn) ? dsn : `https://${dsn}`;
+}
 import {
   linkedinSendConnectionSchema,
   handleLinkedinSendConnection,
@@ -90,7 +94,7 @@ async function probe(
 }> {
   const writes_disabled = isWritesDisabled();
   try {
-    const client = new UnipileClient(`https://${dsn}`, token);
+    const client = new UnipileClient(normalizeDsnForProbe(dsn), token);
     const resp = (await client.account.getAll()) as UnipileAccountListResponse;
     const linkedinCount = countLinkedinAccounts(resp);
     const total = resp.items?.length ?? 0;
