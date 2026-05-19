@@ -1,0 +1,8 @@
+# Never upload local env files via `vercel deploy` (CLI).
+# The CLI bundles project files into the deployment; a local .env would
+# bake dev-only secrets (e.g. a local MCP_AUTH_TOKEN) into the lambda's
+# process.env and SHADOW the real Vercel-managed env vars + the bootstrap
+# KV token. Real values come from the Vercel project env + Upstash KV.
+.env
+.env.*
+!.env.example
