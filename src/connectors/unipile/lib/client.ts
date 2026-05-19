@@ -78,12 +78,14 @@ export function __resetUnipileClientForTests(): void {
  * Redact the live UNIPILE_TOKEN value from arbitrary text before surfacing
  * it to operators (logs, error responses, dashboard messages).
  *
- * Strategy: split-join on the literal token value. A no-op when the token
- * isn't set (early-boot, fresh-install, post-reset). T-68-02-01 mitigation
- * — verified by test "sanitizeUnipileText redacts the token value".
+ * Strategy: `.replaceAll` on the literal token value (L-01: replaces the
+ * old split-join idiom which is O(n²) for many occurrences). A no-op when
+ * the token isn't set (early-boot, fresh-install, post-reset).
+ * T-68-02-01 mitigation — verified by test "sanitizeUnipileText redacts
+ * the token value".
  */
 export function sanitizeUnipileText(text: string): string {
   const token = getConfig("UNIPILE_TOKEN");
   if (!token) return text;
-  return text.split(token).join("<redacted>");
+  return text.replaceAll(token, "<redacted>");
 }
