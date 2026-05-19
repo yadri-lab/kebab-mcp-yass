@@ -53,6 +53,13 @@ async function handler(ctx: PipelineContext): Promise<Response> {
     if (!accountId) {
       return NextResponse.json({ error: "account_id required" }, { status: 400 });
     }
+    // I-03: validate account_id shape — Unipile account ids are short
+    // alphanumeric tokens. Without this guard, an operator typo (or a
+    // malicious caller probing the admin route) could feed unbounded input
+    // into the KV key template, polluting the keyspace.
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(accountId)) {
+      return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
+    }
     if (!toolParam || !VALID_TOOLS.includes(toolParam as UnipileRateLimitedTool)) {
       return NextResponse.json(
         { error: `tool must be one of: ${VALID_TOOLS.join(", ")}` },
