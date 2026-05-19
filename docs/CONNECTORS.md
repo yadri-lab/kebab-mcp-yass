@@ -291,6 +291,12 @@ See `src/core/pipeline/*-step.ts` for step implementations and
 `app/api/admin/call/route.ts` for compositions covering different
 combinations of the 7 steps.
 
+## Per-connector documentation
+
+Connector-specific setup guides live under `docs/connectors/`:
+
+- [`unipile.md`](connectors/unipile.md) — Unipile (LinkedIn write actions: connect, DM, InMail, engage). v0.17.
+
 ## See also
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — project architecture overview

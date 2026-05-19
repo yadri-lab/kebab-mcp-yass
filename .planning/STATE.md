@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.17
-milestone_name: — Unipile Connector
-status: in_progress
-stopped_at: Completed 71-01-PLAN.md
-last_updated: "2026-05-18T23:15:00.000Z"
+milestone_name: — Unipile Connector (LinkedIn write)
+status: MILESTONE v0.17 CODE-COMPLETE. Phase 71 finished via FAST mode (Plan 71-02 shipped via executor in background, Plan 71-03 docs coded inline). Ready for code review.
+stopped_at: Phase 71 docs shipped (docs/connectors/unipile.md + .env.example + CONNECTORS.md ref). Next step is full code review of src/connectors/unipile/.
+last_updated: "2026-05-19T00:30:00Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 18
-  completed_plans: 16
-  percent: 89
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
