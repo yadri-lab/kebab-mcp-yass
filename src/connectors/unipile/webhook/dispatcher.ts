@@ -90,7 +90,13 @@ export function getIdempotencyKey(p: Record<string, unknown>): string | null {
   // by `payload.event` (the subscription schema omits the event field for
   // this source per RESEARCH §1).
   if (typeof p.account_id === "string" && typeof p.account_status === "string") {
-    const ts = typeof p.timestamp === "string" ? p.timestamp : String(Date.now());
+    // L-06: a time-varying fallback (`String(Date.now())`) defeats
+    // idempotency — every retry within the same second-ish window would
+    // generate a NEW key, causing the dispatcher to burn KV writes on
+    // duplicate processing of the same conceptual event. Use a stable
+    // sentinel instead so the (account_id, status) tuple alone keys the
+    // idempotency check when the upstream omits a timestamp.
+    const ts = typeof p.timestamp === "string" ? p.timestamp : "no-ts";
     return `${p.account_id}:${p.account_status}:${ts}`;
   }
   return null;

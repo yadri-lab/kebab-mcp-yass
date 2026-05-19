@@ -74,12 +74,19 @@ describe("getIdempotencyKey", () => {
     expect(key).toBe("acct_1:credentials_expired:2026-05-18T12:00:00Z");
   });
 
-  it("account_status without timestamp falls back to Date.now (composite still includes a non-empty 3rd segment)", () => {
+  it("L-06: account_status without timestamp uses stable 'no-ts' sentinel (NOT Date.now — time-varying defeats idempotency)", () => {
     const key = getIdempotencyKey({
       account_id: "acct_1",
       account_status: "ERROR",
     });
-    expect(key).toMatch(/^acct_1:ERROR:\d+$/);
+    expect(key).toBe("acct_1:ERROR:no-ts");
+    // Two calls in quick succession must return the SAME key — Date.now()
+    // fallback would produce different ms-resolution keys and burn KV writes.
+    const key2 = getIdempotencyKey({
+      account_id: "acct_1",
+      account_status: "ERROR",
+    });
+    expect(key2).toBe(key);
   });
 
   it("returns null on missing message_id for message_received", () => {
