@@ -262,6 +262,19 @@ async function getDegreeOnly(
 export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult> {
   const auditId = generateAuditId();
 
+  // M-06: Best-effort URL normalization for the params_hash invariant (D-05).
+  // All other tools normalize URL before hashing. Engage previously skipped
+  // it — two operators passing `https://www.linkedin.com/in/Yass/` and
+  // `https://linkedin.com/in/yass` would get DIFFERENT dry-run audit rows.
+  // Mirror the pattern from send-message/send-connection.
+  const profileUrlNormalized = (() => {
+    try {
+      return normalizeProfileUrl(args.profile_url);
+    } catch {
+      return args.profile_url;
+    }
+  })();
+
   // === STEP -1: KILL-SWITCH (D-86/D-88/D-89 — highest-priority gate, NEW in Plan 71-01) ===
   // Global kill switch — even dry_run is blocked. We don't burn the
   // account.getAll() resolution OR the getProfile() degree-fetch when writes
@@ -272,7 +285,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
   if (isWritesDisabled()) {
     const paramsHash = computeParamsHash({
       tool: "linkedin_engage",
-      profile_url_normalized: args.profile_url,
+      profile_url_normalized: profileUrlNormalized,
       note: "writes_disabled",
     });
     await writeAuditRow({
@@ -322,7 +335,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
   if (halt) {
     const paramsHash = computeParamsHash({
       tool: "linkedin_engage",
-      profile_url_normalized: args.profile_url,
+      profile_url_normalized: profileUrlNormalized,
       note: "halted",
     });
     await writeAuditRow({
@@ -362,7 +375,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
       // (D-33: bill-of-actions visibility includes failure cases).
       const paramsHash = computeParamsHash({
         tool: "linkedin_engage",
-        profile_url_normalized: args.profile_url,
+        profile_url_normalized: profileUrlNormalized,
         note: "dry_run",
       });
       await writeAuditRow({
@@ -409,7 +422,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
           : undefined;
     const paramsHash = computeParamsHash({
       tool: "linkedin_engage",
-      profile_url_normalized: args.profile_url,
+      profile_url_normalized: profileUrlNormalized,
       note: `dry_run:${proposedAction}:${dr.degree ?? "null"}`,
     });
     // D-33: dry_run writes ONE audit row with result: 'dry_run' (no rate-limit incr).
