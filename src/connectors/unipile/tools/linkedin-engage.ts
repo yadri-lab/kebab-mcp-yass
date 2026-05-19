@@ -174,6 +174,7 @@ type Route =
   | "send_inmail"
   | "skipped_no_message"
   | "skipped_no_inmail_subject"
+  | "skipped_no_inmail_body"
   | "skipped_unreachable";
 
 /**
@@ -193,6 +194,12 @@ function routeFromDegree(degree: Degree, args: EngageArgs): Route {
     // reason mirroring the 1st-degree skipped_no_message pattern.
     if (!args.inmail_subject) {
       return "skipped_no_inmail_subject";
+    }
+    // H-01: InMail also requires a body. Without one, skip with explicit
+    // reason — avoids dispatching a blank-body paid InMail (LinkedIn either
+    // rejects with opaque error OR burns the credit on an empty message).
+    if (!args.message) {
+      return "skipped_no_inmail_body";
     }
     return "send_inmail";
   }
@@ -382,16 +389,24 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
     // For BLOCKER-1: `skipped_no_inmail_subject` surfaces as `proposed_action: 'send_inmail'`
     // (the InMail route WOULD fire if a subject were supplied) plus
     // `would_skip_with_reason: 'no_inmail_subject'` (operator hint).
+    // H-01: same pattern for `skipped_no_inmail_body` —
+    // `would_skip_with_reason: 'no_inmail_body'`.
     const proposedAction: "send_message" | "send_connection" | "send_inmail" | "skipped" =
       route === "send_message"
         ? "send_message"
         : route === "send_connection"
           ? "send_connection"
-          : route === "send_inmail" || route === "skipped_no_inmail_subject"
+          : route === "send_inmail" ||
+              route === "skipped_no_inmail_subject" ||
+              route === "skipped_no_inmail_body"
             ? "send_inmail"
             : "skipped";
     const wouldSkipWithReason =
-      route === "skipped_no_inmail_subject" ? "no_inmail_subject" : undefined;
+      route === "skipped_no_inmail_subject"
+        ? "no_inmail_subject"
+        : route === "skipped_no_inmail_body"
+          ? "no_inmail_body"
+          : undefined;
     const paramsHash = computeParamsHash({
       tool: "linkedin_engage",
       profile_url_normalized: args.profile_url,
@@ -464,12 +479,13 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
       return envelope({ action: "sent_connection", degree, delegate_envelope: delegateEnv });
     }
     case "send_inmail": {
-      // BLOCKER-1: routeFromDegree only returns "send_inmail" when:
-      //   args.allow_inmail === true AND args.inmail_subject is non-empty.
+      // BLOCKER-1 + H-01: routeFromDegree only returns "send_inmail" when:
+      //   args.allow_inmail === true AND args.inmail_subject is non-empty
+      //   AND args.message is non-empty.
       // Non-null assertions are safe here.
       const delegateResult = await handleLinkedinSendInmail({
         profile_url: args.profile_url,
-        text: args.message ?? "",
+        text: args.message!,
         subject: args.inmail_subject!,
         allow_inmail: true,
         account_id: accountId,
@@ -487,6 +503,15 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
       return envelope({
         action: "skipped",
         reason: "skipped_no_inmail_subject",
+        degree,
+      });
+    case "skipped_no_inmail_body":
+      // H-01: InMail route was chosen but no message body was provided.
+      // Avoids dispatching a blank-body paid InMail (LinkedIn either rejects
+      // with opaque error OR burns the credit on an empty message).
+      return envelope({
+        action: "skipped",
+        reason: "skipped_no_inmail_body",
         degree,
       });
     case "skipped_unreachable":

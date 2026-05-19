@@ -221,11 +221,14 @@ describe("dry_run preview (D-32 / D-33)", () => {
     expect(env.degree).toBe(3);
   });
 
-  it("D-32 + BLOCKER-1: dry_run OON + allow_inmail=true + fallback=inmail + inmail_subject → proposes send_inmail", async () => {
+  it("D-32 + BLOCKER-1: dry_run OON + allow_inmail=true + fallback=inmail + inmail_subject + message → proposes send_inmail", async () => {
     getProfileMock.mockResolvedValueOnce({ network_distance: "OUT_OF_NETWORK" });
     const env = envOf(
       await handleLinkedinEngage({
         ...BASE,
+        // H-01: InMail dry-run preview now also requires `message` to surface
+        // proposed_action=send_inmail without a would_skip_with_reason hint.
+        message: "InMail body",
         dry_run: true,
         allow_inmail: true,
         fallback_if_unreachable: "inmail",
@@ -381,6 +384,43 @@ describe("real dispatch routing (D-31)", () => {
     );
     expect(env.action).toBe("skipped");
     expect(env.reason).toBe("skipped_no_inmail_subject");
+    expect(env.degree).toBeNull();
+    expect(sendInmailMock).not.toHaveBeenCalled();
+  });
+
+  it("H-01: REAL OON + allow_inmail + fallback=inmail + inmail_subject WITHOUT message → skipped_no_inmail_body, sendInmailMock NOT called (paid-credit waste guard)", async () => {
+    getProfileMock.mockResolvedValueOnce({ network_distance: "OUT_OF_NETWORK" });
+    const env = envOf(
+      await handleLinkedinEngage({
+        ...BASE,
+        allow_inmail: true,
+        fallback_if_unreachable: "inmail",
+        inmail_subject: "Hi",
+        // intentionally NO message — engage MUST refuse vs sending a blank-body
+        // paid InMail (LinkedIn either rejects opaque OR burns the credit).
+      })
+    );
+    expect(env.action).toBe("skipped");
+    expect(env.reason).toBe("skipped_no_inmail_body");
+    expect(env.degree).toBeNull();
+    expect(sendInmailMock).not.toHaveBeenCalled();
+  });
+
+  it("H-01: dry_run OON + allow_inmail + fallback=inmail + inmail_subject WITHOUT message → proposed_action=send_inmail + would_skip_with_reason=no_inmail_body", async () => {
+    getProfileMock.mockResolvedValueOnce({ network_distance: "OUT_OF_NETWORK" });
+    const env = envOf(
+      await handleLinkedinEngage({
+        ...BASE,
+        dry_run: true,
+        allow_inmail: true,
+        fallback_if_unreachable: "inmail",
+        inmail_subject: "Hi",
+        // intentionally NO message
+      })
+    );
+    expect(env.action).toBe("dry_run_proposed");
+    expect(env.proposed_action).toBe("send_inmail");
+    expect(env.would_skip_with_reason).toBe("no_inmail_body");
     expect(env.degree).toBeNull();
     expect(sendInmailMock).not.toHaveBeenCalled();
   });
