@@ -263,6 +263,110 @@ export const PACKS: ConnectorDef[] = [
       },
     ],
   },
+  {
+    id: "unipile",
+    name: "Unipile (LinkedIn writes)",
+    description: "Send LinkedIn connection requests + DMs via Unipile's managed-browser API",
+    toolCount: 6,
+    icon: "U",
+    setupGuide: [
+      "Sign in at dashboard.unipile.com",
+      "Settings → API: copy your DSN (e.g. api41.unipile.com:17153) and API Token",
+      "Accounts → Add account: connect a LinkedIn account",
+      "Paste both values below and click Test",
+    ],
+    vars: [
+      {
+        key: "UNIPILE_DSN",
+        label: "Unipile DSN",
+        helpUrl: "https://dashboard.unipile.com",
+        help: "Host:port from Unipile dashboard → Settings → API.",
+        placeholder: "api41.unipile.com:17153",
+      },
+      {
+        key: "UNIPILE_TOKEN",
+        label: "Unipile API Token",
+        helpUrl: "https://dashboard.unipile.com",
+        placeholder: "your-unipile-token",
+        sensitive: true,
+      },
+    ],
+  },
+  {
+    id: "github",
+    name: "GitHub Issues",
+    description: "List, create, comment on, and search GitHub issues across repos",
+    toolCount: 6,
+    icon: "G",
+    setupGuide: [
+      "Open github.com/settings/tokens (fine-grained recommended)",
+      "Grant Issues: Read and write on the repos you want to expose",
+      "Copy the token and paste it below",
+      "Optional: set a default repo to skip passing it on every call",
+    ],
+    vars: [
+      {
+        key: "GITHUB_TOKEN",
+        label: "GitHub Personal Access Token",
+        helpUrl: "https://github.com/settings/tokens",
+        help: "Fine-grained token with Issues: Read and write.",
+        placeholder: "github_pat_...",
+        sensitive: true,
+      },
+      {
+        key: "GITHUB_DEFAULT_REPO",
+        label: "Default repository",
+        help: "Optional. owner/repo — skipped on calls when set.",
+        placeholder: "yourname/your-repo",
+        optional: true,
+      },
+    ],
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    description: "Create, read, update, and search Linear issues and projects",
+    toolCount: 6,
+    icon: "L",
+    setupGuide: [
+      "Open Linear → Settings → Account → Security & access → Personal API keys",
+      "Click New API key, label it (e.g. Kebab MCP), and copy the secret",
+      "Paste it below",
+    ],
+    vars: [
+      {
+        key: "LINEAR_API_KEY",
+        label: "Linear API Key",
+        helpUrl: "https://linear.app/settings/account/security",
+        help: "Personal API key — acts on your behalf.",
+        placeholder: "lin_api_...",
+        sensitive: true,
+      },
+    ],
+  },
+  {
+    id: "airtable",
+    name: "Airtable",
+    description: "Read, write, and search records across Airtable bases and tables",
+    toolCount: 7,
+    icon: "A",
+    setupGuide: [
+      "Open airtable.com/create/tokens and click Create new token",
+      "Add scopes: data.records:read, data.records:write, schema.bases:read",
+      "Under Access, add every base you want Kebab MCP to reach",
+      "Copy the generated token and paste it below",
+    ],
+    vars: [
+      {
+        key: "AIRTABLE_API_KEY",
+        label: "Airtable Personal Access Token",
+        helpUrl: "https://airtable.com/create/tokens",
+        help: "Starts with pat... (legacy key... tokens are deprecated).",
+        placeholder: "pat...",
+        sensitive: true,
+      },
+    ],
+  },
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────
