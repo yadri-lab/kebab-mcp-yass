@@ -47,7 +47,11 @@ export function verifyUnipileWebhook(
   // Defensive — D-76 says this branch will likely never fire on the
   // current live tenant, but it's cheap insurance against future
   // source-type changes by Unipile.
-  const sig = headers.get("x-unipile-signature");
+  // L-04: trim + lowercase the incoming sig so accidental whitespace from
+  // an upstream proxy or mixed-case hex from a different SDK don't trigger
+  // a false `hmac_mismatch`. Hex is case-insensitive by spec — normalize on
+  // ingress before hashing.
+  const sig = headers.get("x-unipile-signature")?.trim().toLowerCase();
   if (sig) {
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
     const expHash = createHash("sha256").update(expected).digest();
