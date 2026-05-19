@@ -299,7 +299,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn("[CONNECTOR:unipile] engage refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
+    log.warn("engage refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
     return envelope({
       action: "skipped",
       reason: "error_writes_disabled",
@@ -349,7 +349,7 @@ export async function handleLinkedinEngage(args: EngageArgs): Promise<ToolResult
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn("[CONNECTOR:unipile] engage halted (account flag set)", {
+    log.warn("engage halted (account flag set)", {
       account_id: accountId,
       reason: halt.reason,
       status: halt.status,

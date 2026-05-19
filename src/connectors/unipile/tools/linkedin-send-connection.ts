@@ -211,9 +211,7 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn(
-      "[CONNECTOR:unipile] send_connection refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED"
-    );
+    log.warn("send_connection refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
     return envelope({
       provider_ok: false,
       verified: false,
@@ -279,7 +277,7 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn("[CONNECTOR:unipile] send_connection halted (account flag set)", {
+    log.warn("send_connection halted (account flag set)", {
       account_id: accountId,
       reason: halt.reason,
       status: halt.status,
@@ -332,7 +330,7 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
     // WARNING-5: capture cap-context in observability (audit schema has no
     // metadata column — log.warn is the only surface that carries weekly
     // counters + retry_after for operator dashboards).
-    log.warn("[CONNECTOR:unipile] Rate-limit blocked send_connection", {
+    log.warn("Rate-limit blocked send_connection", {
       account_id: accountId,
       tool: "send_connection",
       daily_used: rl.daily_used,

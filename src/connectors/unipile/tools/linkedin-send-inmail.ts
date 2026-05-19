@@ -301,7 +301,7 @@ export async function handleLinkedinSendInmail(args: SendInmailArgs): Promise<To
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn("[CONNECTOR:unipile] send_inmail refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
+    log.warn("send_inmail refused — KEBAB_UNIPILE_LINKEDIN_WRITES_DISABLED");
     return envelope({
       provider_ok: false,
       verified: false,
@@ -398,7 +398,7 @@ export async function handleLinkedinSendInmail(args: SendInmailArgs): Promise<To
       dedup_hit: false,
       timestamp: new Date().toISOString(),
     });
-    log.warn("[CONNECTOR:unipile] send_inmail halted (account flag set)", {
+    log.warn("send_inmail halted (account flag set)", {
       account_id: accountId,
       reason: halt.reason,
       status: halt.status,
