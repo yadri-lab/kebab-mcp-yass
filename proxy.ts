@@ -394,12 +394,21 @@ export async function proxy(request: NextRequest) {
       // Strict: the dashboard is never legitimately loaded by following a
       // link from another site. Blocks the CSRF vector on PUT /api/config/env
       // even without a CSRF token.
+      // Cookie lifetime: defaults to 7 days, overridable via
+      // KEBAB_COOKIE_MAX_AGE_DAYS for personal instances that don't want to
+      // re-paste the token every week. Clamped to [1, 365] to avoid foot-guns
+      // (negative = session cookie surprise; >1y = browsers cap silently).
+      const cookieDaysRaw = Number(process.env.KEBAB_COOKIE_MAX_AGE_DAYS);
+      const cookieDays =
+        Number.isFinite(cookieDaysRaw) && cookieDaysRaw > 0
+          ? Math.min(Math.max(Math.floor(cookieDaysRaw), 1), 365)
+          : 7;
       const cookieOpts = {
         httpOnly: true,
         sameSite: "strict" as const,
         secure: true,
         path: "/",
-        maxAge: 60 * 60 * 24 * 7,
+        maxAge: 60 * 60 * 24 * cookieDays,
       };
       res.cookies.set("kebab_admin_token", adminToken, cookieOpts);
       res.cookies.set("mymcp_admin_token", adminToken, cookieOpts);
