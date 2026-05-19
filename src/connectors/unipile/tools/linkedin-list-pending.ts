@@ -71,11 +71,13 @@ export const linkedinListPendingSchema = {
     .number()
     .int()
     .positive()
+    .max(365)
     .optional()
     .describe(
       "Client-side filter — only return invitations whose age_days >= this value. " +
         "Useful for cleanup loops: 'show me invitations sent >30 days ago with no reply'. " +
-        "Applied AFTER fetch (the Unipile API has no server-side date filter — D-35)."
+        "Applied AFTER fetch (the Unipile API has no server-side date filter — D-35). " +
+        "Capped at 365 (L-05 — anything older than a year is operator typo territory)."
     ),
   limit: z
     .number()
