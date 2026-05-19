@@ -33,6 +33,7 @@ import type { ToolResult } from "@/core/types";
 import { getUnipileClient } from "../lib/client";
 import { withRetry } from "../lib/retry";
 import { resolveProviderId, normalizeProfileUrl } from "../lib/identifiers";
+import { resolveAccountId } from "../lib/account";
 import { classifyUnipileError } from "../lib/errors";
 
 export const linkedinGetRelationshipStatusSchema = {
@@ -67,30 +68,6 @@ function envelope(e: RelStatusEnvelope): ToolResult {
 }
 
 /**
- * D-20 account_id resolution — same rules as linkedin_send_connection.
- * Kept as a local helper (vs extracting to a shared lib) because the read
- * tool only writes a degraded envelope on failure, while the send tool
- * writes an audit row — the surrounding error handling differs.
- */
-async function resolveAccountId(
-  args: GetRelArgs
-): Promise<
-  | { accountId: string }
-  | { error: "error_no_linkedin_account" }
-  | { error: "error_account_id_required"; available_accounts: string[] }
-> {
-  if (args.account_id) return { accountId: args.account_id };
-  const resp = await getUnipileClient().account.getAll();
-  const items = (resp as { items?: Array<{ id: string; type: string }> }).items ?? [];
-  const linkedinAccounts = items.filter((i) => i.type === "LINKEDIN").map((i) => i.id);
-  if (linkedinAccounts.length === 0) return { error: "error_no_linkedin_account" };
-  if (linkedinAccounts.length > 1) {
-    return { error: "error_account_id_required", available_accounts: linkedinAccounts };
-  }
-  return { accountId: linkedinAccounts[0]! };
-}
-
-/**
  * Map Unipile's network_distance string to the public 1|2|3|null degree.
  *
  * Per Pitfall 3: a MISSING `network_distance` field is NOT "third degree"
@@ -117,7 +94,10 @@ function mapDegree(networkDistance: string | undefined): 1 | 2 | 3 | null {
 }
 
 export async function handleLinkedinGetRelationshipStatus(args: GetRelArgs): Promise<ToolResult> {
-  const acct = await resolveAccountId(args);
+  // exactOptionalPropertyTypes: only pass `account_id` when defined.
+  const acct = await resolveAccountId(
+    args.account_id !== undefined ? { account_id: args.account_id } : {}
+  );
   if ("error" in acct) {
     const env: RelStatusEnvelope = {
       degree: null,

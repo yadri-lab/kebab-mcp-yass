@@ -51,6 +51,7 @@ import {
   generateAuditId,
   type AuditResult,
 } from "../lib/audit";
+import { resolveAccountId } from "../lib/account";
 import { crmBridge } from "../lib/crm-bridge";
 import { classifyUnipileError } from "../lib/errors";
 import { checkUnipileRateLimit } from "../lib/rate-limiter";
@@ -128,28 +129,6 @@ function envelope(e: SendEnvelope): ToolResult {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(e, null, 2) }],
   };
-}
-
-/**
- * D-20 account_id resolution.
- * Returns the account_id to use, or an error sentinel describing the failure.
- */
-async function resolveAccountId(
-  args: SendArgs
-): Promise<
-  | { accountId: string }
-  | { error: "error_no_linkedin_account" }
-  | { error: "error_account_id_required"; available_accounts: string[] }
-> {
-  if (args.account_id) return { accountId: args.account_id };
-  const resp = await getUnipileClient().account.getAll();
-  const items = (resp as { items?: Array<{ id: string; type: string }> }).items ?? [];
-  const linkedinAccounts = items.filter((i) => i.type === "LINKEDIN").map((i) => i.id);
-  if (linkedinAccounts.length === 0) return { error: "error_no_linkedin_account" };
-  if (linkedinAccounts.length > 1) {
-    return { error: "error_account_id_required", available_accounts: linkedinAccounts };
-  }
-  return { accountId: linkedinAccounts[0]! };
 }
 
 /**
@@ -242,7 +221,11 @@ export async function handleLinkedinSendConnection(args: SendArgs): Promise<Tool
   // flag is keyed by account_id. account.getAll() is a cheap read enumeration
   // with no provider write side-effects and no rate-limit cost, so this
   // reorder is safe vs the original D-49 dedup-first ordering.
-  const acct = await resolveAccountId(args);
+  // exactOptionalPropertyTypes: only pass `account_id` when defined (matches
+  // the shared lib's `args.account_id` signature and the engage call site).
+  const acct = await resolveAccountId(
+    args.account_id !== undefined ? { account_id: args.account_id } : {}
+  );
   if ("error" in acct) {
     // D-20 errors classify as 'restricted' in the audit enum (the operator
     // misconfigured their Unipile account wiring — treat as a hard auth gate).
