@@ -58,6 +58,7 @@ import { checkUnipileRateLimit } from "../lib/rate-limiter";
 import { readHaltFlag } from "../webhook/halt-flag";
 import { isWritesDisabled } from "../lib/kill-switch";
 import { getLogger } from "@/core/logging";
+import { toMsg } from "@/core/error-utils";
 
 const log = getLogger("CONNECTOR:unipile");
 
@@ -156,8 +157,16 @@ async function pollForRelation(
       const items =
         (invitations as { items?: Array<{ invited_user_id: string | null }> }).items ?? [];
       if (items.some((i) => i.invited_user_id === providerId)) return true;
-    } catch {
+    } catch (err) {
       // D-16: transient poll error is not fatal — continue to next delay.
+      // M-02: mirror pollForMessage shape so operators investigating waves of
+      // `unverified_timeout` have log breadcrumbs (was a bare `} catch {}`).
+      log.warn("pollForRelation transient error", {
+        accountId,
+        providerId,
+        delay,
+        err: toMsg(err),
+      });
     }
   }
   return false;
