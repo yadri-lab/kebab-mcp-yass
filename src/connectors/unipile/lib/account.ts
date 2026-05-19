@@ -58,3 +58,31 @@ export async function resolveAccountId(args: ResolveArgs): Promise<AccountResolu
   }
   return { accountId: linkedinAccounts[0]! };
 }
+
+export type ProviderAccountResolution =
+  | { accountId: string }
+  | { error: "error_no_account" }
+  | { error: "error_account_id_required"; available_accounts: string[] };
+
+/**
+ * Provider-agnostic counterpart to `resolveAccountId`. Resolves the single
+ * connected account of a given Unipile `type` (e.g. "WHATSAPP", "LINKEDIN").
+ * Same D-20 semantics — explicit account_id wins silently; otherwise 0 →
+ * error_no_account, 1 → silent, ≥2 → error_account_id_required. Kept
+ * separate from `resolveAccountId` so the LinkedIn tools' locked
+ * `error_no_linkedin_account` enum is untouched.
+ */
+export async function resolveAccountIdForType(
+  type: string,
+  args: ResolveArgs
+): Promise<ProviderAccountResolution> {
+  if (args.account_id) return { accountId: args.account_id };
+  const resp = await withRetry(() => getUnipileClient().account.getAll());
+  const items = (resp as { items?: UnipileAccountItem[] }).items ?? [];
+  const matching = items.filter((i) => i.type === type).map((i) => i.id);
+  if (matching.length === 0) return { error: "error_no_account" };
+  if (matching.length > 1) {
+    return { error: "error_account_id_required", available_accounts: matching };
+  }
+  return { accountId: matching[0]! };
+}

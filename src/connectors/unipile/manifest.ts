@@ -31,6 +31,11 @@ import {
   linkedinReadMessagesSchema,
   handleLinkedinReadMessages,
 } from "./tools/linkedin-read-messages";
+import { whatsappListInboxSchema, handleWhatsappListInbox } from "./tools/whatsapp-list-inbox";
+import {
+  whatsappReadMessagesSchema,
+  handleWhatsappReadMessages,
+} from "./tools/whatsapp-read-messages";
 
 const log = getLogger("CONNECTOR:unipile");
 
@@ -135,7 +140,7 @@ export const unipileConnector: ConnectorManifest = {
   id: "unipile",
   label: "Unipile (LinkedIn writes)",
   description:
-    "Send LinkedIn connection requests and read relationship status via Unipile's managed-browser API.",
+    "Send LinkedIn connection requests, read relationship status, and read LinkedIn + WhatsApp inboxes via Unipile's managed-browser API.",
   guide: `Use Unipile's managed-browser API to send LinkedIn connection requests and read relationship signals from the server side — no DOM automation, no Browserbase session juggling.
 
 ### Prerequisites
@@ -266,6 +271,30 @@ function buildTools(): ToolDefinition[] {
       schema: linkedinReadMessagesSchema,
       handler: async (args) =>
         handleLinkedinReadMessages(args as Parameters<typeof handleLinkedinReadMessages>[0]),
+      destructive: false,
+    }),
+    defineTool({
+      name: "whatsapp_list_inbox",
+      description:
+        "List WhatsApp conversations (inbox) from the connected WhatsApp account. " +
+        "Filters: unread_only, since_days. For 'what came in recently / what's unread on WhatsApp'. " +
+        "Returns {count, items: [{chat_id, name, is_group, provider_id, unread, unread_count, last_message_at}]}. " +
+        "Read-only — no audit, no rate-limit. Use whatsapp_read_messages to read a thread.",
+      schema: whatsappListInboxSchema,
+      handler: async (args) =>
+        handleWhatsappListInbox(args as Parameters<typeof handleWhatsappListInbox>[0]),
+      destructive: false,
+    }),
+    defineTool({
+      name: "whatsapp_read_messages",
+      description:
+        "Read the message history of ONE WhatsApp conversation, by chat_id (from whatsapp_list_inbox). " +
+        "Returns inbound + outbound messages sorted oldest-first. " +
+        "Returns {chat_id, count, items: [{message_id, direction: 'in'|'out', sender_id, text, sent_at, has_attachments}]}. " +
+        "Read-only — no audit, no rate-limit. Raw message text IS returned (reading your own inbox is the purpose).",
+      schema: whatsappReadMessagesSchema,
+      handler: async (args) =>
+        handleWhatsappReadMessages(args as Parameters<typeof handleWhatsappReadMessages>[0]),
       destructive: false,
     }),
   ];

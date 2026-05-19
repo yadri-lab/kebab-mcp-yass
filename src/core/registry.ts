@@ -164,10 +164,11 @@ export const ALL_CONNECTOR_LOADERS: ConnectorLoaderEntry[] = [
     requiredEnvVars: ["UNIPILE_DSN", "UNIPILE_TOKEN"],
     // Phase 69 (UNI-07..10): 6 write/read tools — send_connection,
     // get_relationship_status, send_message, send_inmail, engage, list_pending.
-    // + 2 inbox read tools (list_inbox, read_messages) = 8 total.
-    // registry-metadata-consistency contract test asserts
+    // + 2 LinkedIn inbox readers (list_inbox, read_messages)
+    // + 2 WhatsApp inbox readers (whatsapp_list_inbox, whatsapp_read_messages)
+    // = 10 total. registry-metadata-consistency contract test asserts
     // toolCount === manifest.tools.length.
-    toolCount: 8,
+    toolCount: 10,
     loader: () => import("@/connectors/unipile/manifest").then((m) => m.unipileConnector),
   },
   {

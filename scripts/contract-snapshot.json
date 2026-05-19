@@ -971,5 +971,26 @@
     "pack": "webhook",
     "schemaKeys": [],
     "destructive": false
+  },
+  {
+    "name": "whatsapp_list_inbox",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "limit",
+      "since_days",
+      "unread_only"
+    ],
+    "destructive": false
+  },
+  {
+    "name": "whatsapp_read_messages",
+    "pack": "unipile",
+    "schemaKeys": [
+      "account_id",
+      "chat_id",
+      "limit"
+    ],
+    "destructive": false
   }
 ]

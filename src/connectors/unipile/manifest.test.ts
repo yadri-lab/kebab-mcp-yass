@@ -48,14 +48,14 @@ beforeEach(() => {
   killSwitchMock.mockReturnValue(false);
 });
 
-describe("unipileConnector manifest (Phase 68/69 + inbox reads — 8 tools wired)", () => {
+describe("unipileConnector manifest (Phase 68/69 + LinkedIn/WhatsApp inbox reads — 10 tools wired)", () => {
   it("exposes id 'unipile' and exact requiredEnvVars per D-19", () => {
     expect(unipileConnector.id).toBe("unipile");
     expect(unipileConnector.label).toBe("Unipile (LinkedIn writes)");
     expect(unipileConnector.requiredEnvVars).toEqual(["UNIPILE_DSN", "UNIPILE_TOKEN"]);
   });
 
-  it("exposes exactly 8 tools (6 write/read + 2 inbox readers)", () => {
+  it("exposes exactly 10 tools (6 LinkedIn write/read + 2 LinkedIn inbox + 2 WhatsApp inbox)", () => {
     const names = unipileConnector.tools.map((t) => t.name);
     expect(names).toEqual([
       "linkedin_send_connection",
@@ -66,6 +66,8 @@ describe("unipileConnector manifest (Phase 68/69 + inbox reads — 8 tools wired
       "linkedin_list_pending",
       "linkedin_list_inbox",
       "linkedin_read_messages",
+      "whatsapp_list_inbox",
+      "whatsapp_read_messages",
     ]);
   });
 
@@ -78,6 +80,8 @@ describe("unipileConnector manifest (Phase 68/69 + inbox reads — 8 tools wired
     ["linkedin_list_pending", false],
     ["linkedin_list_inbox", false],
     ["linkedin_read_messages", false],
+    ["whatsapp_list_inbox", false],
+    ["whatsapp_read_messages", false],
   ])("%s destructive flag = %s", (name, destructive) => {
     const t = unipileConnector.tools.find((tool) => tool.name === name);
     expect(t).toBeDefined();
