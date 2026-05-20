@@ -42,7 +42,7 @@ import { handleWhatsappListInbox } from "../whatsapp-list-inbox";
 interface InboxItem {
   chat_id: string;
   name: string | null;
-  is_group: boolean;
+  conversation_type: "single" | "group" | "channel";
   provider_id: string | null;
   unread: boolean;
   unread_count: number;
@@ -87,7 +87,7 @@ describe("whatsapp_list_inbox", () => {
     expect(callArg.account_type).toBe("WHATSAPP");
   });
 
-  it("shapes a 1:1 chat and a group chat correctly", async () => {
+  it("shapes single / group / channel chats correctly", async () => {
     getAllChatsMock.mockResolvedValueOnce({
       items: [
         {
@@ -108,22 +108,33 @@ describe("whatsapp_list_inbox", () => {
           timestamp: "2026-05-18T10:00:00.000Z",
           provider_id: "123-456@g.us",
         },
+        {
+          id: "c_channel",
+          name: "Annonces",
+          type: 2,
+          unread: 0,
+          unread_count: 0,
+          timestamp: "2026-05-17T10:00:00.000Z",
+          provider_id: "789@newsletter",
+        },
       ],
       cursor: null,
     });
     const env = parse(await handleWhatsappListInbox({}));
-    expect(env.count).toBe(2);
+    expect(env.count).toBe(3);
     expect(env.items[0]).toEqual({
       chat_id: "c_dm",
       name: "Guillaume",
-      is_group: false,
+      conversation_type: "single",
       provider_id: "33786624801@s.whatsapp.net",
       unread: true,
       unread_count: 3,
       last_message_at: "2026-05-19T15:04:35.000Z",
     });
-    expect(env.items[1]!.is_group).toBe(true);
+    expect(env.items[1]!.conversation_type).toBe("group");
     expect(env.items[1]!.unread).toBe(false);
+    // CHANNEL (type 2) must NOT be misclassified as a 1:1 (review MEDIUM-1).
+    expect(env.items[2]!.conversation_type).toBe("channel");
   });
 
   it("passes unread + after filters when set", async () => {

@@ -147,4 +147,19 @@ describe("linkedin_list_inbox", () => {
     expect(env.available_accounts).toEqual(["a", "b"]);
     expect(getAllChatsMock).not.toHaveBeenCalled();
   });
+
+  it("returns an error envelope (not a throw) when getAllChats fails on the first page (review HIGH-1)", async () => {
+    getAllChatsMock.mockRejectedValue(new Error("boom 500"));
+    const env = parse(await handleLinkedinListInbox({}));
+    expect(env.count).toBe(0);
+    expect(env.items).toEqual([]);
+    expect(env.error).toBeTruthy();
+  });
+
+  it("returns an error envelope (not a throw) when account resolution fails (review HIGH-2)", async () => {
+    getAllAccountsMock.mockRejectedValue(new Error("account.getAll 503"));
+    const env = parse(await handleLinkedinListInbox({}));
+    expect(env.count).toBe(0);
+    expect(env.error).toBeTruthy();
+  });
 });

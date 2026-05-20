@@ -33,6 +33,7 @@ import { withRetry } from "../lib/retry";
 import { resolveAccountId } from "../lib/account";
 import { resolveProviderId } from "../lib/identifiers";
 import { classifyUnipileError } from "../lib/errors";
+import { runRead } from "../lib/read-helpers";
 import { getLogger } from "@/core/logging";
 import { toMsg } from "@/core/error-utils";
 
@@ -107,6 +108,14 @@ function envelope(e: ReadMessagesEnvelope): ToolResult {
 }
 
 export async function handleLinkedinReadMessages(args: ReadMessagesArgs): Promise<ToolResult> {
+  // runRead converts any throw (account-resolver / getUnipileClient on missing
+  // env / stray SDK error) into a {chat_id:null, error} envelope (review HIGH-2).
+  return runRead("linkedin_read_messages", { chat_id: null, count: 0, items: [] }, () =>
+    readMessagesBody(args)
+  );
+}
+
+async function readMessagesBody(args: ReadMessagesArgs): Promise<ToolResult> {
   const limit = Math.min(args.limit ?? 50, 200);
 
   if (!args.chat_id && !args.profile_url) {

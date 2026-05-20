@@ -265,7 +265,7 @@ export const PACKS: ConnectorDef[] = [
   },
   {
     id: "unipile",
-    name: "Unipile (LinkedIn writes)",
+    name: "Unipile (LinkedIn + WhatsApp)",
     description:
       "Send LinkedIn connection requests + DMs + read LinkedIn/WhatsApp inboxes via Unipile",
     toolCount: 10,

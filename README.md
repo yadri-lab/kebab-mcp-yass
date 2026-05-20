@@ -69,7 +69,7 @@
 **What you get:**
 
 - ✅ **One deploy, one endpoint** — every AI client speaks to the same `https://your-fork.vercel.app/api/mcp`
-- ✅ **97+ tools, no code** — Gmail, Calendar, Drive, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Apify, Browser, Unipile (LinkedIn writes), paywalled articles, custom Skills, custom HTTP APIs
+- ✅ **97+ tools, no code** — Gmail, Calendar, Drive, Slack, Notion, Obsidian, GitHub, Linear, Airtable, Apify, Browser, Unipile (LinkedIn + WhatsApp), paywalled articles, custom Skills, custom HTTP APIs
 - ✅ **Your tokens, your KV** — credentials live in your Upstash; we have no servers, no telemetry, no lock-in
 - ✅ **Dashboard included** — enable/disable connectors live, run any tool from the playground, write Skills in markdown, watch logs
 
@@ -205,7 +205,7 @@ Five families of capability. Each connector auto-activates when its credentials 
 
 ### 🔌 Connectors — 14 built-in integrations
 
-Google Workspace, Obsidian Vault, Slack, Notion, GitHub, Linear, Airtable, Browser Automation, Apify (LinkedIn reads), Unipile (LinkedIn writes), Composio (1000+ apps via bridge), Paywall Readers, Webhooks. **93 production-ready tools** total. Setup is one env var per connector.
+Google Workspace, Obsidian Vault, Slack, Notion, GitHub, Linear, Airtable, Browser Automation, Apify (LinkedIn reads), Unipile (LinkedIn + WhatsApp), Composio (1000+ apps via bridge), Paywall Readers, Webhooks. **97+ production-ready tools** total. Setup is one env var per connector.
 
 ### 🛠️ Custom Tools — bring any HTTP API
 

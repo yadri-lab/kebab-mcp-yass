@@ -138,7 +138,7 @@ async function probe(
 
 export const unipileConnector: ConnectorManifest = {
   id: "unipile",
-  label: "Unipile (LinkedIn writes)",
+  label: "Unipile (LinkedIn + WhatsApp)",
   description:
     "Send LinkedIn connection requests, read relationship status, and read LinkedIn + WhatsApp inboxes via Unipile's managed-browser API.",
   guide: `Use Unipile's managed-browser API to send LinkedIn connection requests and read relationship signals from the server side — no DOM automation, no Browserbase session juggling.

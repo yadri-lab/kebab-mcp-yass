@@ -158,9 +158,9 @@ export const ALL_CONNECTOR_LOADERS: ConnectorLoaderEntry[] = [
   },
   {
     id: "unipile",
-    label: "Unipile (LinkedIn writes)",
+    label: "Unipile (LinkedIn + WhatsApp)",
     description:
-      "Send LinkedIn connection requests and read relationship status via Unipile's managed-browser API.",
+      "Send LinkedIn connection requests, read relationship status, and read LinkedIn + WhatsApp inboxes via Unipile's managed-browser API.",
     requiredEnvVars: ["UNIPILE_DSN", "UNIPILE_TOKEN"],
     // Phase 69 (UNI-07..10): 6 write/read tools — send_connection,
     // get_relationship_status, send_message, send_inmail, engage, list_pending.

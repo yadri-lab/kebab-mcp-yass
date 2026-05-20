@@ -9,11 +9,9 @@
  *   - NO dedup (idempotent — never mutates LinkedIn).
  *   - NO CRM bridge (no write event to bridge).
  *
- * Source: Unipile `messaging.getAllChats({account_id, unread?, after?,
- *   limit?, cursor?})`. Filtering uses the API's native params where
- *   available (unread, after) — verified live against the deployed account
- *   2026-05-20. Per-page cap is 100; we paginate via cursor up to the
- *   requested limit with a MAX_PAGES safety cap.
+ * Source: Unipile `messaging.getAllChats` via the shared `paginateChats`
+ *   helper (cursor pagination + MAX_PAGES cap + try/catch). Native `unread` /
+ *   `after` filters verified live against the deployed account 2026-05-20.
  *
  * Envelope: {count, items: [{chat_id, attendee_provider_id, attendee_name,
  *   unread, unread_count, last_message_at, folder}]}.
@@ -26,12 +24,8 @@
 
 import { z } from "zod";
 import type { ToolResult } from "@/core/types";
-import { getUnipileClient } from "../lib/client";
-import { withRetry } from "../lib/retry";
 import { resolveAccountId } from "../lib/account";
-import { getLogger } from "@/core/logging";
-
-const log = getLogger("CONNECTOR:unipile");
+import { paginateChats, runRead } from "../lib/read-helpers";
 
 export const linkedinListInboxSchema = {
   account_id: z
@@ -69,17 +63,6 @@ type ListInboxArgs = {
   limit?: number;
 };
 
-interface ChatItem {
-  id?: string;
-  name?: string | null;
-  unread?: number;
-  unread_count?: number;
-  timestamp?: string;
-  folder?: string[];
-  attendee_provider_id?: string;
-  account_type?: string;
-}
-
 interface InboxConversation {
   chat_id: string;
   attendee_provider_id: string | null;
@@ -102,75 +85,47 @@ function envelope(e: ListInboxEnvelope): ToolResult {
 }
 
 export async function handleLinkedinListInbox(args: ListInboxArgs): Promise<ToolResult> {
-  const limit = Math.min(args.limit ?? 50, 200);
+  return runRead("linkedin_list_inbox", { count: 0, items: [] }, async () => {
+    const limit = Math.min(args.limit ?? 50, 200);
 
-  const acct = await resolveAccountId(
-    args.account_id !== undefined ? { account_id: args.account_id } : {}
-  );
-  if ("error" in acct) {
-    return envelope({
-      count: 0,
-      items: [],
-      error: acct.error,
-      ...(acct.error === "error_account_id_required"
-        ? { available_accounts: acct.available_accounts }
-        : {}),
-    });
-  }
-  const accountId = acct.accountId;
-
-  // Native `after` filter is a UTC datetime — derive from since_days.
-  const afterIso =
-    args.since_days !== undefined
-      ? new Date(Date.now() - args.since_days * 86_400_000).toISOString()
-      : undefined;
-
-  const allItems: ChatItem[] = [];
-  let cursor: string | null = null;
-  let pageNum = 0;
-  const MAX_PAGES = 10;
-
-  do {
-    const remaining = limit - allItems.length;
-    const pageLimit = Math.min(remaining, 100);
-    if (pageLimit <= 0) break;
-
-    const resp: unknown = await withRetry(() =>
-      getUnipileClient().messaging.getAllChats({
-        account_id: accountId,
-        account_type: "LINKEDIN",
-        limit: pageLimit,
-        ...(args.unread_only ? { unread: true } : {}),
-        ...(afterIso ? { after: afterIso } : {}),
-        ...(cursor ? { cursor } : {}),
-      })
+    const acct = await resolveAccountId(
+      args.account_id !== undefined ? { account_id: args.account_id } : {}
     );
-    const items = (resp as { items?: ChatItem[] }).items ?? [];
-    allItems.push(...items);
-    cursor = (resp as { cursor?: string | null }).cursor ?? null;
-    pageNum += 1;
-    if (pageNum >= MAX_PAGES) {
-      log.warn("linkedin_list_inbox hit MAX_PAGES safety cap", {
-        account_id: accountId,
-        pageNum,
-        allItemsCount: allItems.length,
+    if ("error" in acct) {
+      return envelope({
+        count: 0,
+        items: [],
+        error: acct.error,
+        ...(acct.error === "error_account_id_required"
+          ? { available_accounts: acct.available_accounts }
+          : {}),
       });
-      break;
     }
-  } while (cursor && allItems.length < limit);
 
-  const shaped: InboxConversation[] = allItems
-    .filter((c): c is ChatItem & { id: string } => typeof c.id === "string" && c.id.length > 0)
-    .slice(0, limit)
-    .map((c) => ({
-      chat_id: c.id,
-      attendee_provider_id: c.attendee_provider_id ?? null,
-      attendee_name: typeof c.name === "string" && c.name.length > 0 ? c.name : null,
-      unread: (c.unread_count ?? c.unread ?? 0) > 0,
-      unread_count: c.unread_count ?? 0,
-      last_message_at: c.timestamp ?? null,
-      folder: Array.isArray(c.folder) ? c.folder : [],
-    }));
+    // Native `after` filter is a UTC datetime — derive from since_days.
+    const afterIso =
+      args.since_days !== undefined
+        ? new Date(Date.now() - args.since_days * 86_400_000).toISOString()
+        : undefined;
 
-  return envelope({ count: shaped.length, items: shaped });
+    const chats = await paginateChats(acct.accountId, "LINKEDIN", {
+      limit,
+      ...(args.unread_only ? { unread: true } : {}),
+      ...(afterIso ? { afterIso } : {}),
+    });
+
+    const shaped: InboxConversation[] = chats
+      .filter((c): c is typeof c & { id: string } => typeof c.id === "string" && c.id.length > 0)
+      .map((c) => ({
+        chat_id: c.id,
+        attendee_provider_id: c.attendee_provider_id ?? null,
+        attendee_name: typeof c.name === "string" && c.name.length > 0 ? c.name : null,
+        unread: (c.unread_count ?? 0) > 0,
+        unread_count: c.unread_count ?? 0,
+        last_message_at: c.timestamp ?? null,
+        folder: Array.isArray(c.folder) ? c.folder : [],
+      }));
+
+    return envelope({ count: shaped.length, items: shaped });
+  });
 }

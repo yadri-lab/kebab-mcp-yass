@@ -51,7 +51,7 @@ beforeEach(() => {
 describe("unipileConnector manifest (Phase 68/69 + LinkedIn/WhatsApp inbox reads — 10 tools wired)", () => {
   it("exposes id 'unipile' and exact requiredEnvVars per D-19", () => {
     expect(unipileConnector.id).toBe("unipile");
-    expect(unipileConnector.label).toBe("Unipile (LinkedIn writes)");
+    expect(unipileConnector.label).toBe("Unipile (LinkedIn + WhatsApp)");
     expect(unipileConnector.requiredEnvVars).toEqual(["UNIPILE_DSN", "UNIPILE_TOKEN"]);
   });
 
