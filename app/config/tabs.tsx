@@ -45,10 +45,6 @@ const SkillsTab = dynamic(() => import("./tabs/skills").then((m) => ({ default: 
   ssr: true,
   loading: () => <TabLoadingSkeleton label="Skills" />,
 });
-const CustomToolsTab = dynamic(
-  () => import("./tabs/custom-tools").then((m) => ({ default: m.CustomToolsTab })),
-  { ssr: true, loading: () => <TabLoadingSkeleton label="Custom Tools" /> }
-);
 const PlaygroundTab = dynamic(
   () => import("./tabs/playground").then((m) => ({ default: m.PlaygroundTab })),
   // ssr: false — playground uses browser-only APIs (fetch loops, client state).
@@ -152,9 +148,14 @@ export function ConfigTabs({
       section = "Skills";
       tab = <SkillsTab />;
       break;
+    // Custom Tools was demoted from a top-level tab to the Tools tab's
+    // "custom" sub-tab. The legacy ?tab=custom-tools URL still resolves
+    // here (bookmark compat) by forcing ToolsTab into the custom sub-tab.
     case "custom-tools":
-      section = "Custom Tools";
-      tab = <CustomToolsTab />;
+      section = "Tools";
+      tab = (
+        <ToolsTab connectors={connectors} initialDisabledTools={disabledTools} forceSub="custom" />
+      );
       break;
     case "playground":
       section = "Playground";

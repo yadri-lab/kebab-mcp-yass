@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { ConnectorSummary } from "../tabs";
 import { toMsg } from "@/core/error-utils";
-import { CustomToolBuilder } from "./custom-tool-builder";
+import { CustomToolsTab } from "./custom-tools";
 
 interface ToolEntry {
   name: string;
@@ -12,14 +13,90 @@ interface ToolEntry {
   destructive?: boolean | undefined;
 }
 
+type ToolsSubTab = "all" | "custom";
+
+/**
+ * Tools tab shell — hosts two sub-tabs:
+ *   - "all"    → AllToolsView (every registered tool, grouped by connector,
+ *                with per-tool enable/disable + inline test).
+ *   - "custom" → CustomToolsTab (CRUD for user-defined declarative tools).
+ *
+ * Custom Tools used to be a top-level sidebar item; it was demoted to a
+ * sub-tab here (same pattern as Storage/Devices under Settings) so all
+ * tool-related surfaces live in one place. Sub-tab state lives in `?sub=`
+ * so deep links + back/forward work; the legacy `?tab=custom-tools` route
+ * still resolves here via `forceSub="custom"` (see tabs.tsx) for bookmark
+ * compatibility, and the CustomToolsTab's own `?edit=<id>` deep link keeps
+ * working unchanged (it reads `edit` independently of `sub`).
+ */
 export function ToolsTab({
   connectors,
   initialDisabledTools,
+  forceSub,
 }: {
   connectors: ConnectorSummary[];
   /** Server-fetched disabled tool names — avoids client-side loading spinner. */
   initialDisabledTools?: string[] | undefined;
+  /** Force a sub-tab regardless of `?sub=` (legacy `?tab=custom-tools` route). */
+  forceSub?: ToolsSubTab;
 }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const subFromUrl = searchParams.get("sub");
+  const initialSub: ToolsSubTab = forceSub ?? (subFromUrl === "custom" ? "custom" : "all");
+  const [sub, setSubState] = useState<ToolsSubTab>(initialSub);
+  const setSub = (next: ToolsSubTab) => {
+    setSubState(next);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "tools");
+    params.set("sub", next);
+    // Leaving the custom sub-tab should drop any open editor (`?edit=`).
+    if (next !== "custom") params.delete("edit");
+    router.replace(`/config?${params.toString()}`, { scroll: false });
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-5 border-b border-border overflow-x-auto">
+        {(
+          [
+            ["all", "All tools"],
+            ["custom", "Custom tools"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setSub(k)}
+            className={`text-sm font-medium px-4 py-3 sm:py-2 min-h-11 sm:min-h-0 -mb-px border-b-2 transition-colors whitespace-nowrap ${
+              sub === k
+                ? "border-accent text-accent"
+                : "border-transparent text-text-dim hover:text-text"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {sub === "custom" ? (
+        <CustomToolsTab />
+      ) : (
+        <AllToolsView connectors={connectors} initialDisabledTools={initialDisabledTools} />
+      )}
+    </div>
+  );
+}
+
+function AllToolsView({
+  connectors,
+  initialDisabledTools,
+}: {
+  connectors: ConnectorSummary[];
+  initialDisabledTools?: string[] | undefined;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const enabledPacks = useMemo(() => connectors.filter((p) => p.enabled), [connectors]);
 
   const [search, setSearch] = useState("");
@@ -36,9 +113,6 @@ export function ToolsTab({
   );
   const [toggling, setToggling] = useState<string | null>(null);
   const [bulkToggling, setBulkToggling] = useState<string | null>(null);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
 
   // RSC-01: Only fetch client-side if no server data was provided (backward compat).
   useEffect(() => {
@@ -177,19 +251,7 @@ export function ToolsTab({
   };
 
   return (
-    <div key={reloadKey} className="space-y-4">
-      {builderOpen && (
-        <CustomToolBuilder
-          onClose={() => setBuilderOpen(false)}
-          onCreated={() => {
-            setBuilderOpen(false);
-            setFlash("Custom tool created — reload the page to see it in the list");
-            setTimeout(() => setFlash(null), 4000);
-            setReloadKey((k) => k + 1);
-          }}
-        />
-      )}
-
+    <div className="space-y-4">
       <div className="flex gap-3 flex-wrap items-center">
         <input
           type="text"
@@ -211,16 +273,17 @@ export function ToolsTab({
           ))}
         </select>
         <button
-          onClick={() => setBuilderOpen(true)}
+          onClick={() => {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("tab", "tools");
+            params.set("sub", "custom");
+            params.set("edit", "__new__");
+            router.replace(`/config?${params.toString()}`, { scroll: false });
+          }}
           className="text-xs font-medium text-accent hover:underline px-3 py-2 border border-accent/20 rounded-md shrink-0"
         >
           + New custom tool
         </button>
-        {flash && (
-          <span className="text-[11px] font-medium text-green bg-green-bg px-2 py-0.5 rounded-full">
-            {flash}
-          </span>
-        )}
       </div>
 
       <p className="text-xs text-text-muted">

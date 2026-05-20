@@ -13,7 +13,9 @@ const PRIMARY_NAV = [
   { href: "/config?tab=connectors", tab: "connectors", label: "Connectors", icon: "package" },
   { href: "/config?tab=tools", tab: "tools", label: "Tools", icon: "terminal" },
   { href: "/config?tab=skills", tab: "skills", label: "Skills", icon: "sparkles" },
-  { href: "/config?tab=custom-tools", tab: "custom-tools", label: "Custom Tools", icon: "puzzle" },
+  // Custom Tools was demoted from a top-level item to a sub-tab of Tools
+  // (?tab=tools&sub=custom). The tabs.tsx router still resolves the legacy
+  // ?tab=custom-tools URL for bookmark compatibility.
   { href: "/config?tab=playground", tab: "playground", label: "Playground", icon: "play" },
   { href: "/config?tab=logs", tab: "logs", label: "Logs", icon: "activity" },
 ];
@@ -124,7 +126,10 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentTab = searchParams.get("tab") || "overview";
+  const rawTab = searchParams.get("tab") || "overview";
+  // The legacy `?tab=custom-tools` URL now resolves to the Tools tab's
+  // "custom" sub-tab — highlight the Tools nav item for it.
+  const currentTab = rawTab === "custom-tools" ? "tools" : rawTab;
   const userInitials = getInitials(displayName);
   // MOBILE-01: open/close state for the mobile drawer. Closed by default
   // so the page content renders immediately on small screens.
