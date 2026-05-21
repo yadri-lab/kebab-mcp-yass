@@ -14,11 +14,19 @@
  *   pick by NAME. The choice is persisted to UNIPILE_<TYPE>_ACCOUNT_ID,
  *   which the resolver validates against the live list (D-72).
  *
+ * UX (revised after user feedback): the dropdown is the ONLY primary path —
+ * the raw account-id text fields were removed from the credential form.
+ * On mount we auto-attempt to load the accounts (works when the token is
+ * already saved), so the picker is populated without an extra click. A
+ * collapsed "Enter an account id manually (advanced)" disclosure keeps a
+ * text fallback for the rare case the probe can't reach Unipile, with a
+ * helper explaining what an account id is.
+ *
  * No credentials transit this component — it only ever sees the public
  * account id + display name returned by the probe.
  */
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface ProbeAccount {
   id: string;
@@ -47,12 +55,15 @@ export function UnipileAccountSelector({
   onSaved: (key: string, value: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [accounts, setAccounts] = useState<ProbeAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
+  // Advanced manual-entry drafts, keyed by env var.
+  const [manual, setManual] = useState<Record<string, string>>({});
 
-  async function loadAccounts() {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -68,7 +79,7 @@ export function UnipileAccountSelector({
       const data = (await res.json()) as TestResponse;
       if (!data.ok) {
         setError(
-          data.message || "Could not reach Unipile. Save your DSN + token first, then retry."
+          data.message || "Could not reach Unipile. Save your DSN + token above first, then retry."
         );
         setAccounts([]);
         return;
@@ -79,8 +90,17 @@ export function UnipileAccountSelector({
       setAccounts([]);
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
-  }
+  }, []);
+
+  // Auto-load once on mount. The connector is only rendered when enabled
+  // (creds saved), so the probe almost always succeeds and the picker is
+  // ready without the user hunting for a button. Failures fall back to the
+  // manual "Reload" button + the advanced disclosure.
+  useEffect(() => {
+    void loadAccounts();
+  }, [loadAccounts]);
 
   async function persist(envKey: string, value: string) {
     setSavingKey(envKey);
@@ -107,27 +127,31 @@ export function UnipileAccountSelector({
     }
   }
 
+  const hasAnyAccounts = (accounts?.length ?? 0) > 0;
+
   return (
     <div className="border-t border-border pt-4 space-y-3">
-      <div>
-        <p className="text-sm font-semibold">Default account</p>
-        <p className="text-xs text-text-dim mt-0.5">
-          When one Unipile token has several LinkedIn or WhatsApp accounts, pick which one tools act
-          as by default. You can still override per call. Load the list, then choose.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Default account</p>
+          <p className="text-xs text-text-dim mt-0.5">
+            When one Unipile token has several LinkedIn or WhatsApp accounts, pick which one tools
+            act as by default. You can still override per call.
+          </p>
+        </div>
+        <button
+          onClick={loadAccounts}
+          disabled={loading}
+          className="shrink-0 text-sm font-medium px-3 py-1.5 rounded-md bg-bg-muted hover:bg-border-light text-text-dim hover:text-text disabled:opacity-60"
+        >
+          {loading ? "Loading…" : loadedOnce ? "Reload" : "Load accounts"}
+        </button>
       </div>
 
-      <button
-        onClick={loadAccounts}
-        disabled={loading}
-        className="text-sm font-medium px-4 py-1.5 rounded-md bg-bg-muted hover:bg-border-light text-text-dim hover:text-text disabled:opacity-60"
-      >
-        {loading ? "Loading accounts…" : accounts === null ? "Load accounts" : "Reload accounts"}
-      </button>
-
-      {accounts !== null &&
+      {/* Per-channel dropdowns — the primary path. */}
+      {hasAnyAccounts &&
         CHANNELS.map((ch) => {
-          const forChannel = accounts.filter((a) => a.type === ch.type);
+          const forChannel = accounts!.filter((a) => a.type === ch.type);
           if (forChannel.length === 0) return null;
           const current = (values[ch.envKey] || "").replace(/•/g, "");
           // If the persisted value is masked (••••) we cannot match it to an
@@ -169,7 +193,7 @@ export function UnipileAccountSelector({
           );
         })}
 
-      {accounts !== null && accounts.length === 0 && !error && (
+      {loadedOnce && !hasAnyAccounts && !error && (
         <p className="text-xs text-text-muted italic">
           No LinkedIn or WhatsApp accounts found on this token.
         </p>
@@ -180,6 +204,56 @@ export function UnipileAccountSelector({
           {error}
         </div>
       )}
+
+      {/* Advanced fallback: manual id entry, collapsed by default. */}
+      <details className="group">
+        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:text-text select-none list-none flex items-center gap-1.5">
+          <span className="inline-block transition-transform group-open:rotate-90">▶</span>
+          Enter an account id manually (advanced)
+        </summary>
+        <div className="mt-3 space-y-3 rounded-md border border-border bg-bg-muted/40 px-4 py-3">
+          <p className="text-[11px] text-text-dim leading-relaxed">
+            Only needed if the dropdown can&apos;t load (e.g. Unipile unreachable). A Unipile
+            account id is the opaque identifier shown in your{" "}
+            <a
+              href="https://dashboard.unipile.com/accounts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline underline-offset-2"
+            >
+              Unipile dashboard → Accounts
+            </a>{" "}
+            — a string like{" "}
+            <code className="font-mono text-[11px] bg-bg px-1 rounded">aB3xY_p9Qk2…</code>, not your
+            LinkedIn profile URL or email.
+          </p>
+          {CHANNELS.map((ch) => {
+            const current = (values[ch.envKey] || "").replace(/•/g, "");
+            const draft = manual[ch.envKey] ?? current;
+            return (
+              <div key={ch.envKey} className="space-y-1">
+                <label className="text-[11px] font-medium">{ch.label} account id</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={draft}
+                    placeholder="(leave empty for auto / safety net)"
+                    onChange={(e) => setManual((m) => ({ ...m, [ch.envKey]: e.target.value }))}
+                    className="flex-1 text-sm font-mono rounded-md border border-border bg-bg px-3 py-1.5"
+                  />
+                  <button
+                    onClick={() => persist(ch.envKey, draft.trim())}
+                    disabled={savingKey === ch.envKey}
+                    className="shrink-0 text-sm font-medium px-3 py-1.5 rounded-md bg-bg-muted hover:bg-border-light text-text-dim hover:text-text disabled:opacity-60"
+                  >
+                    {savingKey === ch.envKey ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
     </div>
   );
 }
